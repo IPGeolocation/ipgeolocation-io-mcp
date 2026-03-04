@@ -6,6 +6,10 @@ export function registerUserAgentTools(server: McpServer) {
   server.registerTool(
     "parse_user_agent",
     {
+      title: "User-Agent Parser",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Parse a user-agent string into structured device, browser, OS, and engine details using ipgeolocation.io's dedicated User-Agent endpoint (POST /v3/user-agent). Paid plans only. Free plan returns 401 Unauthorized. Costs 1 credit per request.
 
 Returns: user_agent_string, name (browser/bot name), type (Browser, Crawler, etc.), version, version_major, device (name, type, brand, cpu), engine (name, type, version, version_major), operating_system (name, type, version, version_major, build).
@@ -46,6 +50,10 @@ This is the same user-agent data you can get from lookup_ip with include=user_ag
   server.registerTool(
     "bulk_parse_user_agent",
     {
+      title: "Bulk User-Agent Parser",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Parse up to 50,000 user-agent strings in a single request using ipgeolocation.io's bulk User-Agent endpoint (POST /v3/user-agent-bulk). Paid plans only. Free plan returns 401 Unauthorized. Costs 1 credit per user-agent string.
 
 Returns a JSON array of parsed user-agent objects. Each object contains the same fields as parse_user_agent: user_agent_string, name, type, version, version_major, device (name, type, brand, cpu), engine (name, type, version, version_major), operating_system (name, type, version, version_major, build).
