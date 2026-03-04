@@ -12,6 +12,7 @@ Built and maintained by the [ipgeolocation.io](https://ipgeolocation.io) team.
 - **Zero-install setup** with `npx` for any MCP client
 - **Free tier included** with 1,000 credits/day for 7 tools
 - **Bulk operations** for IP geolocation, security checks, and user-agent parsing (up to 50,000 per request)
+- **One-click install** for Claude Desktop via [MCP Bundles](https://github.com/modelcontextprotocol/mcpb) (manifest.json included)
 - **Cost optimization** built into tool descriptions so AI assistants pick the cheapest path automatically
 
 ---
@@ -27,9 +28,9 @@ Sign up at [app.ipgeolocation.io/signup](https://app.ipgeolocation.io/signup) (f
 <details>
 <summary><strong>Claude Desktop (one-click install)</strong></summary>
 
-If you have Claude Desktop 0.10.0 or later, install directly from the [MCP Bundle Registry](https://github.com/modelcontextprotocol/mcpb). No manual config needed. Claude Desktop will prompt you for your API key during setup.
+This package includes a `manifest.json` following the [MCPB spec](https://github.com/modelcontextprotocol/mcpb) (v0.3). Claude Desktop 0.10.0 and later can install it directly with no manual config. Claude Desktop will prompt you for your API key during setup.
 
-Alternatively, add to `claude_desktop_config.json` manually:
+To configure manually instead, add to `claude_desktop_config.json`:
 
 ```json
 {
@@ -521,7 +522,7 @@ MIT
 
 ## Links
 
-- [Website](https://ipgeolocation.io) - IP geolocation, security, timezone, astronomy, user-agent, and ASN APIs
+- [ipgeolocation.io](https://ipgeolocation.io) - IP geolocation, security, timezone, astronomy, user-agent, and ASN APIs
 - [API Documentation](https://ipgeolocation.io/documentation.html) - Full API reference
 - [Pricing](https://ipgeolocation.io/pricing.html) - Free and paid plan details
 - [Sign Up](https://app.ipgeolocation.io/signup) - Get your free API key
