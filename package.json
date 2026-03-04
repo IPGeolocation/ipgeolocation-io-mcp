@@ -1,0 +1,64 @@
+{
+  "name": "ipgeolocation-io-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for ipgeolocation.io APIs. IP geolocation, VPN/proxy detection, timezone, astronomy, ASN lookup, and abuse contact tools for AI assistants.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "ipgeolocation-io-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc && printf '%s\\n' '#!/usr/bin/env node' | cat - dist/index.js > dist/index.js.tmp && mv dist/index.js.tmp dist/index.js && chmod +x dist/index.js",
+    "prepare": "npm run build",
+    "watch": "tsc --watch",
+    "inspector": "npx @modelcontextprotocol/inspector"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "ipgeolocation",
+    "ip-geolocation",
+    "ip-lookup",
+    "geoip",
+    "geolocation",
+    "timezone",
+    "astronomy",
+    "vpn-detection",
+    "proxy-detection",
+    "ip-security",
+    "asn-lookup",
+    "abuse-contact",
+    "user-agent",
+    "ai-tools",
+    "claude",
+    "cursor",
+    "windsurf",
+    "vscode-copilot"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IPGeolocation/ipgeolocation-io-mcp.git"
+  },
+  "homepage": "https://ipgeolocation.io",
+  "bugs": {
+    "url": "https://github.com/IPGeolocation/ipgeolocation-io-mcp/issues"
+  },
+  "author": "ipgeolocation.io",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
