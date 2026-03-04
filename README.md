@@ -25,9 +25,11 @@ Sign up at [app.ipgeolocation.io/signup](https://app.ipgeolocation.io/signup) (f
 ### 2. Add to your AI client
 
 <details>
-<summary><strong>Claude Desktop</strong></summary>
+<summary><strong>Claude Desktop (one-click install)</strong></summary>
 
-Add to `claude_desktop_config.json`:
+If you have Claude Desktop 0.10.0 or later, install directly from the [MCP Bundle Registry](https://github.com/modelcontextprotocol/mcpb). No manual config needed. Claude Desktop will prompt you for your API key during setup.
+
+Alternatively, add to `claude_desktop_config.json` manually:
 
 ```json
 {
