@@ -521,7 +521,7 @@ MIT
 
 ## Links
 
-- [ipgeolocation.io](https://ipgeolocation.io) - IP geolocation, security, timezone, astronomy, user-agent, and ASN APIs
+- [Website](https://ipgeolocation.io) - IP geolocation, security, timezone, astronomy, user-agent, and ASN APIs
 - [API Documentation](https://ipgeolocation.io/documentation.html) - Full API reference
 - [Pricing](https://ipgeolocation.io/pricing.html) - Free and paid plan details
 - [Sign Up](https://app.ipgeolocation.io/signup) - Get your free API key
