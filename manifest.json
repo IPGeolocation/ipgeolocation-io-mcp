@@ -1,0 +1,85 @@
+{
+  "manifest_version": "0.3",
+  "name": "ipgeolocation-io-mcp",
+  "display_name": "IPGeolocation.io MCP Server",
+  "version": "1.0.0",
+  "description": "Official MCP server for ipgeolocation.io APIs. IP geolocation, VPN/proxy detection, timezone, astronomy, user-agent parsing, ASN, company, and IP abuse contact tools for AI assistants.",
+  "long_description": "Official MCP server from ipgeolocation.io. Provides 16 tools covering IP geolocation, VPN/proxy/Tor detection, timezone lookups and conversions, astronomy data, user-agent parsing, ASN details, and abuse contact information. Free tier included with 1,000 credits/day. Bulk operations support up to 50,000 items per request.",
+  "author": {
+    "name": "ipgeolocation.io",
+    "url": "https://ipgeolocation.io"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IPGeolocation/ipgeolocation-io-mcp.git"
+  },
+  "homepage": "https://ipgeolocation.io",
+  "documentation": "https://ipgeolocation.io/documentation.html",
+  "support": "https://github.com/IPGeolocation/ipgeolocation-io-mcp/issues",
+  "license": "MIT",
+  "privacy_policies": [
+    "https://ipgeolocation.io/privacy.html"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "IPGEOLOCATION_API_KEY": "${user_config.api_key}"
+      }
+    }
+  },
+  "tools": [
+    { "name": "lookup_ip", "description": "IP geolocation lookup for any IPv4/IPv6 address or domain" },
+    { "name": "bulk_lookup_ip", "description": "Bulk IP geolocation for up to 50,000 IPs in one request" },
+    { "name": "get_my_ip", "description": "Returns the caller's public IP address" },
+    { "name": "lookup_company", "description": "Organization using an IP vs. ASN holder comparison" },
+    { "name": "lookup_currency", "description": "Currency and country metadata for any IP" },
+    { "name": "lookup_network", "description": "BGP route prefix, connection type, and anycast detection" },
+    { "name": "check_security", "description": "VPN, proxy, Tor, and bot detection with threat scores" },
+    { "name": "bulk_security_check", "description": "Bulk security check for up to 50,000 IPs" },
+    { "name": "get_timezone", "description": "Timezone lookup by IANA name, coordinates, IP, or airport code" },
+    { "name": "convert_timezone", "description": "Convert time between two locations" },
+    { "name": "get_astronomy", "description": "Sunrise, sunset, moonrise, moonset, twilight, and moon phases" },
+    { "name": "get_astronomy_time_series", "description": "Daily astronomy data for a date range up to 90 days" },
+    { "name": "parse_user_agent", "description": "Parse a user-agent string into device, browser, OS details" },
+    { "name": "bulk_parse_user_agent", "description": "Bulk parse up to 50,000 user-agent strings" },
+    { "name": "lookup_asn", "description": "ASN details with peers, upstreams, downstreams, and WHOIS" },
+    { "name": "get_abuse_contact", "description": "Abuse contact email, phone, and address for any IP" }
+  ],
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "ipgeolocation",
+    "ip-geolocation",
+    "geoip",
+    "timezone",
+    "astronomy",
+    "vpn-detection",
+    "proxy-detection",
+    "asn-lookup",
+    "abuse-contact",
+    "user-agent",
+    "claude",
+    "cursor",
+    "windsurf"
+  ],
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  },
+  "user_config": {
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "description": "Your ipgeolocation.io API key. Get one free at https://app.ipgeolocation.io/signup",
+      "sensitive": true,
+      "required": true
+    }
+  }
+}
