@@ -3,7 +3,7 @@
   "name": "ipgeolocation-io-mcp",
   "display_name": "IPGeolocation.io MCP Server",
   "version": "1.0.0",
-  "description": "MCP server for ipgeolocation.io APIs. IP geolocation, VPN/proxy detection, timezone, astronomy, ASN lookup, and abuse contact tools for AI assistants.",
+  "description": "Official MCP server for ipgeolocation.io APIs. IP geolocation, VPN/proxy detection, timezone, astronomy, user-agent parsing, ASN, company, and IP abuse contact tools for AI assistants.",
   "long_description": "Official MCP server from ipgeolocation.io. Provides 16 tools covering IP geolocation, VPN/proxy/Tor detection, timezone lookups and conversions, astronomy data, user-agent parsing, ASN details, and abuse contact information. Free tier included with 1,000 credits/day. Bulk operations support up to 50,000 items per request.",
   "author": {
     "name": "ipgeolocation.io",
