@@ -6,6 +6,10 @@ export function registerSecurityTools(server: McpServer) {
   server.registerTool(
     "check_security",
     {
+      title: "VPN/Proxy/Threat Detection",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Check if an IP address is a VPN, proxy, Tor node, bot, or known attacker using ipgeolocation.io's dedicated security endpoint (GET /v3/security). Paid plans only. Free plan returns 401 Unauthorized. Costs 2 credits per lookup.
 
 Returns: threat_score (0-100), is_tor, is_proxy, proxy_provider_names, proxy_confidence_score (0-100), proxy_last_seen, is_residential_proxy, is_vpn, vpn_provider_names, vpn_confidence_score (0-100), vpn_last_seen, is_relay, relay_provider_name, is_anonymous, is_known_attacker, is_bot, is_spam, is_cloud_provider, cloud_provider_name.
@@ -60,6 +64,10 @@ This is the same security data you get from lookup_ip with include=security, but
   server.registerTool(
     "bulk_security_check",
     {
+      title: "Bulk Security Check",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Check up to 50,000 IP addresses for VPN, proxy, Tor, bot, and threat indicators in a single request using ipgeolocation.io's bulk security endpoint (POST /v3/security-bulk). Paid plans only. Free plan returns 401 Unauthorized. Costs 2 credits per valid IP in the request.
 
 Returns a JSON array of security assessment objects, one per IP. Each object contains the same fields as check_security: threat_score, is_tor, is_proxy, proxy_provider_names, proxy_confidence_score, is_vpn, vpn_provider_names, vpn_confidence_score, is_bot, is_spam, is_known_attacker, is_anonymous, is_cloud_provider, and more.

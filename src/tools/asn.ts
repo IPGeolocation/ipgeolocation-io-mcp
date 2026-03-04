@@ -6,6 +6,10 @@ export function registerAsnTools(server: McpServer) {
   server.registerTool(
     "lookup_asn",
     {
+      title: "ASN Details",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Look up detailed Autonomous System Number (ASN) information using ipgeolocation.io's dedicated ASN endpoint (GET /v3/asn). Paid plans only. Free plan returns 401 Unauthorized. Costs 1 credit per lookup.
 
 Query by AS number (e.g. AS13335) or by IP address to find its ASN. Returns: as_number, asn_name, organization, country, type (ISP/Business/Hosting/etc), domain, rir (ARIN/RIPE/APNIC/etc), date_allocated, allocation_status, num_of_ipv4_routes, num_of_ipv6_routes.

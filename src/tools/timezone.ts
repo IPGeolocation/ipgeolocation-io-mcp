@@ -6,6 +6,10 @@ export function registerTimezoneTools(server: McpServer) {
   server.registerTool(
     "get_timezone",
     {
+      title: "Timezone Lookup",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Get current time and timezone details for any location using ipgeolocation.io (GET /v3/timezone). Works on all plans including free. Costs 1 credit per request.
 
 Look up by IANA timezone name, coordinates, city/address, IP address, IATA airport code, ICAO airport code, or UN/LOCODE. All lookup modes work on both free and paid plans. If no parameters are provided, returns timezone data for the caller's IP.
@@ -88,6 +92,10 @@ The lang parameter for non-English responses is available on paid plans only. Fr
   server.registerTool(
     "convert_timezone",
     {
+      title: "Timezone Conversion",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Convert time between two locations using ipgeolocation.io (GET /v3/timezone/convert). Works on all plans including free. Costs 1 credit per request.
 
 Specify source and destination by IANA timezone name, coordinates, city/address, IATA airport code, ICAO airport code, or UN/LOCODE. All location modes work on both free and paid plans.

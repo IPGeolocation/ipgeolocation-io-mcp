@@ -6,6 +6,10 @@ export function registerGeolocationTools(server: McpServer) {
   server.registerTool(
     "lookup_ip",
     {
+      title: "IP Geolocation Lookup",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Look up geolocation data for a single IP address or domain using ipgeolocation.io's unified endpoint (GET /v3/ipgeo). Costs 1 credit per request on all plans.
 
 FREE PLAN returns: ip, location (continent, country, state, district, city, zipcode, latitude, longitude, is_eu, country_flag, country_emoji, geoname_id), country_metadata (calling_code, tld, languages), currency (code, name, symbol), time_zone (name, offset, DST info, current_time), and basic ASN (as_number, organization, country). The fields and excludes parameters work on the free plan. Domain lookups and the include parameter are not available on the free plan. The lang parameter returns a 401 error on the free plan for any language other than en.
@@ -71,6 +75,10 @@ If no IP is provided, returns data for the caller's IP. For basic ASN info on th
   server.registerTool(
     "bulk_lookup_ip",
     {
+      title: "Bulk IP Geolocation",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Look up geolocation data for multiple IP addresses in a single request using ipgeolocation.io's bulk endpoint (POST /v3/ipgeo-bulk). Accepts up to 50,000 IPs per request. Paid plans only. Free plan returns 401 Unauthorized.
 
 Costs 1 credit per IP for base geolocation data. Each IP in the response contains the same fields as a single lookup_ip call on a paid plan: ip, location, country_metadata, currency, time_zone, network, company, and extended ASN (as_number, organization, country, type, domain, date_allocated, rir).
@@ -137,6 +145,10 @@ Returns a JSON array with one geolocation object per IP. Use this tool when you 
   server.registerTool(
     "get_my_ip",
     {
+      title: "Get My IP Address",
+      annotations: {
+        readOnlyHint: true,
+      },
       description:
         "Get the public IP address of the machine running this MCP server. No API key required. No credits charged. Uses the /v3/getip endpoint. Useful for discovering the server's own IP before doing a geolocation lookup with lookup_ip.",
       inputSchema: {},
@@ -164,6 +176,10 @@ Returns a JSON array with one geolocation object per IP. Use this tool when you 
   server.registerTool(
     "lookup_company",
     {
+      title: "Company/Organization Lookup",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Identify the organization using a specific IP address. Uses ipgeolocation.io's unified endpoint (GET /v3/ipgeo) with fields filtered to company and ASN data. Paid plans only. Free plan does not return company data. Costs 1 credit.
 
 Returns two objects: company (name, type, domain) and asn (as_number, organization, country, type, domain, date_allocated, rir). The ASN object identifies the organization that holds the IP block allocation from a Regional Internet Registry (ARIN, RIPE, APNIC, etc.). The company object identifies the organization actually using the IP address. These are often the same, but differ when the ASN holder subleases IP space to another organization. For example, 1.1.1.1 has ASN organization "Cloudflare, Inc." (who routes it) but company "APNIC Research and Development" (who owns the block).
@@ -206,6 +222,10 @@ Use this tool when you need to know which company or organization is behind an I
   server.registerTool(
     "lookup_currency",
     {
+      title: "Currency and Country Metadata",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Get the local currency and country metadata for any IP address. Uses ipgeolocation.io's unified endpoint (GET /v3/ipgeo) with fields filtered to currency and country_metadata. Works on all plans including free. Costs 1 credit.
 
 Returns two objects: currency (code, name, symbol) and country_metadata (calling_code, tld, languages). For example, a Japanese IP returns currency {code: "JPY", name: "Japanese Yen", symbol: "¥"} and country_metadata {calling_code: "+81", tld: ".jp", languages: ["ja"]}.
@@ -248,6 +268,10 @@ Use this tool when you need to know the currency, international calling code, co
   server.registerTool(
     "lookup_network",
     {
+      title: "Network/Routing Info",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Get network routing information for any IP address, including whether it uses anycast. Uses ipgeolocation.io's unified endpoint (GET /v3/ipgeo) with fields filtered to network data. Paid plans only. Free plan does not return network data. Costs 1 credit.
 
 Returns: network (connection_type, route, is_anycast). The route field shows the announced BGP prefix (e.g. "1.1.1.0/24"). The is_anycast field indicates whether the IP is served from multiple geographic locations using anycast routing. The connection_type field identifies the type of network connection when available.

@@ -123,6 +123,80 @@ Add to your VS Code `settings.json`:
 
 ---
 
+## Usage Examples
+
+<details>
+<summary><strong>Example 1: Locate an IP and check for VPN</strong></summary>
+
+**User prompt:** "Where is 203.0.113.42 located, and is it using a VPN?"
+
+**What happens:**
+1. The AI calls `lookup_ip` with `ip=203.0.113.42` and `include=security` (3 credits on paid plan)
+2. Returns geolocation (country, city, coordinates) plus security flags (is_vpn, vpn_provider_names, threat_score)
+3. The AI responds with the location and whether the IP is behind a VPN
+
+**Cost optimization:** If you only need the VPN check without geolocation, the AI can call `check_security` instead (2 credits).
+
+</details>
+
+<details>
+<summary><strong>Example 2: Convert time between airports</strong></summary>
+
+**User prompt:** "What time is it at JFK airport right now, and what would that be in Tokyo Narita?"
+
+**What happens:**
+1. The AI calls `convert_timezone` with `iata_from=JFK` and `iata_to=NRT`
+2. Returns the current time at JFK, the equivalent time at NRT, and the hour/minute difference
+3. Also returns airport details (name, city, elevation) for both airports
+
+**Works on the free plan.** 1 credit.
+
+</details>
+
+<details>
+<summary><strong>Example 3: Get sunrise times for the next week</strong></summary>
+
+**User prompt:** "When will the sun rise in San Francisco each day this week?"
+
+**What happens:**
+1. The AI calls `get_astronomy_time_series` with `location=San Francisco, CA`, `dateStart=2026-03-04`, and `dateEnd=2026-03-10`
+2. Returns daily astronomy data including sunrise, sunset, moonrise, moonset, twilight, and moon phases for each day
+3. The AI formats the sunrise times into a readable list
+
+**Works on the free plan.** 1 credit for the entire range (up to 90 days).
+
+</details>
+
+<details>
+<summary><strong>Example 4: Identify the company behind an IP</strong></summary>
+
+**User prompt:** "Who operates 1.1.1.1?"
+
+**What happens:**
+1. The AI calls `lookup_company` with `ip=1.1.1.1`
+2. Returns the company using the IP (APNIC Research and Development) and the ASN holder (Cloudflare, Inc.)
+3. The AI explains the difference: Cloudflare routes the IP block, but APNIC holds the allocation
+
+**Paid plans only.** 1 credit.
+
+</details>
+
+<details>
+<summary><strong>Example 5: Bulk security scan</strong></summary>
+
+**User prompt:** "Check these IPs for threats: 1.2.3.4, 5.6.7.8, 9.10.11.12"
+
+**What happens:**
+1. The AI calls `bulk_security_check` with all three IPs in a single request
+2. Returns threat scores, VPN/proxy/Tor flags, bot detection, and provider names for each IP
+3. The AI summarizes which IPs are clean and which have security concerns
+
+**Paid plans only.** 2 credits per IP (6 credits total).
+
+</details>
+
+---
+
 ## Tools
 
 ### Free Plan (1,000 credits/day)
@@ -519,6 +593,10 @@ All 16 tools map to our v3 API endpoints. Three tools (`lookup_company`, `lookup
 ## License
 
 MIT
+
+## Privacy Policy
+
+See our [Privacy Policy](https://ipgeolocation.io/privacy.html) for details on how we handle data.
 
 ## Links
 

@@ -6,6 +6,10 @@ export function registerAbuseTools(server: McpServer) {
   server.registerTool(
     "get_abuse_contact",
     {
+      title: "Abuse Contact Lookup",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Get abuse contact information for any IP address using ipgeolocation.io's dedicated abuse endpoint (GET /v3/abuse). Paid plans only. Free plan returns 401 Unauthorized. Costs 1 credit per lookup.
 
 Returns: route, country, name, organization, kind, address, emails (array), phone_numbers (array). Useful for reporting malicious activity to the correct network operator.

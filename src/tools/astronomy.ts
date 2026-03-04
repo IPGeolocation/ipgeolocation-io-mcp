@@ -6,6 +6,10 @@ export function registerAstronomyTools(server: McpServer) {
   server.registerTool(
     "get_astronomy",
     {
+      title: "Astronomy Data",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Get sunrise, sunset, moonrise, moonset, twilight times, golden hour, blue hour, sun/moon positions, and moon phase data for any location using ipgeolocation.io (GET /v3/astronomy). Works on all plans including free. Costs 1 credit per request.
 
 Look up by coordinates, city/address, or IP address. All lookup modes work on both free and paid plans. Supports custom dates and elevation for precise calculations.
@@ -86,6 +90,10 @@ The lang parameter for non-English location field responses is available on paid
   server.registerTool(
     "get_astronomy_time_series",
     {
+      title: "Astronomy Time Series",
+      annotations: {
+        readOnlyHint: true,
+      },
       description: `Get daily astronomical data for a date range (up to 90 days) using ipgeolocation.io's astronomy time series endpoint (GET /v3/astronomy/timeSeries). Works on all plans including free. Costs 1 credit per request regardless of the number of days.
 
 Returns an array of daily astronomy objects, one per day in the range. Each object includes: date, sunrise, sunset, solar_noon, day_length, moonrise, moonset, moon_phase, moon_illumination_percentage, and all twilight/golden hour/blue hour times.
