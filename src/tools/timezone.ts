@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getTimezone, convertTimezone } from "../client.js";
+import { errorToolResponse, formatToolResult } from "./response.js";
+import {
+  hasAnyValue,
+  validateCoordinatePair,
+  validateCoordinatePairNamed,
+} from "./validation.js";
 
 export function registerTimezoneTools(server: McpServer) {
   server.registerTool(
@@ -67,24 +73,23 @@ The lang parameter for non-English responses is available on paid plans only. Fr
 
     async (params) => {
       try {
+        const coordinateError = validateCoordinatePair(
+          params.lat,
+          params.long,
+          "get_timezone"
+        );
+        if (coordinateError) {
+          throw new Error(coordinateError);
+        }
+
         const result = await getTimezone(params);
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+            { type: "text" as const, text: formatToolResult(result) },
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );
@@ -168,24 +173,66 @@ Returns: original time, converted time, diff_hour, and diff_min between the two 
     },
     async (params) => {
       try {
+        const sourceCoordinateError = validateCoordinatePairNamed(
+          params.lat_from,
+          params.long_from,
+          "lat_from",
+          "long_from",
+          "convert_timezone"
+        );
+        if (sourceCoordinateError) {
+          throw new Error(sourceCoordinateError);
+        }
+
+        const destinationCoordinateError = validateCoordinatePairNamed(
+          params.lat_to,
+          params.long_to,
+          "lat_to",
+          "long_to",
+          "convert_timezone"
+        );
+        if (destinationCoordinateError) {
+          throw new Error(destinationCoordinateError);
+        }
+
+        const hasSource = hasAnyValue([
+          params.tz_from,
+          params.lat_from,
+          params.long_from,
+          params.location_from,
+          params.iata_from,
+          params.icao_from,
+          params.locode_from,
+        ]);
+        if (!hasSource) {
+          throw new Error(
+            "convert_timezone: provide at least one source selector (tz_from, lat_from/long_from, location_from, iata_from, icao_from, or locode_from)."
+          );
+        }
+
+        const hasDestination = hasAnyValue([
+          params.tz_to,
+          params.lat_to,
+          params.long_to,
+          params.location_to,
+          params.iata_to,
+          params.icao_to,
+          params.locode_to,
+        ]);
+        if (!hasDestination) {
+          throw new Error(
+            "convert_timezone: provide at least one destination selector (tz_to, lat_to/long_to, location_to, iata_to, icao_to, or locode_to)."
+          );
+        }
+
         const result = await convertTimezone(params);
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+            { type: "text" as const, text: formatToolResult(result) },
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );

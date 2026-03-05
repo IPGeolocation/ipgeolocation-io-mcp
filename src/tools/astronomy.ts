@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getAstronomy, getAstronomyTimeSeries } from "../client.js";
+import { errorToolResponse, formatToolResult } from "./response.js";
+import {
+  validateCoordinatePair,
+  validateDateRange,
+  validateIsoDate,
+} from "./validation.js";
 
 export function registerAstronomyTools(server: McpServer) {
   server.registerTool(
@@ -65,24 +71,28 @@ The lang parameter for non-English location field responses is available on paid
 
     async (params) => {
       try {
+        const coordinateError = validateCoordinatePair(
+          params.lat,
+          params.long,
+          "get_astronomy"
+        );
+        if (coordinateError) {
+          throw new Error(coordinateError);
+        }
+
+        const dateError = validateIsoDate(params.date, "date");
+        if (dateError) {
+          throw new Error(dateError);
+        }
+
         const result = await getAstronomy(params);
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+            { type: "text" as const, text: formatToolResult(result) },
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );
@@ -154,24 +164,32 @@ Location can be specified by coordinates, city/address, or IP. If no location is
     },
     async (params) => {
       try {
+        const coordinateError = validateCoordinatePair(
+          params.lat,
+          params.long,
+          "get_astronomy_time_series"
+        );
+        if (coordinateError) {
+          throw new Error(coordinateError);
+        }
+
+        const dateRangeError = validateDateRange(
+          params.dateStart,
+          params.dateEnd,
+          90
+        );
+        if (dateRangeError) {
+          throw new Error(dateRangeError);
+        }
+
         const result = await getAstronomyTimeSeries(params);
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+            { type: "text" as const, text: formatToolResult(result) },
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );

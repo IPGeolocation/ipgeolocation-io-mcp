@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getIpGeolocation, getIpGeolocationBulk, getMyIp } from "../client.js";
+import {
+  MAX_BULK_ITEMS,
+  errorToolResponse,
+  formatToolResult,
+} from "./response.js";
 
 export function registerGeolocationTools(server: McpServer) {
   server.registerTool(
@@ -55,19 +60,11 @@ If no IP is provided, returns data for the caller's IP. For basic ASN info on th
         const result = await getIpGeolocation(params);
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+            { type: "text" as const, text: formatToolResult(result) },
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );
@@ -79,7 +76,7 @@ If no IP is provided, returns data for the caller's IP. For basic ASN info on th
       annotations: {
         readOnlyHint: true,
       },
-      description: `Look up geolocation data for multiple IP addresses in a single request using ipgeolocation.io's bulk endpoint (POST /v3/ipgeo-bulk). Accepts up to 50,000 IPs per request. Paid plans only. Free plan returns 401 Unauthorized.
+      description: `Look up geolocation data for multiple IP addresses in a single request using ipgeolocation.io's bulk endpoint (POST /v3/ipgeo-bulk). Accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs per request through this MCP server (the raw API supports up to 50,000). Paid plans only. Free plan returns 401 Unauthorized.
 
 Costs 1 credit per IP for base geolocation data. Each IP in the response contains the same fields as a single lookup_ip call on a paid plan: ip, location, country_metadata, currency, time_zone, network, company, and extended ASN (as_number, organization, country, type, domain, date_allocated, rir).
 
@@ -90,9 +87,9 @@ Returns a JSON array with one geolocation object per IP. Use this tool when you 
         ips: z
           .array(z.string())
           .min(1)
-          .max(50000)
+          .max(MAX_BULK_ITEMS)
           .describe(
-            "Array of IPv4 and/or IPv6 addresses to look up. Minimum 1, maximum 50,000. Domain names are also accepted."
+            `Array of IPv4 and/or IPv6 addresses to look up. Minimum 1, maximum ${MAX_BULK_ITEMS.toLocaleString()} in this MCP server. Domain names are also accepted.`
           ),
         lang: z
           .string()
@@ -125,19 +122,11 @@ Returns a JSON array with one geolocation object per IP. Use this tool when you 
         const result = await getIpGeolocationBulk(params);
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+            { type: "text" as const, text: formatToolResult(result) },
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );
@@ -160,15 +149,7 @@ Returns a JSON array with one geolocation object per IP. Use this tool when you 
           content: [{ type: "text" as const, text: ip }],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );
@@ -202,19 +183,11 @@ Use this tool when you need to know which company or organization is behind an I
         });
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+            { type: "text" as const, text: formatToolResult(result) },
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );
@@ -248,19 +221,11 @@ Use this tool when you need to know the currency, international calling code, co
         });
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+            { type: "text" as const, text: formatToolResult(result) },
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );
@@ -294,19 +259,11 @@ Use this tool when you need to check if an IP is anycast, find its BGP route pre
         });
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+            { type: "text" as const, text: formatToolResult(result) },
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );

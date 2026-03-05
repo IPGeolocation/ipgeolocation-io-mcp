@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getSecurity, getSecurityBulk } from "../client.js";
+import {
+  MAX_BULK_ITEMS,
+  errorToolResponse,
+  formatToolResult,
+} from "./response.js";
 
 export function registerSecurityTools(server: McpServer) {
   server.registerTool(
@@ -42,21 +47,11 @@ This is the same security data you get from lookup_ip with include=security, but
         const result = await getSecurity(params);
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+            { type: "text" as const, text: formatToolResult(result) },
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );
@@ -68,7 +63,7 @@ This is the same security data you get from lookup_ip with include=security, but
       annotations: {
         readOnlyHint: true,
       },
-      description: `Check up to 50,000 IP addresses for VPN, proxy, Tor, bot, and threat indicators in a single request using ipgeolocation.io's bulk security endpoint (POST /v3/security-bulk). Paid plans only. Free plan returns 401 Unauthorized. Costs 2 credits per valid IP in the request.
+      description: `Check up to ${MAX_BULK_ITEMS.toLocaleString()} IP addresses for VPN, proxy, Tor, bot, and threat indicators in a single request using ipgeolocation.io's bulk security endpoint (POST /v3/security-bulk). This MCP server caps request size for transport safety (the raw API supports up to 50,000). Paid plans only. Free plan returns 401 Unauthorized. Costs 2 credits per valid IP in the request.
 
 Returns a JSON array of security assessment objects, one per IP. Each object contains the same fields as check_security: threat_score, is_tor, is_proxy, proxy_provider_names, proxy_confidence_score, is_vpn, vpn_provider_names, vpn_confidence_score, is_bot, is_spam, is_known_attacker, is_anonymous, is_cloud_provider, and more.
 
@@ -77,9 +72,9 @@ Use this tool when you need security checks on multiple IPs at once. For a singl
         ips: z
           .array(z.string())
           .min(1)
-          .max(50000)
+          .max(MAX_BULK_ITEMS)
           .describe(
-            "Array of IPv4 and/or IPv6 addresses to check. Minimum 1, maximum 50,000."
+            `Array of IPv4 and/or IPv6 addresses to check. Minimum 1, maximum ${MAX_BULK_ITEMS.toLocaleString()} in this MCP server.`
           ),
         fields: z
           .string()
@@ -100,21 +95,11 @@ Use this tool when you need security checks on multiple IPs at once. For a singl
         const result = await getSecurityBulk(params);
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+            { type: "text" as const, text: formatToolResult(result) },
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );

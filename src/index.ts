@@ -22,6 +22,8 @@ registerAbuseTools(server);
 registerUserAgentTools(server);
 
 const transport = new StdioServerTransport();
+// Keep the process alive while waiting for stdio JSON-RPC messages.
+process.stdin.resume();
 
 await server.connect(transport);
 

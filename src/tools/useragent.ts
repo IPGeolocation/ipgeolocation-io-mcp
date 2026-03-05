@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { parseUserAgent, parseUserAgentBulk } from "../client.js";
+import {
+  MAX_BULK_ITEMS,
+  errorToolResponse,
+  formatToolResult,
+} from "./response.js";
 
 export function registerUserAgentTools(server: McpServer) {
   server.registerTool(
@@ -28,21 +33,11 @@ This is the same user-agent data you can get from lookup_ip with include=user_ag
         const result = await parseUserAgent(params);
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+            { type: "text" as const, text: formatToolResult(result) },
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );
@@ -54,7 +49,7 @@ This is the same user-agent data you can get from lookup_ip with include=user_ag
       annotations: {
         readOnlyHint: true,
       },
-      description: `Parse up to 50,000 user-agent strings in a single request using ipgeolocation.io's bulk User-Agent endpoint (POST /v3/user-agent-bulk). Paid plans only. Free plan returns 401 Unauthorized. Costs 1 credit per user-agent string.
+      description: `Parse up to ${MAX_BULK_ITEMS.toLocaleString()} user-agent strings in a single request using ipgeolocation.io's bulk User-Agent endpoint (POST /v3/user-agent-bulk). This MCP server caps request size for transport safety (the raw API supports up to 50,000). Paid plans only. Free plan returns 401 Unauthorized. Costs 1 credit per user-agent string.
 
 Returns a JSON array of parsed user-agent objects. Each object contains the same fields as parse_user_agent: user_agent_string, name, type, version, version_major, device (name, type, brand, cpu), engine (name, type, version, version_major), operating_system (name, type, version, version_major, build).
 
@@ -63,9 +58,9 @@ Use this tool when you need to parse multiple user-agent strings at once. For a 
         uaStrings: z
           .array(z.string())
           .min(1)
-          .max(50000)
+          .max(MAX_BULK_ITEMS)
           .describe(
-            "Array of user-agent strings to parse. Minimum 1, maximum 50,000."
+            `Array of user-agent strings to parse. Minimum 1, maximum ${MAX_BULK_ITEMS.toLocaleString()} in this MCP server.`
           ),
       },
     },
@@ -74,21 +69,11 @@ Use this tool when you need to parse multiple user-agent strings at once. For a 
         const result = await parseUserAgentBulk(params);
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+            { type: "text" as const, text: formatToolResult(result) },
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );
