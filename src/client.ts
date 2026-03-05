@@ -1,4 +1,6 @@
 const API_BASE = "https://api.ipgeolocation.io";
+const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
+const MAX_UPSTREAM_ERROR_CHARS = 4000;
 
 let apiKey: string | undefined;
 
@@ -21,6 +23,47 @@ export class ApiError extends Error {
   ) {
     super(message);
     this.name = "ApiError";
+  }
+}
+
+function parseTimeoutMs(): number {
+  const value = process.env.IPGEOLOCATION_REQUEST_TIMEOUT_MS;
+  if (!value) {
+    return DEFAULT_REQUEST_TIMEOUT_MS;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1000 || parsed > 120000) {
+    return DEFAULT_REQUEST_TIMEOUT_MS;
+  }
+
+  return parsed;
+}
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const timeoutMs = parseTimeoutMs();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError(
+        504,
+        `504: Upstream request timed out after ${timeoutMs}ms`
+      );
+    }
+
+    throw new ApiError(
+      502,
+      `502: Failed to reach upstream API (${error instanceof Error ? error.message : String(error)})`
+    );
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -56,7 +99,7 @@ async function request(
     fetchOptions.body = JSON.stringify(options.body);
   }
 
-  const response = await fetch(url.toString(), fetchOptions);
+  const response = await fetchWithTimeout(url.toString(), fetchOptions);
 
   if (!response.ok) {
     let message: string;
@@ -66,10 +109,22 @@ async function request(
     } catch {
       message = response.statusText;
     }
+
+    if (message.length > MAX_UPSTREAM_ERROR_CHARS) {
+      message = `${message.slice(
+        0,
+        MAX_UPSTREAM_ERROR_CHARS
+      )}... [truncated upstream error body]`;
+    }
+
     throw new ApiError(response.status, `${response.status}: ${message}`);
   }
 
-  return response.json();
+  try {
+    return await response.json();
+  } catch {
+    throw new ApiError(502, "502: Upstream API returned invalid JSON");
+  }
 }
 
 export async function getIpGeolocation(params: {
@@ -89,11 +144,16 @@ export async function getIpGeolocation(params: {
 }
 
 export async function getMyIp(): Promise<string> {
-  const response = await fetch(`${API_BASE}/v3/getip`);
+  const response = await fetchWithTimeout(`${API_BASE}/v3/getip`);
   if (!response.ok) {
     throw new ApiError(response.status, "Failed to retrieve IP address");
   }
-  const data = (await response.json()) as { ip: string };
+  let data: { ip: string };
+  try {
+    data = (await response.json()) as { ip: string };
+  } catch {
+    throw new ApiError(502, "502: Upstream API returned invalid JSON");
+  }
   return data.ip;
 }
 

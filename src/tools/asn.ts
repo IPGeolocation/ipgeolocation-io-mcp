@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getAsn } from "../client.js";
+import { errorToolResponse, formatToolResult } from "./response.js";
 
 export function registerAsnTools(server: McpServer) {
   server.registerTool(
@@ -55,21 +56,11 @@ Note: basic ASN data (as_number, organization, country) is already included in l
         const result = await getAsn(params);
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(result, null, 2) },
+            { type: "text" as const, text: formatToolResult(result) },
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResponse(error);
       }
     }
   );

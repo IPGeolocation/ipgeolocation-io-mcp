@@ -1,6 +1,6 @@
 {
   "name": "ipgeolocation-io-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Official MCP server for ipgeolocation.io APIs. IP geolocation, VPN/proxy detection, timezone, astronomy, user-agent parsing, ASN, company, and IP abuse contact tools for AI assistants.",
   "type": "module",
   "main": "dist/index.js",
@@ -9,13 +9,17 @@
     "ipgeolocation-io-mcp": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "manifest.json"
   ],
   "engines": {
     "node": ">=18.0.0"
   },
   "scripts": {
     "build": "tsc && printf '%s\\n' '#!/usr/bin/env node' | cat - dist/index.js > dist/index.js.tmp && mv dist/index.js.tmp dist/index.js && chmod +x dist/index.js",
+    "test": "npm run build && node --test --test-concurrency=1 tests",
+    "test:unit": "npm run build && node --test --test-concurrency=1 tests/client.test.mjs tests/response.test.mjs tests/validation.test.mjs",
+    "test:integration": "npm run build && node --test --test-concurrency=1 tests/tools.integration.test.mjs tests/mcp.protocol.test.mjs",
     "prepare": "npm run build",
     "watch": "tsc --watch",
     "inspector": "npx @modelcontextprotocol/inspector"
@@ -54,7 +58,7 @@
   "author": "ipgeolocation.io",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "zod": "^3.24.0"
   },
   "devDependencies": {

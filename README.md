@@ -1,6 +1,6 @@
 # IPGeolocation.io MCP Server
 
-Official [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for the [ipgeolocation.io](https://ipgeolocation.io) API suite (v3). Connects Claude, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible AI assistant to our full range of IP intelligence, timezone, astronomy, and user-agent parsing APIs.
+Official [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for the [ipgeolocation.io](https://ipgeolocation.io) API suite (v3). Connects Claude, Cursor, Windsurf, VS Code Copilot, and other MCP-compatible assistants to our IP intelligence, timezone, astronomy, and user-agent parsing APIs.
 
 Built and maintained by the [ipgeolocation.io](https://ipgeolocation.io) team.
 
@@ -11,9 +11,9 @@ Built and maintained by the [ipgeolocation.io](https://ipgeolocation.io) team.
 - **16 tools** covering IP geolocation, VPN/proxy detection, timezone, astronomy, user-agent parsing, ASN, and abuse contact data
 - **Zero-install setup** with `npx` for any MCP client
 - **Free tier included** with 1,000 credits/day for 7 tools
-- **Bulk operations** for IP geolocation, security checks, and user-agent parsing (up to 50,000 per request)
+- **Bulk operations** for IP geolocation, security checks, and user-agent parsing (up to 1,000 per MCP request by default)
 - **One-click install** for Claude Desktop via [MCP Bundles](https://github.com/modelcontextprotocol/mcpb) (manifest.json included)
-- **Cost optimization** built into tool descriptions so AI assistants pick the cheapest path automatically
+- **Cost optimization** built into tool descriptions so clients can select the lowest-cost path automatically
 
 ---
 
@@ -23,12 +23,12 @@ Built and maintained by the [ipgeolocation.io](https://ipgeolocation.io) team.
 
 Sign up at [app.ipgeolocation.io/signup](https://app.ipgeolocation.io/signup) (free, no credit card). Copy your API key from the Dashboard.
 
-### 2. Add to your AI client
+### 2. Add to your MCP client
 
 <details>
 <summary><strong>Claude Desktop (one-click install)</strong></summary>
 
-This package includes a `manifest.json` following the [MCPB spec](https://github.com/modelcontextprotocol/mcpb) (v0.3). Claude Desktop 0.10.0 and later can install it directly with no manual config. Claude Desktop will prompt you for your API key during setup.
+We include a `manifest.json` following the [MCPB spec](https://github.com/modelcontextprotocol/mcpb) (v0.3). Claude Desktop 0.10.0 and later can install it directly with no manual config. Claude Desktop prompts for your API key during setup.
 
 To configure manually instead, add to `claude_desktop_config.json`:
 
@@ -131,11 +131,11 @@ Add to your VS Code `settings.json`:
 **User prompt:** "Where is 203.0.113.42 located, and is it using a VPN?"
 
 **What happens:**
-1. The AI calls `lookup_ip` with `ip=203.0.113.42` and `include=security` (3 credits on paid plan)
+1. We call `lookup_ip` with `ip=203.0.113.42` and `include=security` (3 credits on paid plan)
 2. Returns geolocation (country, city, coordinates) plus security flags (is_vpn, vpn_provider_names, threat_score)
-3. The AI responds with the location and whether the IP is behind a VPN
+3. We return the location and whether the IP is behind a VPN
 
-**Cost optimization:** If you only need the VPN check without geolocation, the AI can call `check_security` instead (2 credits).
+**Cost optimization:** If you only need the VPN check without geolocation, the client can call `check_security` instead (2 credits).
 
 </details>
 
@@ -145,7 +145,7 @@ Add to your VS Code `settings.json`:
 **User prompt:** "What time is it at JFK airport right now, and what would that be in Tokyo Narita?"
 
 **What happens:**
-1. The AI calls `convert_timezone` with `iata_from=JFK` and `iata_to=NRT`
+1. We call `convert_timezone` with `iata_from=JFK` and `iata_to=NRT`
 2. Returns the current time at JFK, the equivalent time at NRT, and the hour/minute difference
 3. Also returns airport details (name, city, elevation) for both airports
 
@@ -159,9 +159,9 @@ Add to your VS Code `settings.json`:
 **User prompt:** "When will the sun rise in San Francisco each day this week?"
 
 **What happens:**
-1. The AI calls `get_astronomy_time_series` with `location=San Francisco, CA`, `dateStart=2026-03-04`, and `dateEnd=2026-03-10`
+1. We call `get_astronomy_time_series` with `location=San Francisco, CA`, `dateStart=2026-03-04`, and `dateEnd=2026-03-10`
 2. Returns daily astronomy data including sunrise, sunset, moonrise, moonset, twilight, and moon phases for each day
-3. The AI formats the sunrise times into a readable list
+3. We format the sunrise times into a readable list
 
 **Works on the free plan.** 1 credit for the entire range (up to 90 days).
 
@@ -173,9 +173,9 @@ Add to your VS Code `settings.json`:
 **User prompt:** "Who operates 1.1.1.1?"
 
 **What happens:**
-1. The AI calls `lookup_company` with `ip=1.1.1.1`
+1. We call `lookup_company` with `ip=1.1.1.1`
 2. Returns the company using the IP (APNIC Research and Development) and the ASN holder (Cloudflare, Inc.)
-3. The AI explains the difference: Cloudflare routes the IP block, but APNIC holds the allocation
+3. We explain the difference: Cloudflare routes the IP block, but APNIC holds the allocation
 
 **Paid plans only.** 1 credit.
 
@@ -187,9 +187,9 @@ Add to your VS Code `settings.json`:
 **User prompt:** "Check these IPs for threats: 1.2.3.4, 5.6.7.8, 9.10.11.12"
 
 **What happens:**
-1. The AI calls `bulk_security_check` with all three IPs in a single request
+1. We call `bulk_security_check` with all three IPs in a single request
 2. Returns threat scores, VPN/proxy/Tor flags, bot detection, and provider names for each IP
-3. The AI summarizes which IPs are clean and which have security concerns
+3. We summarize which IPs are clean and which have security concerns
 
 **Paid plans only.** 2 credits per IP (6 credits total).
 
@@ -215,17 +215,19 @@ Add to your VS Code `settings.json`:
 
 | Tool | Description | Credits |
 |------|-------------|---------|
-| `bulk_lookup_ip` | Geolocation for up to 50,000 IPs in one request | 1/IP |
+| `bulk_lookup_ip` | Geolocation for up to 1,000 IPs per MCP request | 1/IP |
 | `check_security` | VPN, proxy, Tor, bot detection with confidence scores and provider names | 2 |
-| `bulk_security_check` | Security check for up to 50,000 IPs in one request | 2/IP |
+| `bulk_security_check` | Security check for up to 1,000 IPs per MCP request | 2/IP |
 | `lookup_company` | Organization using an IP vs. ASN holder comparison (detects subleasing) | 1 |
 | `lookup_network` | BGP route prefix, connection type, anycast detection | 1 |
 | `parse_user_agent` | Parse any user-agent string into device, browser, OS, engine details | 1 |
-| `bulk_parse_user_agent` | Parse up to 50,000 user-agent strings in one request | 1/UA |
+| `bulk_parse_user_agent` | Parse up to 1,000 user-agent strings per MCP request | 1/UA |
 | `lookup_asn` | ASN details with peers, upstreams, downstreams, routes, WHOIS data | 1 |
 | `get_abuse_contact` | Abuse contact email, phone, address, and organization for any IP | 1 |
 
 Paid plans also add network, company, and extended ASN fields to `lookup_ip`, plus the `include` parameter for security (+2), abuse (+1), hostname, user-agent, geo-accuracy, DMA code, or all modules at once (4 credits total).
+
+Bulk endpoint API limits can be higher (up to 50,000 on ipgeolocation.io), but this MCP server uses a safer default cap of 1,000 items per request to keep client responses stable.
 
 ---
 
@@ -255,11 +257,11 @@ Geolocation data for any IPv4/IPv6 address or domain. Uses GET `/v3/ipgeo`. Cost
 <details>
 <summary><strong>bulk_lookup_ip</strong> - Bulk IP geolocation</summary>
 
-Geolocation data for up to 50,000 IPs in one POST request. Uses POST `/v3/ipgeo-bulk`. Paid plans only.
+Geolocation data for up to 1,000 IPs per MCP request (configurable via env var). Uses POST `/v3/ipgeo-bulk`. Paid plans only.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `ips` | Yes | Array of IP addresses or domains (1 to 50,000) |
+| `ips` | Yes | Array of IP addresses or domains (1 to 1,000 by default) |
 | `lang` | No | Response language. Defaults to en |
 | `include` | No | Extra modules per IP: `security` (+2/IP), `abuse` (+1/IP), `hostname`, `user_agent`, `geo_accuracy`, `dma_code`, or `*` (4/IP total) |
 | `fields` | No | Comma-separated fields to return per IP |
@@ -287,18 +289,18 @@ Check any IP against our threat intelligence database. Uses GET `/v3/security`. 
 
 **Returns:** threat_score (0-100), is_tor, is_proxy, proxy_provider_names, proxy_confidence_score, proxy_last_seen, is_residential_proxy, is_vpn, vpn_provider_names, vpn_confidence_score, vpn_last_seen, is_relay, relay_provider_name, is_anonymous, is_known_attacker, is_bot, is_spam, is_cloud_provider, cloud_provider_name.
 
-This returns the same data as `lookup_ip` with `include=security`, but costs 2 credits instead of 3 because it skips the base geolocation.
+We return the same data as `lookup_ip` with `include=security`, but at 2 credits instead of 3 because we skip base geolocation.
 
 </details>
 
 <details>
 <summary><strong>bulk_security_check</strong> - Bulk security check</summary>
 
-Same as `check_security` but for up to 50,000 IPs. Paid plans only, 2 credits per valid IP.
+Same as `check_security` but for up to 1,000 IPs per MCP request by default. Paid plans only, 2 credits per valid IP.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `ips` | Yes | Array of IP addresses (1 to 50,000) |
+| `ips` | Yes | Array of IP addresses (1 to 1,000 by default) |
 | `fields` | No | Comma-separated fields to return per IP |
 | `excludes` | No | Comma-separated fields to exclude per IP |
 
@@ -402,11 +404,11 @@ Parse any user-agent string into structured device, browser, OS, and engine deta
 <details>
 <summary><strong>bulk_parse_user_agent</strong> - Bulk user-agent parsing</summary>
 
-Parse up to 50,000 user-agent strings in a single request. Uses POST `/v3/user-agent-bulk`. Paid plans only, 1 credit per UA string.
+Parse up to 1,000 user-agent strings per MCP request by default. Uses POST `/v3/user-agent-bulk`. Paid plans only, 1 credit per UA string.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `uaStrings` | Yes | Array of user-agent strings (1 to 50,000) |
+| `uaStrings` | Yes | Array of user-agent strings (1 to 1,000 by default) |
 
 </details>
 
@@ -456,7 +458,7 @@ Network routing information and anycast detection. Uses GET `/v3/ipgeo` with fie
 
 Detailed ASN information. Uses GET `/v3/asn`. Paid plans only, 1 credit.
 
-Basic ASN data (as_number, organization, country) is already included in every `lookup_ip` response on all plans. This dedicated endpoint adds asn_name, allocation_status, route counts, and optional peers/downstreams/upstreams/routes/whois data.
+Basic ASN data (as_number, organization, country) is already included in every `lookup_ip` response on all plans. Our dedicated endpoint adds asn_name, allocation_status, route counts, and optional peers/downstreams/upstreams/routes/whois data.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -475,7 +477,7 @@ Basic ASN data (as_number, organization, country) is already included in every `
 
 Find who to contact about abuse from a given IP. Uses GET `/v3/abuse`. Paid plans only, 1 credit.
 
-Abuse data is also available through `lookup_ip` with `include=abuse` (2 credits total). This dedicated endpoint is cheaper at 1 credit when you only need the abuse contact without geolocation.
+Abuse data is also available through `lookup_ip` with `include=abuse` (2 credits total). Our dedicated endpoint costs 1 credit when you only need abuse contact data without geolocation.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -558,6 +560,21 @@ npm install
 npm run build
 ```
 
+## Testing
+
+Run the full test suite:
+
+```bash
+npm test
+```
+
+Run targeted suites:
+
+```bash
+npm run test:unit
+npm run test:integration
+```
+
 Run directly:
 
 ```bash
@@ -574,9 +591,9 @@ IPGEOLOCATION_API_KEY=your-key npx @modelcontextprotocol/inspector node dist/ind
 
 ## How It Works
 
-This is a stdio-based MCP server that wraps our REST API (v3). When an AI client starts it, the server communicates over stdin/stdout using the Model Context Protocol. The client sees the available tools, and when the AI needs IP geolocation data, VPN detection, timezone info, or any other supported lookup, it calls the appropriate tool. The server makes the API request and returns the result.
+We run this as a stdio-based MCP server that wraps our REST API (v3). When a client starts it, we communicate over stdin/stdout using the Model Context Protocol. The client sees the available tools, then calls the appropriate tool for IP geolocation, VPN detection, timezone data, or any other supported lookup. We make the API request and return the result.
 
-All 16 tools map to our v3 API endpoints. Three tools (`lookup_company`, `lookup_currency`, `lookup_network`) are convenience wrappers around `/v3/ipgeo` that pre-filter fields for specific use cases, making them easier for AI assistants to discover and select.
+All 16 tools map to our v3 API endpoints. Three tools (`lookup_company`, `lookup_currency`, `lookup_network`) are convenience wrappers around `/v3/ipgeo` that pre-filter fields for specific use cases, so clients can discover and select them more easily.
 
 ---
 
@@ -585,6 +602,11 @@ All 16 tools map to our v3 API endpoints. Three tools (`lookup_company`, `lookup
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `IPGEOLOCATION_API_KEY` | Yes (for most tools) | Your ipgeolocation.io API key |
+| `IPGEOLOCATION_REQUEST_TIMEOUT_MS` | No | Upstream HTTP timeout in milliseconds (default `15000`, allowed `1000`-`120000`) |
+| `IPGEOLOCATION_MCP_MAX_BULK_ITEMS` | No | Max bulk items accepted per MCP request (default `1000`, max `50000`) |
+| `IPGEOLOCATION_MCP_MAX_RESULT_ITEMS` | No | Max array items returned in tool output before truncation (default `250`) |
+| `IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS` | No | Max response text length before truncation (default `200000`) |
+| `IPGEOLOCATION_MCP_MAX_ERROR_CHARS` | No | Max error text length before truncation (default `4000`) |
 
 `get_my_ip` works without any API key.
 
