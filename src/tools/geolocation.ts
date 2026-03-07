@@ -6,6 +6,205 @@ import {
   errorToolResponse,
   formatToolResult,
 } from "./response.js";
+import { getCachedValue, setCachedValue } from "./cache.js";
+import { applyFieldsAndExcludes } from "./projection.js";
+
+function splitCsv(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part !== "");
+}
+
+function normalizeCsvForCacheKey(value: string | undefined): string {
+  return splitCsv(value).sort().join(",");
+}
+
+const LOOKUP_IP_INCLUDE_TOKEN_MAP: Record<string, string> = {
+  security: "security",
+  abuse: "abuse",
+  hostname: "hostname",
+  livehostname: "liveHostname",
+  hostnamefallbacklive: "hostnameFallbackLive",
+  user_agent: "user_agent",
+  geo_accuracy: "geo_accuracy",
+  dma_code: "dma_code",
+  "*": "*",
+};
+
+function canonicalizeLookupIpIncludeToken(token: string): string {
+  const normalized = token.trim().toLowerCase();
+  return LOOKUP_IP_INCLUDE_TOKEN_MAP[normalized] ?? token.trim();
+}
+
+function inferLookupIpIncludeFromFields(fields: string | undefined): string[] {
+  const inferred = new Set<string>();
+
+  for (const path of splitCsv(fields)) {
+    const firstSegment = path.split(".")[0]?.trim().toLowerCase() ?? "";
+    const mapped = LOOKUP_IP_INCLUDE_TOKEN_MAP[firstSegment];
+    if (mapped) {
+      inferred.add(mapped);
+    }
+  }
+
+  return [...inferred];
+}
+
+function normalizeLookupIpInclude(include: string | undefined): string | undefined {
+  const tokens = splitCsv(include).map(canonicalizeLookupIpIncludeToken);
+  if (tokens.length === 0) {
+    return undefined;
+  }
+
+  const normalized = new Set(tokens.filter((token) => token !== ""));
+  if (normalized.has("*")) {
+    return "*";
+  }
+
+  return [...normalized].sort().join(",");
+}
+
+function mergeLookupIpInclude(
+  include: string | undefined,
+  fields: string | undefined
+): string | undefined {
+  const explicit = splitCsv(include).map(canonicalizeLookupIpIncludeToken);
+  const inferred = inferLookupIpIncludeFromFields(fields);
+  return normalizeLookupIpInclude([...explicit, ...inferred].join(","));
+}
+
+function buildIpGeoBaseCacheKey(ip: string | undefined, lang: string | undefined): string {
+  const normalizedIp = ip?.trim().toLowerCase() ?? "self";
+  const normalizedLang = lang?.trim().toLowerCase() ?? "";
+  return `ipgeo|ip=${normalizedIp}|lang=${normalizedLang}|include=`;
+}
+
+function buildIpGeoIncludeCacheKey(params: {
+  ip?: string;
+  lang?: string;
+  include: string;
+  fields?: string;
+  excludes?: string;
+}): string {
+  const normalizedIp = params.ip?.trim().toLowerCase() ?? "self";
+  const normalizedLang = params.lang?.trim().toLowerCase() ?? "";
+  const normalizedInclude = normalizeLookupIpInclude(params.include) ?? "";
+  const normalizedFields = normalizeCsvForCacheKey(params.fields);
+  const normalizedExcludes = normalizeCsvForCacheKey(params.excludes);
+  return `ipgeo|ip=${normalizedIp}|lang=${normalizedLang}|include=${normalizedInclude}|fields=${normalizedFields}|excludes=${normalizedExcludes}`;
+}
+
+function buildBulkIpGeoCacheKey(params: {
+  ips: string[];
+  lang?: string;
+  include?: string;
+  fields?: string;
+  excludes?: string;
+}): string {
+  const normalizedIps = params.ips
+    .map((ip) => ip.trim().toLowerCase())
+    .join(",");
+  const normalizedLang = params.lang?.trim().toLowerCase() ?? "";
+  const normalizedInclude = normalizeLookupIpInclude(params.include) ?? "";
+  const normalizedFields = normalizeCsvForCacheKey(params.fields);
+  const normalizedExcludes = normalizeCsvForCacheKey(params.excludes);
+  return `ipgeo-bulk|ips=${normalizedIps}|lang=${normalizedLang}|include=${normalizedInclude}|fields=${normalizedFields}|excludes=${normalizedExcludes}`;
+}
+
+function hasProjection(fields: string | undefined, excludes: string | undefined): boolean {
+  return splitCsv(fields).length > 0 || splitCsv(excludes).length > 0;
+}
+
+async function getCachedOrFetchIpGeoBase(params: {
+  ip?: string;
+  lang?: string;
+  forceRefresh?: boolean;
+}): Promise<unknown> {
+  const cacheKey = buildIpGeoBaseCacheKey(params.ip, params.lang);
+  if (!params.forceRefresh) {
+    const cached = getCachedValue(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+  }
+
+  const baseResult = await getIpGeolocation({
+    ip: params.ip,
+    lang: params.lang,
+  });
+  setCachedValue(cacheKey, baseResult);
+  return baseResult;
+}
+
+async function getCachedOrFetchIpGeoInclude(params: {
+  ip?: string;
+  lang?: string;
+  include: string;
+  fields?: string;
+  excludes?: string;
+  forceRefresh?: boolean;
+}): Promise<unknown> {
+  const normalizedInclude = normalizeLookupIpInclude(params.include);
+  if (!normalizedInclude) {
+    return getCachedOrFetchIpGeoBase({
+      ip: params.ip,
+      lang: params.lang,
+      forceRefresh: params.forceRefresh,
+    });
+  }
+
+  const requestKey = buildIpGeoIncludeCacheKey({
+    ip: params.ip,
+    lang: params.lang,
+    include: normalizedInclude,
+    fields: params.fields,
+    excludes: params.excludes,
+  });
+  const includeBaseKey = buildIpGeoIncludeCacheKey({
+    ip: params.ip,
+    lang: params.lang,
+    include: normalizedInclude,
+  });
+  const projectionRequested = hasProjection(params.fields, params.excludes);
+
+  if (!params.forceRefresh) {
+    const cached = getCachedValue(requestKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    if (projectionRequested) {
+      const includeBaseCached = getCachedValue(includeBaseKey);
+      if (includeBaseCached !== undefined) {
+        const projected = applyFieldsAndExcludes(includeBaseCached, {
+          fields: params.fields,
+          excludes: params.excludes,
+        });
+        setCachedValue(requestKey, projected);
+        return projected;
+      }
+    }
+  }
+
+  const result = await getIpGeolocation({
+    ip: params.ip,
+    lang: params.lang,
+    include: normalizedInclude,
+    fields: params.fields,
+    excludes: params.excludes,
+  });
+  setCachedValue(requestKey, result);
+
+  if (!projectionRequested) {
+    setCachedValue(includeBaseKey, result);
+  }
+
+  return result;
+}
 
 export function registerGeolocationTools(server: McpServer) {
   server.registerTool(
@@ -45,7 +244,7 @@ If no IP is provided, returns data for the caller's IP. For basic ASN info on th
           .string()
           .optional()
           .describe(
-            "Comma-separated dot-path fields to return (e.g. location.city,asn.organization). Works on all plans including free. Reduces response size and can reduce credit cost when combined with include."
+            "Comma-separated dot-path fields to return (e.g. location.city,asn.organization). Works on all plans including free. Reduces response size and can reduce credit cost when combined with include. If a field references an include-only module (for example security.* or abuse.*), this server auto-adds the required include module."
           ),
         excludes: z
           .string()
@@ -53,11 +252,43 @@ If no IP is provided, returns data for the caller's IP. For basic ASN info on th
           .describe(
             "Comma-separated dot-path fields to exclude from response (e.g. currency,location.continent_code). Works on all plans including free."
           ),
+        force_refresh: z
+          .boolean()
+          .optional()
+          .describe(
+            "Set true to bypass MCP cache and force a new upstream API request."
+          ),
       },
     },
     async (params) => {
       try {
-        const result = await getIpGeolocation(params);
+        const effectiveInclude = mergeLookupIpInclude(
+          params.include,
+          params.fields
+        );
+        let result: unknown;
+
+        if (effectiveInclude) {
+          result = await getCachedOrFetchIpGeoInclude({
+            include: effectiveInclude,
+            ip: params.ip,
+            lang: params.lang,
+            fields: params.fields,
+            excludes: params.excludes,
+            forceRefresh: params.force_refresh,
+          });
+        } else {
+          const baseResult = await getCachedOrFetchIpGeoBase({
+            ip: params.ip,
+            lang: params.lang,
+            forceRefresh: params.force_refresh,
+          });
+          result = applyFieldsAndExcludes(baseResult, {
+            fields: params.fields,
+            excludes: params.excludes,
+          });
+        }
+
         return {
           content: [
             { type: "text" as const, text: formatToolResult(result) },
@@ -107,7 +338,7 @@ Returns a JSON array with one geolocation object per IP. Use this tool when you 
           .string()
           .optional()
           .describe(
-            "Comma-separated dot-path fields to return per IP (e.g. location.city,asn.organization). Reduces response size and can reduce credit cost when combined with include."
+            "Comma-separated dot-path fields to return per IP (e.g. location.city,asn.organization). Reduces response size and can reduce credit cost when combined with include. If fields reference include-only modules (for example security.* or abuse.*), this server auto-adds required include modules."
           ),
         excludes: z
           .string()
@@ -115,11 +346,39 @@ Returns a JSON array with one geolocation object per IP. Use this tool when you 
           .describe(
             "Comma-separated dot-path fields to exclude per IP (e.g. currency,time_zone)."
           ),
+        force_refresh: z
+          .boolean()
+          .optional()
+          .describe(
+            "Set true to bypass MCP cache and force a new upstream API request."
+          ),
       },
     },
     async (params) => {
       try {
-        const result = await getIpGeolocationBulk(params);
+        const effectiveInclude = mergeLookupIpInclude(
+          params.include,
+          params.fields
+        );
+        const cacheKey = buildBulkIpGeoCacheKey({
+          ips: params.ips,
+          lang: params.lang,
+          include: effectiveInclude,
+          fields: params.fields,
+          excludes: params.excludes,
+        });
+        const cached = params.force_refresh ? undefined : getCachedValue(cacheKey);
+
+        const result =
+          cached ??
+          (await getIpGeolocationBulk({
+            ...params,
+            include: effectiveInclude,
+          }));
+
+        if (cached === undefined) {
+          setCachedValue(cacheKey, result);
+        }
         return {
           content: [
             { type: "text" as const, text: formatToolResult(result) },
@@ -161,11 +420,15 @@ Returns a JSON array with one geolocation object per IP. Use this tool when you 
       annotations: {
         readOnlyHint: true,
       },
-      description: `Identify the organization using a specific IP address. Uses ipgeolocation.io's unified endpoint (GET /v3/ipgeo) with fields filtered to company and ASN data. Paid plans only. Free plan does not return company data. Costs 1 credit.
+      description: `Decision policy: this is a single-domain tool. Use it only when the user asks for ownership data (company/ASN) only. If the same IP request also needs security, abuse, location/city, timezone, network, or currency data, call lookup_ip once with include and targeted fields/excludes instead of chaining tools.
+
+Identify the organization using a specific IP address. Uses ipgeolocation.io's unified endpoint (GET /v3/ipgeo) with fields filtered to company and ASN data. Paid plans only. Free plan does not return company data. Costs 1 credit.
 
 Returns two objects: company (name, type, domain) and asn (as_number, organization, country, type, domain, date_allocated, rir). The ASN object identifies the organization that holds the IP block allocation from a Regional Internet Registry (ARIN, RIPE, APNIC, etc.). The company object identifies the organization actually using the IP address. These are often the same, but differ when the ASN holder subleases IP space to another organization. For example, 1.1.1.1 has ASN organization "Cloudflare, Inc." (who routes it) but company "APNIC Research and Development" (who owns the block).
 
-Use this tool when you need to know which company or organization is behind an IP address. For full geolocation data including company, use lookup_ip instead. For detailed ASN data (peers, routes, WHOIS), use lookup_asn instead.`,
+Use this tool when you need to know which company or organization is behind an IP address. For full geolocation data including company, use lookup_ip instead. For detailed ASN data (peers, routes, WHOIS), use lookup_asn instead.
+
+Tool selection rule: if this tool is used, call it once per IP target and post-process locally. Do not re-call lookup_company for the same IP just to change output shape.`,
       inputSchema: {
         ip: z
           .string()
@@ -173,14 +436,25 @@ Use this tool when you need to know which company or organization is behind an I
           .describe(
             "IPv4 or IPv6 address to look up. Omit to check the caller's IP."
           ),
+        force_refresh: z
+          .boolean()
+          .optional()
+          .describe(
+            "Set true to bypass MCP cache and force a new upstream API request."
+          ),
       },
     },
     async (params) => {
       try {
-        const result = await getIpGeolocation({
+        const baseResult = await getCachedOrFetchIpGeoBase({
           ip: params.ip,
+          forceRefresh: params.force_refresh,
+        });
+
+        const result = applyFieldsAndExcludes(baseResult, {
           fields: "company,asn",
         });
+
         return {
           content: [
             { type: "text" as const, text: formatToolResult(result) },
@@ -203,7 +477,9 @@ Use this tool when you need to know which company or organization is behind an I
 
 Returns two objects: currency (code, name, symbol) and country_metadata (calling_code, tld, languages). For example, a Japanese IP returns currency {code: "JPY", name: "Japanese Yen", symbol: "¥"} and country_metadata {calling_code: "+81", tld: ".jp", languages: ["ja"]}.
 
-Use this tool when you need to know the currency, international calling code, country TLD, or spoken languages for an IP's country. For full geolocation data, use lookup_ip instead.`,
+Use this tool when you need to know the currency, international calling code, country TLD, or spoken languages for an IP's country. For full geolocation data, use lookup_ip instead.
+
+Tool selection rule: use this tool for currency/country-metadata-only requests. If the request needs additional IP intelligence fields, prefer one lookup_ip call with targeted fields/excludes.`,
       inputSchema: {
         ip: z
           .string()
@@ -211,14 +487,25 @@ Use this tool when you need to know the currency, international calling code, co
           .describe(
             "IPv4 or IPv6 address to look up. Omit to check the caller's IP."
           ),
+        force_refresh: z
+          .boolean()
+          .optional()
+          .describe(
+            "Set true to bypass MCP cache and force a new upstream API request."
+          ),
       },
     },
     async (params) => {
       try {
-        const result = await getIpGeolocation({
+        const baseResult = await getCachedOrFetchIpGeoBase({
           ip: params.ip,
+          forceRefresh: params.force_refresh,
+        });
+
+        const result = applyFieldsAndExcludes(baseResult, {
           fields: "currency,country_metadata",
         });
+
         return {
           content: [
             { type: "text" as const, text: formatToolResult(result) },
@@ -241,7 +528,9 @@ Use this tool when you need to know the currency, international calling code, co
 
 Returns: network (connection_type, route, is_anycast). The route field shows the announced BGP prefix (e.g. "1.1.1.0/24"). The is_anycast field indicates whether the IP is served from multiple geographic locations using anycast routing. The connection_type field identifies the type of network connection when available.
 
-Use this tool when you need to check if an IP is anycast, find its BGP route prefix, or identify its connection type. For full geolocation data including network, use lookup_ip instead.`,
+Use this tool when you need to check if an IP is anycast, find its BGP route prefix, or identify its connection type. For full geolocation data including network, use lookup_ip instead.
+
+Tool selection rule: use this tool for network-only requests. If the request also needs other IP domains (security, company, location, timezone, abuse), prefer one lookup_ip call with include plus targeted fields/excludes.`,
       inputSchema: {
         ip: z
           .string()
@@ -249,14 +538,25 @@ Use this tool when you need to check if an IP is anycast, find its BGP route pre
           .describe(
             "IPv4 or IPv6 address to look up. Omit to check the caller's IP."
           ),
+        force_refresh: z
+          .boolean()
+          .optional()
+          .describe(
+            "Set true to bypass MCP cache and force a new upstream API request."
+          ),
       },
     },
     async (params) => {
       try {
-        const result = await getIpGeolocation({
+        const baseResult = await getCachedOrFetchIpGeoBase({
           ip: params.ip,
+          forceRefresh: params.force_refresh,
+        });
+
+        const result = applyFieldsAndExcludes(baseResult, {
           fields: "network",
         });
+
         return {
           content: [
             { type: "text" as const, text: formatToolResult(result) },

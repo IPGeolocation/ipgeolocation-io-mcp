@@ -42,7 +42,7 @@ test("getIpGeolocation throws when API key is not configured", async (t) => {
 
 test("getIpGeolocation sends apiKey and query params", async (t) => {
   clearClientEnv();
-  process.env.IPGEOLOCATION_API_KEY = "unit-test-key";
+  process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
   const originalFetch = globalThis.fetch;
   t.after(() => {
     clearClientEnv();
@@ -66,14 +66,14 @@ test("getIpGeolocation sends apiKey and query params", async (t) => {
   assert.deepEqual(result, { ok: true });
   assert.equal(capturedMethod, "GET");
   assert.equal(capturedUrl.pathname, "/v3/ipgeo");
-  assert.equal(capturedUrl.searchParams.get("apiKey"), "unit-test-key");
+  assert.equal(capturedUrl.searchParams.get("apiKey"), "test_api_key_local");
   assert.equal(capturedUrl.searchParams.get("ip"), "8.8.8.8");
   assert.equal(capturedUrl.searchParams.get("fields"), "location.city");
 });
 
 test("getMyIp does not include API key in request", async (t) => {
   clearClientEnv();
-  process.env.IPGEOLOCATION_API_KEY = "unit-test-key";
+  process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
   const originalFetch = globalThis.fetch;
   t.after(() => {
     clearClientEnv();
@@ -96,7 +96,7 @@ test("getMyIp does not include API key in request", async (t) => {
 
 test("maps AbortError to ApiError 504 timeout", async (t) => {
   clearClientEnv();
-  process.env.IPGEOLOCATION_API_KEY = "unit-test-key";
+  process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
   process.env.IPGEOLOCATION_REQUEST_TIMEOUT_MS = "1000";
   const originalFetch = globalThis.fetch;
   t.after(() => {
@@ -124,7 +124,7 @@ test("maps AbortError to ApiError 504 timeout", async (t) => {
 
 test("maps generic fetch failures to ApiError 502", async (t) => {
   clearClientEnv();
-  process.env.IPGEOLOCATION_API_KEY = "unit-test-key";
+  process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
   const originalFetch = globalThis.fetch;
   t.after(() => {
     clearClientEnv();
@@ -149,7 +149,7 @@ test("maps generic fetch failures to ApiError 502", async (t) => {
 
 test("returns truncated upstream error body for non-ok responses", async (t) => {
   clearClientEnv();
-  process.env.IPGEOLOCATION_API_KEY = "unit-test-key";
+  process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
   const originalFetch = globalThis.fetch;
   t.after(() => {
     clearClientEnv();
@@ -177,7 +177,7 @@ test("returns truncated upstream error body for non-ok responses", async (t) => 
 
 test("maps invalid JSON response bodies to ApiError 502", async (t) => {
   clearClientEnv();
-  process.env.IPGEOLOCATION_API_KEY = "unit-test-key";
+  process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
   const originalFetch = globalThis.fetch;
   t.after(() => {
     clearClientEnv();

@@ -25,8 +25,8 @@ test("formatToolResult truncates large arrays by default", async (t) => {
   t.after(clearResponseEnv);
 
   const { formatToolResult } = await import(responseModuleUrl());
-  const sample = Array.from({ length: 300 }, (_, index) => ({ index }));
-  const formatted = formatToolResult(sample);
+  const items = Array.from({ length: 300 }, (_, index) => ({ index }));
+  const formatted = formatToolResult(items);
   const parsed = JSON.parse(formatted);
 
   assert.equal(parsed.truncated, true);
@@ -41,12 +41,45 @@ test("formatToolResult respects IPGEOLOCATION_MCP_MAX_RESULT_ITEMS", async (t) =
   t.after(clearResponseEnv);
 
   const { formatToolResult } = await import(responseModuleUrl());
-  const sample = Array.from({ length: 11 }, (_, index) => ({ index }));
-  const parsed = JSON.parse(formatToolResult(sample));
+  const items = Array.from({ length: 11 }, (_, index) => ({ index }));
+  const parsed = JSON.parse(formatToolResult(items));
 
   assert.equal(parsed.truncated, true);
   assert.equal(parsed.shown_items, 10);
   assert.equal(parsed.items.length, 10);
+});
+
+test("formatToolResult truncates nested arrays and keeps JSON valid", async (t) => {
+  clearResponseEnv();
+  process.env.IPGEOLOCATION_MCP_MAX_RESULT_ITEMS = "10";
+  t.after(clearResponseEnv);
+
+  const { formatToolResult } = await import(responseModuleUrl());
+  const payload = {
+    location: { city: "Karachi" },
+    astronomy: Array.from({ length: 12 }, (_, index) => ({ index })),
+  };
+  const parsed = JSON.parse(formatToolResult(payload));
+
+  assert.equal(parsed.truncated, true);
+  assert.equal(parsed.result.location.city, "Karachi");
+  assert.equal(parsed.result.astronomy.length, 10);
+});
+
+test("formatToolResult returns valid JSON when char limit is exceeded", async (t) => {
+  clearResponseEnv();
+  process.env.IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS = "10000";
+  t.after(clearResponseEnv);
+
+  const { formatToolResult } = await import(responseModuleUrl());
+  const payload = {
+    large_text: "x".repeat(50000),
+  };
+  const parsed = JSON.parse(formatToolResult(payload));
+
+  assert.equal(parsed.truncated, true);
+  assert.equal(typeof parsed.preview, "string");
+  assert.ok(parsed.preview.length < 50000);
 });
 
 test("errorToolResponse truncates long error messages", async (t) => {

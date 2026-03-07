@@ -6,6 +6,7 @@ import {
   hasAnyValue,
   validateCoordinatePair,
   validateCoordinatePairNamed,
+  validateTimezoneConversionTime,
 } from "./validation.js";
 
 export function registerTimezoneTools(server: McpServer) {
@@ -20,9 +21,9 @@ export function registerTimezoneTools(server: McpServer) {
 
 Look up by IANA timezone name, coordinates, city/address, IP address, IATA airport code, ICAO airport code, or UN/LOCODE. All lookup modes work on both free and paid plans. If no parameters are provided, returns timezone data for the caller's IP.
 
-Returns: timezone name, UTC offset, offset with DST, current_time, current_time_unix, timezone abbreviations (standard and DST), is_dst flag, dst_savings, dst_exists, dst_start, dst_end. Airport code lookups also return airport name, city, elevation, and coordinates.
+Returns an object with location details and a time_zone object that includes timezone name, UTC offsets, date/date_time variants, current_time, current_time_unix, time_24, time_12, week/month/year values, timezone abbreviations, DST status, and DST transition dates. Airport code lookups also return airport name, city, elevation, and coordinates.
 
-The lang parameter for non-English responses is available on paid plans only. Free plan returns English responses regardless of the lang value.`,
+The lang parameter for non-English responses is available on paid plans only. On free plans, using a non-English lang value returns 401 Unauthorized.`,
       inputSchema: {
         tz: z
           .string()
@@ -66,7 +67,7 @@ The lang parameter for non-English responses is available on paid plans only. Fr
           .string()
           .optional()
           .describe(
-            "Response language for location fields in IP-based lookups (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt). Paid plans only. Free plan returns English."
+            "Response language for location fields in IP-based lookups (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt). Paid plans only. Free plan returns 401 for non-English language values."
           ),
       },
     },
@@ -82,7 +83,17 @@ The lang parameter for non-English responses is available on paid plans only. Fr
           throw new Error(coordinateError);
         }
 
-        const result = await getTimezone(params);
+        const result = await getTimezone({
+          tz: params.tz,
+          lat: params.lat,
+          long: params.long,
+          location: params.location,
+          ip: params.ip,
+          iata_code: params.iata_code,
+          icao_code: params.icao_code,
+          lo_code: params.lo_code,
+          lang: params.lang,
+        });
         return {
           content: [
             { type: "text" as const, text: formatToolResult(result) },
@@ -225,7 +236,28 @@ Returns: original time, converted time, diff_hour, and diff_min between the two 
           );
         }
 
-        const result = await convertTimezone(params);
+        const timeError = validateTimezoneConversionTime(params.time, "time");
+        if (timeError) {
+          throw new Error(timeError);
+        }
+
+        const result = await convertTimezone({
+          time: params.time,
+          tz_from: params.tz_from,
+          tz_to: params.tz_to,
+          lat_from: params.lat_from,
+          long_from: params.long_from,
+          lat_to: params.lat_to,
+          long_to: params.long_to,
+          location_from: params.location_from,
+          location_to: params.location_to,
+          iata_from: params.iata_from,
+          iata_to: params.iata_to,
+          icao_from: params.icao_from,
+          icao_to: params.icao_to,
+          locode_from: params.locode_from,
+          locode_to: params.locode_to,
+        });
         return {
           content: [
             { type: "text" as const, text: formatToolResult(result) },

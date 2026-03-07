@@ -50,18 +50,88 @@ const MAX_ERROR_CHARS = parsePositiveIntEnv(
   50000
 );
 
-function prepareResultForTransport(result: unknown): unknown {
-  if (!Array.isArray(result) || result.length <= MAX_ITEMS_IN_RESPONSE) {
-    return result;
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function prepareArraysForTransport(
+  value: unknown,
+  state: { nestedArraysTruncated: boolean },
+  topLevel = false
+): unknown {
+  if (Array.isArray(value)) {
+    const items = value
+      .slice(0, MAX_ITEMS_IN_RESPONSE)
+      .map((item) => prepareArraysForTransport(item, state));
+
+    if (value.length <= MAX_ITEMS_IN_RESPONSE) {
+      return items;
+    }
+
+    if (topLevel) {
+      return {
+        truncated: true,
+        total_items: value.length,
+        shown_items: MAX_ITEMS_IN_RESPONSE,
+        note: "Response truncated for MCP transport limits. Narrow your query or split the request into smaller batches.",
+        items,
+      };
+    }
+
+    state.nestedArraysTruncated = true;
+    return items;
   }
 
-  return {
-    truncated: true,
-    total_items: result.length,
-    shown_items: MAX_ITEMS_IN_RESPONSE,
-    note: `Response truncated for MCP transport safety. Narrow your query or split the request into smaller batches.`,
-    items: result.slice(0, MAX_ITEMS_IN_RESPONSE),
-  };
+  if (!isObject(value)) {
+    return value;
+  }
+
+  const prepared: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    prepared[key] = prepareArraysForTransport(entry, state);
+  }
+  return prepared;
+}
+
+function prepareResultForTransport(result: unknown): unknown {
+  const state = { nestedArraysTruncated: false };
+  const prepared = prepareArraysForTransport(result, state, true);
+
+  if (state.nestedArraysTruncated && isObject(prepared)) {
+    return {
+      truncated: true,
+      note: "Nested arrays were truncated for MCP transport limits. Narrow your query or split the request into smaller batches.",
+      result: prepared,
+    };
+  }
+
+  return prepared;
+}
+
+function buildOversizedResponsePayload(text: string): string {
+  let preview = text;
+
+  while (true) {
+    const payload = JSON.stringify(
+      {
+        truncated: true,
+        note: `Response exceeded ${MAX_RESPONSE_CHARS.toLocaleString()} characters. Narrow your query or request fewer fields.`,
+        total_chars: text.length,
+        shown_chars: preview.length,
+        preview,
+      },
+      null,
+      2
+    );
+
+    if (payload.length <= MAX_RESPONSE_CHARS || preview.length === 0) {
+      return payload;
+    }
+
+    const overflow = payload.length - MAX_RESPONSE_CHARS;
+    const reduction = Math.max(overflow, Math.ceil(preview.length * 0.1), 1);
+    preview = preview.slice(0, Math.max(0, preview.length - reduction));
+  }
 }
 
 export function formatToolResult(result: unknown): string {
@@ -72,10 +142,7 @@ export function formatToolResult(result: unknown): string {
     return text;
   }
 
-  return `${text.slice(
-    0,
-    MAX_RESPONSE_CHARS
-  )}\n... [response truncated at ${MAX_RESPONSE_CHARS.toLocaleString()} characters]`;
+  return buildOversizedResponsePayload(text);
 }
 
 export function errorToolResponse(error: unknown) {
