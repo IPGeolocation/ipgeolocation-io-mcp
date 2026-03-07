@@ -2,11 +2,42 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getAstronomy, getAstronomyTimeSeries } from "../client.js";
 import { errorToolResponse, formatToolResult } from "./response.js";
+import { getCachedValue, setCachedValue } from "./cache.js";
 import {
   validateCoordinatePair,
   validateDateRange,
+  validateElevation,
   validateIsoDate,
 } from "./validation.js";
+
+function normalizeValue(value: string | undefined): string {
+  return value?.trim() ?? "";
+}
+
+function buildAstronomyTimeSeriesCacheKey(params: {
+  lat?: string;
+  long?: string;
+  location?: string;
+  ip?: string;
+  dateStart: string;
+  dateEnd: string;
+  elevation?: string;
+  time_zone?: string;
+  lang?: string;
+}): string {
+  return [
+    "astronomy-series",
+    `lat=${normalizeValue(params.lat)}`,
+    `long=${normalizeValue(params.long)}`,
+    `location=${normalizeValue(params.location)}`,
+    `ip=${normalizeValue(params.ip)}`,
+    `dateStart=${normalizeValue(params.dateStart)}`,
+    `dateEnd=${normalizeValue(params.dateEnd)}`,
+    `elevation=${normalizeValue(params.elevation)}`,
+    `time_zone=${normalizeValue(params.time_zone)}`,
+    `lang=${normalizeValue(params.lang)}`,
+  ].join("|");
+}
 
 export function registerAstronomyTools(server: McpServer) {
   server.registerTool(
@@ -20,9 +51,9 @@ export function registerAstronomyTools(server: McpServer) {
 
 Look up by coordinates, city/address, or IP address. All lookup modes work on both free and paid plans. Supports custom dates and elevation for precise calculations.
 
-Returns: sunrise, sunset, solar_noon, day_length, moonrise, moonset, civil/nautical/astronomical twilight start and end times, golden_hour and blue_hour start and end, sun_altitude, sun_azimuth, sun_distance, moon_altitude, moon_azimuth, moon_distance, moon_parallactic_angle, moon_phase (name and value 0-1), moon_illumination percentage.
+Returns an object with location details and an astronomy object that includes date/current_time, grouped morning and evening twilight blocks, sunrise, sunset, solar_noon, day_length, moonrise, moonset, sun_status, moon_status, sun and moon altitude/azimuth/distance fields, moon_phase, moon_illumination_percentage, moon_angle, and moon_parallactic_angle.
 
-The lang parameter for non-English location field responses is available on paid plans only. Free plan returns English responses regardless.`,
+The lang parameter for non-English location field responses is available on paid plans only. On free plans, using a non-English lang value returns 401 Unauthorized.`,
       inputSchema: {
         lat: z
           .string()
@@ -64,7 +95,7 @@ The lang parameter for non-English location field responses is available on paid
           .string()
           .optional()
           .describe(
-            "Response language for location fields in IP-based lookups (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt). Paid plans only. Free plan returns English."
+            "Response language for location fields in IP-based lookups (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt). Paid plans only. Free plan returns 401 for non-English language values."
           ),
       },
     },
@@ -85,7 +116,21 @@ The lang parameter for non-English location field responses is available on paid
           throw new Error(dateError);
         }
 
-        const result = await getAstronomy(params);
+        const elevationError = validateElevation(params.elevation, "elevation");
+        if (elevationError) {
+          throw new Error(elevationError);
+        }
+
+        const result = await getAstronomy({
+          lat: params.lat,
+          long: params.long,
+          location: params.location,
+          ip: params.ip,
+          date: params.date,
+          elevation: params.elevation,
+          time_zone: params.time_zone,
+          lang: params.lang,
+        });
         return {
           content: [
             { type: "text" as const, text: formatToolResult(result) },
@@ -106,9 +151,9 @@ The lang parameter for non-English location field responses is available on paid
       },
       description: `Get daily astronomical data for a date range (up to 90 days) using ipgeolocation.io's astronomy time series endpoint (GET /v3/astronomy/timeSeries). Works on all plans including free. Costs 1 credit per request regardless of the number of days.
 
-Returns an array of daily astronomy objects, one per day in the range. Each object includes: date, sunrise, sunset, solar_noon, day_length, moonrise, moonset, moon_phase, moon_illumination_percentage, and all twilight/golden hour/blue hour times.
+Returns an object with location details and an astronomy array with one daily entry per date in the range. Each daily entry includes date, mid_night, night_end, morning, sunrise, sunset, evening, night_begin, sun_status, solar_noon, day_length, moon_phase, moonrise, moonset, and moon_status.
 
-Time series responses do not include real-time positional data (sun_altitude, sun_azimuth, sun_distance, moon_altitude, moon_azimuth, moon_distance, moon_parallactic_angle). For those fields, use get_astronomy with a specific date instead.
+Time series responses do not include real-time positional data such as sun_altitude, sun_azimuth, sun_distance, moon_altitude, moon_azimuth, moon_distance, moon_parallactic_angle, moon_illumination_percentage, or moon_angle. For those fields, use get_astronomy with a specific date instead.
 
 Location can be specified by coordinates, city/address, or IP. If no location is given, uses the caller's IP.`,
       inputSchema: {
@@ -160,6 +205,12 @@ Location can be specified by coordinates, city/address, or IP. If no location is
           .describe(
             "Response language for location fields in IP-based lookups (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt). Paid plans only. Free plan returns 401 for non-English languages."
           ),
+        force_refresh: z
+          .boolean()
+          .optional()
+          .describe(
+            "Set true to bypass MCP cache and force a new upstream API request."
+          ),
       },
     },
     async (params) => {
@@ -182,7 +233,29 @@ Location can be specified by coordinates, city/address, or IP. If no location is
           throw new Error(dateRangeError);
         }
 
-        const result = await getAstronomyTimeSeries(params);
+        const elevationError = validateElevation(params.elevation, "elevation");
+        if (elevationError) {
+          throw new Error(elevationError);
+        }
+
+        const cacheKey = buildAstronomyTimeSeriesCacheKey(params);
+        const cached = params.force_refresh ? undefined : getCachedValue(cacheKey);
+        const result =
+          cached ??
+          (await getAstronomyTimeSeries({
+            lat: params.lat,
+            long: params.long,
+            location: params.location,
+            ip: params.ip,
+            dateStart: params.dateStart,
+            dateEnd: params.dateEnd,
+            elevation: params.elevation,
+            time_zone: params.time_zone,
+            lang: params.lang,
+          }));
+        if (cached === undefined) {
+          setCachedValue(cacheKey, result);
+        }
         return {
           content: [
             { type: "text" as const, text: formatToolResult(result) },

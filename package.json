@@ -1,7 +1,7 @@
 {
   "name": "ipgeolocation-io-mcp",
-  "version": "1.0.2",
-  "description": "Official MCP server for ipgeolocation.io APIs. IP geolocation, VPN/proxy detection, timezone, astronomy, user-agent parsing, ASN, company, and IP abuse contact tools for AI assistants.",
+  "version": "1.0.3",
+  "description": "Official MCP server for ipgeolocation.io APIs. IP geolocation, VPN/proxy detection, timezone, astronomy, user-agent parsing, ASN, company, and IP abuse contact tools for MCP clients.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -28,23 +28,36 @@
     "mcp",
     "mcp-server",
     "model-context-protocol",
+    "mcpb",
     "ipgeolocation",
     "ip-geolocation",
     "ip-lookup",
+    "ip-intelligence",
     "geoip",
     "geolocation",
     "timezone",
+    "timezone-api",
     "astronomy",
+    "astronomy-api",
+    "vpn",
     "vpn-detection",
+    "proxy",
     "proxy-detection",
     "ip-security",
+    "tor-detection",
     "asn-lookup",
     "abuse-contact",
+    "ip-abuse",
     "user-agent",
+    "user-agent-parser",
+    "ai",
     "ai-tools",
+    "llm",
     "claude",
+    "claude-desktop",
     "cursor",
     "windsurf",
+    "vscode",
     "vscode-copilot"
   ],
   "repository": {
@@ -60,6 +73,9 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "zod": "^3.24.0"
+  },
+  "overrides": {
+    "express-rate-limit": "8.2.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
