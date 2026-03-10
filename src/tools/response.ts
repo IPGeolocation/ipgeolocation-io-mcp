@@ -73,7 +73,7 @@ function prepareArraysForTransport(
         truncated: true,
         total_items: value.length,
         shown_items: MAX_ITEMS_IN_RESPONSE,
-        note: "Response truncated for MCP transport limits. Narrow your query or split the request into smaller batches.",
+        note: "Response truncated for transport limits. Narrow the query or split batches.",
         items,
       };
     }
@@ -100,7 +100,7 @@ function prepareResultForTransport(result: unknown): unknown {
   if (state.nestedArraysTruncated && isObject(prepared)) {
     return {
       truncated: true,
-      note: "Nested arrays were truncated for MCP transport limits. Narrow your query or split the request into smaller batches.",
+      note: "Nested arrays were truncated for transport limits. Narrow the query or split batches.",
       result: prepared,
     };
   }
@@ -115,7 +115,7 @@ function buildOversizedResponsePayload(text: string): string {
     const payload = JSON.stringify(
       {
         truncated: true,
-        note: `Response exceeded ${MAX_RESPONSE_CHARS.toLocaleString()} characters. Narrow your query or request fewer fields.`,
+        note: `Response exceeded ${MAX_RESPONSE_CHARS.toLocaleString()} characters. Narrow the query or request fewer fields.`,
         total_chars: text.length,
         shown_chars: preview.length,
         preview,
