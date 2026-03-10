@@ -7,7 +7,7 @@ We build and maintain this server so you can use our APIs from Codex, Claude Des
 | Item | Value |
 |------|-------|
 | Package | `ipgeolocation-io-mcp` |
-| Version | `1.0.3` |
+| Version | `1.0.4` |
 | Transport | `stdio` |
 | Node.js | `>=18` |
 | Free plan support | 7 tools, 1,000 credits per day |
@@ -20,7 +20,7 @@ We build and maintain this server so you can use our APIs from Codex, Claude Des
 - [Install](#install)
 - [Verify It Works](#verify-it-works)
 - [Prompt Examples by Use Case](#prompt-examples-by-use-case)
-- [Example Responses](#example-responses)
+- [Example Answers and Tool Output](#example-answers-and-tool-output)
 - [Tools by Plan](#tools-by-plan)
 - [Tool Details](#tool-details)
 - [Credit Costs](#credit-costs)
@@ -180,7 +180,7 @@ Use these prompts after installation. They are short, easy to validate, and cove
 | `Give sunrise times for Karachi from 2026-03-10 to 2026-03-15.` | `get_astronomy_time_series` |
 | `Parse this user agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36` | `parse_user_agent` |
 
-If your client keeps using an older tool path after an update, restart the client and make sure it is loading version `1.0.3`.
+If your client keeps using an older tool path after an update, restart the client and make sure it is loading version `1.0.4`.
 
 ## Prompt Examples by Use Case
 
@@ -220,9 +220,9 @@ If your client keeps using an older tool path after an update, restart the clien
 - `Parse these user agents in bulk and tell me the browser, OS, and device type for each.`
 - `Does this user agent look like a crawler or bot? Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.96 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)`
 
-## Example Responses
+## Example Answers and Tool Output
 
-These snippets are shortened from real API responses in our public documentation and trimmed for readability.
+Actual assistant wording varies by client and model. The natural-language snippets below show a typical answer. The JSON blocks show trimmed tool output returned by our MCP server.
 
 <details>
 <summary><strong>Example 1: Single IP lookup</strong></summary>
@@ -231,7 +231,11 @@ These snippets are shortened from real API responses in our public documentation
 
 `Locate 91.128.103.196 and give me the country, city, ASN, and local time.`
 
-**Example response**
+**Typical assistant answer**
+
+`91.128.103.196 resolves to Stockholm, Sweden. The ASN is AS1257, operated by Tele2 Sverige AB. The local timezone is Europe/Stockholm, and the local time in this sample is 2026-02-12 18:36:54.401+0100.`
+
+**Example tool output**
 
 ```json
 {
@@ -262,7 +266,11 @@ These snippets are shortened from real API responses in our public documentation
 
 `Convert 2025-01-21 13:42:52 from DXB to LHR.`
 
-**Example response**
+**Typical assistant answer**
+
+`2025-01-21 13:42:52 in Dubai converts to 2025-01-21 09:42:52 in London in this sample. The difference is 4 hours.`
+
+**Example tool output**
 
 ```json
 {
@@ -282,7 +290,11 @@ These snippets are shortened from real API responses in our public documentation
 
 `Who uses 1.1.1.1 and which ASN routes it?`
 
-**Example response**
+**Typical assistant answer**
+
+`1.1.1.1 is used by APNIC Research and Development, while the ASN routing it is AS13335, operated by Cloudflare, Inc.`
+
+**Example tool output**
 
 ```json
 {
@@ -307,7 +319,11 @@ These snippets are shortened from real API responses in our public documentation
 
 `Show sunrise and sunset for New York from 2025-06-16 to 2025-06-18.`
 
-**Example response**
+**Typical assistant answer**
+
+`For this New York date range, sunrise is about 05:23 and sunset about 20:30 each day. Day length is about 15 hours, and the moon phase changes from waning gibbous to last quarter in this sample.`
+
+**Example tool output**
 
 ```json
 {
@@ -346,7 +362,11 @@ These snippets are shortened from real API responses in our public documentation
 
 `Parse this user agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_2) AppleWebKit/601.3.9 (KHTML, like Gecko) Version/9.0.2 Safari/601.3.9`
 
-**Example response**
+**Typical assistant answer**
+
+`This user agent is Safari 9.0.2 on Mac OS 10.11.2, running on an Apple Macintosh desktop with an Intel CPU.`
+
+**Example tool output**
 
 ```json
 {
@@ -377,7 +397,11 @@ These snippets are shortened from real API responses in our public documentation
 
 `Give me the abuse contact for 1.0.0.0.`
 
-**Example response**
+**Typical assistant answer**
+
+`For 1.0.0.0, the abuse contact in this sample is IRT-APNICRANDNET-AU in Australia, covering route 1.0.0.0/24, with email helpdesk@apnic.net.`
+
+**Example tool output**
 
 ```json
 {
