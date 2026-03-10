@@ -96,13 +96,9 @@ export function registerAsnTools(server: McpServer) {
 
 If the first response already contains a superset of needed data, extract the requested subset locally and do not call lookup_asn again just to trim output.
 
-Look up detailed Autonomous System Number (ASN) information using ipgeolocation.io's dedicated ASN endpoint (GET /v3/asn). Paid plans only. Free plan returns 401 Unauthorized. Costs 1 credit per lookup.
+Detailed ASN lookup via GET /v3/asn. Paid only. Cost: 1 credit. Query by AS number or IP. Returns core ASN details and can include peers, downstreams, upstreams, routes, and WHOIS.
 
-Query by AS number (e.g. AS13335) or by IP address to find its ASN. Returns: as_number, asn_name, organization, country, type (ISP/Business/Hosting/etc), domain, rir (ARIN/RIPE/APNIC/etc), date_allocated, allocation_status, num_of_ipv4_routes, num_of_ipv6_routes.
-
-Optional include parameter adds: peers (peer ASNs), downstreams (downstream ASNs), upstreams (upstream ASNs), routes (announced IPv4/IPv6 routes), whois_response (raw WHOIS text).
-
-Note: basic ASN data (as_number, organization, country) is already included in lookup_ip responses on all plans including free. Paid plan lookup_ip also returns type, domain, date_allocated, and rir. This dedicated endpoint adds asn_name, allocation_status, route counts, and the optional peers/downstreams/upstreams/routes/whois data that lookup_ip does not provide. Use lookup_ip for basic ASN info. Use this tool only when you need the extended ASN details.
+Use lookup_ip for basic ASN data. Use this tool only when you need extended ASN datasets.
 
 Tool selection rule: if this tool is used, call it once per ASN/IP target and include set, then post-process locally. Do not re-call lookup_asn for the same target only to change fields/excludes or output shape.`,
       inputSchema: {
@@ -139,9 +135,7 @@ Tool selection rule: if this tool is used, call it once per ASN/IP target and in
         force_refresh: z
           .boolean()
           .optional()
-          .describe(
-            "Set true to bypass MCP cache and force a new upstream API request."
-          ),
+          .describe("Bypass MCP cache and fetch fresh upstream data."),
       },
     },
     async (params) => {

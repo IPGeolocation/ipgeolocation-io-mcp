@@ -24,11 +24,9 @@ export function registerUserAgentTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Parse a user-agent string into structured device, browser, OS, and engine details using ipgeolocation.io's dedicated User-Agent endpoint (POST /v3/user-agent). Paid plans only. Free plan returns 401 Unauthorized. Costs 1 credit per request.
+      description: `Parse an explicit user-agent string via POST /v3/user-agent. Paid only. Cost: 1 credit. Returns browser, device, OS, and engine details.
 
-Returns: user_agent_string, name (browser/bot name), type (Browser, Crawler, etc.), version, version_major, device (name, type, brand, cpu), engine (name, type, version, version_major), operating_system (name, type, version, version_major, build).
-
-This MCP tool parses only the explicit user-agent string you pass in uaString. It does not infer a caller user-agent from the MCP transport. For parsing multiple UA strings at once, use bulk_parse_user_agent instead.`,
+This MCP tool parses only the uaString you pass. It does not infer a caller user-agent from the MCP transport. For multiple strings, use bulk_parse_user_agent.`,
       inputSchema: {
         uaString: z
           .string()
@@ -38,9 +36,7 @@ This MCP tool parses only the explicit user-agent string you pass in uaString. I
         force_refresh: z
           .boolean()
           .optional()
-          .describe(
-            "Set true to bypass MCP cache and force a new upstream API request."
-          ),
+          .describe("Bypass MCP cache and fetch fresh upstream data."),
       },
     },
     async (params) => {
@@ -73,11 +69,9 @@ This MCP tool parses only the explicit user-agent string you pass in uaString. I
       annotations: {
         readOnlyHint: true,
       },
-      description: `Parse up to ${MAX_BULK_ITEMS.toLocaleString()} user-agent strings in a single request using ipgeolocation.io's bulk User-Agent endpoint (POST /v3/user-agent-bulk). This MCP server caps request size to keep responses manageable over MCP (the raw API supports up to 50,000). Paid plans only. Free plan returns 401 Unauthorized. Costs 1 credit per user-agent string.
+      description: `Bulk user-agent parsing via POST /v3/user-agent-bulk for up to ${MAX_BULK_ITEMS.toLocaleString()} strings per MCP request. Paid only. Cost: 1 credit per string.
 
-Returns a JSON array of parsed user-agent objects. Each object contains the same fields as parse_user_agent: user_agent_string, name, type, version, version_major, device (name, type, brand, cpu), engine (name, type, version, version_major), operating_system (name, type, version, version_major, build).
-
-Use this tool when you need to parse multiple user-agent strings at once. For a single UA string, use parse_user_agent instead.`,
+Use this tool for multiple user-agent strings. For a single string, use parse_user_agent.`,
       inputSchema: {
         uaStrings: z
           .array(z.string())
@@ -89,9 +83,7 @@ Use this tool when you need to parse multiple user-agent strings at once. For a 
         force_refresh: z
           .boolean()
           .optional()
-          .describe(
-            "Set true to bypass MCP cache and force a new upstream API request."
-          ),
+          .describe("Bypass MCP cache and fetch fresh upstream data."),
       },
     },
     async (params) => {

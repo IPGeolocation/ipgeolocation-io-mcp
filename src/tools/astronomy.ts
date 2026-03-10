@@ -47,11 +47,9 @@ export function registerAstronomyTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Get sunrise, sunset, moonrise, moonset, twilight times, golden hour, blue hour, sun/moon positions, and moon phase data for any location using ipgeolocation.io (GET /v3/astronomy). Works on all plans including free. Costs 1 credit per request.
+      description: `Astronomy lookup via GET /v3/astronomy. Works on free and paid plans. Cost: 1 credit. Look up by coordinates, location, or IP, with optional date and elevation.
 
-Look up by coordinates, city/address, or IP address. All lookup modes work on both free and paid plans. Supports custom dates and elevation for precise calculations.
-
-Returns an object with location details and an astronomy object that includes date/current_time, grouped morning and evening twilight blocks, sunrise, sunset, solar_noon, day_length, moonrise, moonset, sun_status, moon_status, sun and moon altitude/azimuth/distance fields, moon_phase, moon_illumination_percentage, moon_angle, and moon_parallactic_angle.
+Returns location details plus astronomy data such as sunrise, sunset, moonrise, moonset, morning and evening twilight blocks, day length, sun and moon status, positions, and moon phase fields.
 
 The lang parameter for non-English location field responses is available on paid plans only. On free plans, using a non-English lang value returns 401 Unauthorized.`,
       inputSchema: {
@@ -149,11 +147,9 @@ The lang parameter for non-English location field responses is available on paid
       annotations: {
         readOnlyHint: true,
       },
-      description: `Get daily astronomical data for a date range (up to 90 days) using ipgeolocation.io's astronomy time series endpoint (GET /v3/astronomy/timeSeries). Works on all plans including free. Costs 1 credit per request regardless of the number of days.
+      description: `Daily astronomy time series via GET /v3/astronomy/timeSeries for up to 90 days. Works on free and paid plans. Cost: 1 credit per request.
 
-Returns an object with location details and an astronomy array with one daily entry per date in the range. Each daily entry includes date, mid_night, night_end, morning, sunrise, sunset, evening, night_begin, sun_status, solar_noon, day_length, moon_phase, moonrise, moonset, and moon_status.
-
-Time series responses do not include real-time positional data such as sun_altitude, sun_azimuth, sun_distance, moon_altitude, moon_azimuth, moon_distance, moon_parallactic_angle, moon_illumination_percentage, or moon_angle. For those fields, use get_astronomy with a specific date instead.
+Returns location details plus an astronomy array with one daily entry per date. Use get_astronomy instead when you need real-time positional fields such as sun or moon altitude and azimuth.
 
 Location can be specified by coordinates, city/address, or IP. If no location is given, uses the caller's IP.`,
       inputSchema: {
@@ -208,9 +204,7 @@ Location can be specified by coordinates, city/address, or IP. If no location is
         force_refresh: z
           .boolean()
           .optional()
-          .describe(
-            "Set true to bypass MCP cache and force a new upstream API request."
-          ),
+          .describe("Bypass MCP cache and fetch fresh upstream data."),
       },
     },
     async (params) => {

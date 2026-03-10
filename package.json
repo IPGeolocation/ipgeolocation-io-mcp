@@ -1,6 +1,6 @@
 {
   "name": "ipgeolocation-io-mcp",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Official MCP server for ipgeolocation.io APIs. IP geolocation, VPN/proxy detection, timezone, astronomy, user-agent parsing, ASN, company, and IP abuse contact tools for MCP clients.",
   "type": "module",
   "main": "dist/index.js",
@@ -20,6 +20,9 @@
     "test": "npm run build && node --test --test-concurrency=1 tests",
     "test:unit": "npm run build && node --test --test-concurrency=1 tests/client.test.mjs tests/response.test.mjs tests/validation.test.mjs",
     "test:integration": "npm run build && node --test --test-concurrency=1 tests/tools.integration.test.mjs tests/mcp.protocol.test.mjs",
+    "test:live": "npm run test:live:free && npm run test:live:paid",
+    "test:live:free": "npm run build && node tests/live.smoke.mjs free",
+    "test:live:paid": "npm run build && node tests/live.smoke.mjs paid",
     "prepare": "npm run build",
     "watch": "tsc --watch",
     "inspector": "npx @modelcontextprotocol/inspector"

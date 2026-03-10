@@ -214,13 +214,11 @@ export function registerGeolocationTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Look up geolocation data for a single IP address or domain using ipgeolocation.io's unified endpoint (GET /v3/ipgeo). Costs 1 credit per request on all plans.
+      description: `Unified IP lookup via GET /v3/ipgeo. Cost: 1 credit. Use this first when one IP request needs multiple domains such as location, company/ASN, network, timezone, currency, security, or abuse.
 
-FREE PLAN returns: ip, location (continent, country, state, district, city, zipcode, latitude, longitude, is_eu, country_flag, country_emoji, geoname_id), country_metadata (calling_code, tld, languages), currency (code, name, symbol), time_zone (name, offset, DST info, current_time), and basic ASN (as_number, organization, country). The fields and excludes parameters work on the free plan. Domain lookups and the include parameter are not available on the free plan. The lang parameter returns a 401 error on the free plan for any language other than en.
+Free plan supports core location data, country metadata, currency, time_zone, basic ASN, and fields/excludes. Paid plan adds domain lookup, company, network, extended ASN, non-English lang, and include modules such as security or abuse. If fields reference an include-only module, this server infers the required include automatically.
 
-PAID PLANS return everything above plus: network (connection_type, route, is_anycast), company (name, type, domain), and extended ASN (as_number, organization, country, type, domain, date_allocated, rir). The ASN object identifies the organization that holds the IP block allocation from a Regional Internet Registry (ARIN, RIPE, APNIC, etc.). The company object identifies the organization actually using the IP address. These are often the same, but differ when the ASN holder subleases IP space to another organization. For example, the ASN holder might be a cloud provider like Amazon while the company is a business running its infrastructure on that cloud. Paid plans also enable the include parameter to add extra modules: security (+2 credits, 3 total), abuse (+1 credit, 2 total), hostname (+0), liveHostname (+0), hostnameFallbackLive (+0), user_agent (+0), geo_accuracy (+0), dma_code (+0), or * for all (4 credits total). Paid plans support the lang parameter for non-English responses and can look up domains in addition to IPs. Tip: use include=security&fields=security to get only security data for 2 credits instead of 3.
-
-If no IP is provided, returns data for the caller's IP. For basic ASN info on the free plan, use this tool. For detailed ASN data (peers, routes, WHOIS), use lookup_asn instead (paid only). For standalone security checks at 2 credits each, use check_security instead. For standalone abuse lookups at 1 credit, use get_abuse_contact instead.`,
+Omit ip to use the caller's IP. Use lookup_asn only for peers, upstreams, downstreams, routes, or WHOIS. Use check_security or get_abuse_contact only for single-domain lookups.`,
       inputSchema: {
         ip: z
           .string()
@@ -255,9 +253,7 @@ If no IP is provided, returns data for the caller's IP. For basic ASN info on th
         force_refresh: z
           .boolean()
           .optional()
-          .describe(
-            "Set true to bypass MCP cache and force a new upstream API request."
-          ),
+          .describe("Bypass MCP cache and fetch fresh upstream data."),
       },
     },
     async (params) => {
@@ -307,13 +303,9 @@ If no IP is provided, returns data for the caller's IP. For basic ASN info on th
       annotations: {
         readOnlyHint: true,
       },
-      description: `Look up geolocation data for multiple IP addresses in a single request using ipgeolocation.io's bulk endpoint (POST /v3/ipgeo-bulk). Accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs per request through this MCP server (the raw API supports up to 50,000). Paid plans only. Free plan returns 401 Unauthorized.
+      description: `Bulk IP lookup via POST /v3/ipgeo-bulk. Paid only. Cost: 1 credit per IP for base geolocation. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs per request.
 
-Costs 1 credit per IP for base geolocation data. Each IP in the response contains the same fields as a single lookup_ip call on a paid plan: ip, location, country_metadata, currency, time_zone, network, company, and extended ASN (as_number, organization, country, type, domain, date_allocated, rir).
-
-Optional include modules add credits per IP: security (+2 per IP), abuse (+1 per IP), hostname (+0), liveHostname (+0), hostnameFallbackLive (+0), user_agent (+0), geo_accuracy (+0), dma_code (+0), or * for all (4 credits per IP total).
-
-Returns a JSON array with one geolocation object per IP. Use this tool when you need to look up more than one IP at a time. For a single IP lookup, use lookup_ip instead. For bulk security-only checks, use bulk_security_check instead (2 credits per IP).`,
+Use it when multiple IPs need location or mixed IP domains. Include modules such as security or abuse add their normal per-IP credit costs. For bulk security-only checks, prefer bulk_security_check.`,
       inputSchema: {
         ips: z
           .array(z.string())
@@ -349,9 +341,7 @@ Returns a JSON array with one geolocation object per IP. Use this tool when you 
         force_refresh: z
           .boolean()
           .optional()
-          .describe(
-            "Set true to bypass MCP cache and force a new upstream API request."
-          ),
+          .describe("Bypass MCP cache and fetch fresh upstream data."),
       },
     },
     async (params) => {
@@ -398,7 +388,7 @@ Returns a JSON array with one geolocation object per IP. Use this tool when you 
         readOnlyHint: true,
       },
       description:
-        "Get the public IP address of the machine running this MCP server. No API key required. No credits charged. Uses the /v3/getip endpoint. Useful for discovering the server's own IP before doing a geolocation lookup with lookup_ip.",
+        "Return the public IP address of the machine running this MCP server via /v3/getip. No API key or credits required.",
       inputSchema: {},
     },
     async () => {
@@ -422,11 +412,7 @@ Returns a JSON array with one geolocation object per IP. Use this tool when you 
       },
       description: `Decision policy: this is a single-domain tool. Use it only when the user asks for ownership data (company/ASN) only. If the same IP request also needs security, abuse, location/city, timezone, network, or currency data, call lookup_ip once with include and targeted fields/excludes instead of chaining tools.
 
-Identify the organization using a specific IP address. Uses ipgeolocation.io's unified endpoint (GET /v3/ipgeo) with fields filtered to company and ASN data. Paid plans only. Free plan does not return company data. Costs 1 credit.
-
-Returns two objects: company (name, type, domain) and asn (as_number, organization, country, type, domain, date_allocated, rir). The ASN object identifies the organization that holds the IP block allocation from a Regional Internet Registry (ARIN, RIPE, APNIC, etc.). The company object identifies the organization actually using the IP address. These are often the same, but differ when the ASN holder subleases IP space to another organization. For example, 1.1.1.1 has ASN organization "Cloudflare, Inc." (who routes it) but company "APNIC Research and Development" (who owns the block).
-
-Use this tool when you need to know which company or organization is behind an IP address. For full geolocation data including company, use lookup_ip instead. For detailed ASN data (peers, routes, WHOIS), use lookup_asn instead.
+Ownership lookup via GET /v3/ipgeo with company and ASN only. Paid only. Cost: 1 credit. Returns the company using the IP and the ASN holder routing it.
 
 Tool selection rule: if this tool is used, call it once per IP target and post-process locally. Do not re-call lookup_company for the same IP just to change output shape.`,
       inputSchema: {
@@ -439,9 +425,7 @@ Tool selection rule: if this tool is used, call it once per IP target and post-p
         force_refresh: z
           .boolean()
           .optional()
-          .describe(
-            "Set true to bypass MCP cache and force a new upstream API request."
-          ),
+          .describe("Bypass MCP cache and fetch fresh upstream data."),
       },
     },
     async (params) => {
@@ -473,13 +457,9 @@ Tool selection rule: if this tool is used, call it once per IP target and post-p
       annotations: {
         readOnlyHint: true,
       },
-      description: `Get the local currency and country metadata for any IP address. Uses ipgeolocation.io's unified endpoint (GET /v3/ipgeo) with fields filtered to currency and country_metadata. Works on all plans including free. Costs 1 credit.
+      description: `Currency and country metadata lookup via GET /v3/ipgeo with currency and country_metadata only. Works on free and paid plans. Cost: 1 credit.
 
-Returns two objects: currency (code, name, symbol) and country_metadata (calling_code, tld, languages). For example, a Japanese IP returns currency {code: "JPY", name: "Japanese Yen", symbol: "¥"} and country_metadata {calling_code: "+81", tld: ".jp", languages: ["ja"]}.
-
-Use this tool when you need to know the currency, international calling code, country TLD, or spoken languages for an IP's country. For full geolocation data, use lookup_ip instead.
-
-Tool selection rule: use this tool for currency/country-metadata-only requests. If the request needs additional IP intelligence fields, prefer one lookup_ip call with targeted fields/excludes.`,
+Tool selection rule: use this tool for currency-only or country-metadata-only requests. If the request needs more IP data, prefer one lookup_ip call with targeted fields/excludes.`,
       inputSchema: {
         ip: z
           .string()
@@ -490,9 +470,7 @@ Tool selection rule: use this tool for currency/country-metadata-only requests. 
         force_refresh: z
           .boolean()
           .optional()
-          .describe(
-            "Set true to bypass MCP cache and force a new upstream API request."
-          ),
+          .describe("Bypass MCP cache and fetch fresh upstream data."),
       },
     },
     async (params) => {
@@ -524,13 +502,9 @@ Tool selection rule: use this tool for currency/country-metadata-only requests. 
       annotations: {
         readOnlyHint: true,
       },
-      description: `Get network routing information for any IP address, including whether it uses anycast. Uses ipgeolocation.io's unified endpoint (GET /v3/ipgeo) with fields filtered to network data. Paid plans only. Free plan does not return network data. Costs 1 credit.
+      description: `Network lookup via GET /v3/ipgeo with network only. Paid only. Cost: 1 credit. Returns route prefix, connection type, and anycast status.
 
-Returns: network (connection_type, route, is_anycast). The route field shows the announced BGP prefix (e.g. "1.1.1.0/24"). The is_anycast field indicates whether the IP is served from multiple geographic locations using anycast routing. The connection_type field identifies the type of network connection when available.
-
-Use this tool when you need to check if an IP is anycast, find its BGP route prefix, or identify its connection type. For full geolocation data including network, use lookup_ip instead.
-
-Tool selection rule: use this tool for network-only requests. If the request also needs other IP domains (security, company, location, timezone, abuse), prefer one lookup_ip call with include plus targeted fields/excludes.`,
+Tool selection rule: use this tool for network-only requests. If the request also needs other IP domains, prefer one lookup_ip call with include plus targeted fields/excludes.`,
       inputSchema: {
         ip: z
           .string()
@@ -541,9 +515,7 @@ Tool selection rule: use this tool for network-only requests. If the request als
         force_refresh: z
           .boolean()
           .optional()
-          .describe(
-            "Set true to bypass MCP cache and force a new upstream API request."
-          ),
+          .describe("Bypass MCP cache and fetch fresh upstream data."),
       },
     },
     async (params) => {

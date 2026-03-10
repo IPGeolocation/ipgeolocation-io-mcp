@@ -19,13 +19,9 @@ export function registerAbuseTools(server: McpServer) {
       },
       description: `Decision policy: this is a single-domain tool. Use it only when the user asks for abuse contact data only. If the same IP request also needs security, ownership/company/ASN, location/city, timezone, network, or currency data, call lookup_ip once with include and targeted fields/excludes instead of chaining tools.
 
-Get abuse contact information for any IP address using ipgeolocation.io's dedicated abuse endpoint (GET /v3/abuse). Paid plans only. Free plan returns 401 Unauthorized. Costs 1 credit per lookup.
+Dedicated abuse lookup via GET /v3/abuse. Paid only. Cost: 1 credit. Returns route, country, organization, address, emails, and phone numbers for reporting abuse.
 
-Returns: route, country, name, organization, kind, address, emails (array), phone_numbers (array). Useful for reporting malicious activity to the correct network operator.
-
-Note: abuse data is also available through lookup_ip with include=abuse, which costs 2 credits total (1 base + 1 for abuse) but also returns full geolocation data. If you only need the abuse contact without geolocation, this dedicated endpoint is cheaper at 1 credit. Tip: you can also use lookup_ip with include=abuse&fields=abuse to get just the abuse data for 1 credit total. The fields and excludes parameters work on all plans to filter the response.
-
-Tool selection rule: if this tool is used, call it once per IP target and post-process locally. Do not re-call get_abuse_contact for the same IP just to change fields/excludes or to reformat output.`,
+Use lookup_ip with include=abuse when the same request also needs geolocation or other IP domains. Tool selection rule: if this tool is used, call it once per IP target and post-process locally. Do not re-call get_abuse_contact for the same IP just to change fields/excludes or to reformat output.`,
       inputSchema: {
         ip: z
           .string()
@@ -48,9 +44,7 @@ Tool selection rule: if this tool is used, call it once per IP target and post-p
         force_refresh: z
           .boolean()
           .optional()
-          .describe(
-            "Set true to bypass MCP cache and force a new upstream API request."
-          ),
+          .describe("Bypass MCP cache and fetch fresh upstream data."),
       },
     },
     async (params) => {

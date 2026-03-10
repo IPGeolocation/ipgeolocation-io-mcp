@@ -17,11 +17,9 @@ export function registerTimezoneTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Get current time and timezone details for any location using ipgeolocation.io (GET /v3/timezone). Works on all plans including free. Costs 1 credit per request.
+      description: `Timezone lookup via GET /v3/timezone. Works on free and paid plans. Cost: 1 credit. Look up by IANA timezone, coordinates, location, IP, airport code, or UN/LOCODE.
 
-Look up by IANA timezone name, coordinates, city/address, IP address, IATA airport code, ICAO airport code, or UN/LOCODE. All lookup modes work on both free and paid plans. If no parameters are provided, returns timezone data for the caller's IP.
-
-Returns an object with location details and a time_zone object that includes timezone name, UTC offsets, date/date_time variants, current_time, current_time_unix, time_24, time_12, week/month/year values, timezone abbreviations, DST status, and DST transition dates. Airport code lookups also return airport name, city, elevation, and coordinates.
+Returns location details plus a time_zone object with offsets, current time values, date/time variants, abbreviations, DST status, and transition dates. Airport lookups also include airport details.
 
 The lang parameter for non-English responses is available on paid plans only. On free plans, using a non-English lang value returns 401 Unauthorized.`,
       inputSchema: {
@@ -112,11 +110,9 @@ The lang parameter for non-English responses is available on paid plans only. On
       annotations: {
         readOnlyHint: true,
       },
-      description: `Convert time between two locations using ipgeolocation.io (GET /v3/timezone/convert). Works on all plans including free. Costs 1 credit per request.
+      description: `Convert time between two locations via GET /v3/timezone/convert. Works on free and paid plans. Cost: 1 credit.
 
-Specify source and destination by IANA timezone name, coordinates, city/address, IATA airport code, ICAO airport code, or UN/LOCODE. All location modes work on both free and paid plans.
-
-Returns: original time, converted time, diff_hour, and diff_min between the two locations. If no time is specified, converts the current time.`,
+Specify source and destination by IANA timezone, coordinates, location, airport code, or UN/LOCODE. Returns original time, converted time, diff_hour, and diff_min.`,
       inputSchema: {
         time: z
           .string()
