@@ -1,6 +1,7 @@
 {
   "name": "ipgeolocation-io-mcp",
-  "version": "1.0.5",
+  "version": "1.0.6",
+  "mcpName": "io.github.IPGeolocation/ipgeolocation-io-mcp",
   "description": "Official MCP server for ipgeolocation.io APIs. IP geolocation, VPN/proxy detection, timezone, astronomy, user-agent parsing, ASN, company, and IP abuse contact tools for MCP clients.",
   "type": "module",
   "main": "dist/index.js",
@@ -10,7 +11,8 @@
   },
   "files": [
     "dist",
-    "manifest.json"
+    "manifest.json",
+    "server.json"
   ],
   "engines": {
     "node": ">=18.0.0"

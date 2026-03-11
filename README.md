@@ -7,7 +7,7 @@ We build and maintain this server so you can use our APIs from Codex, Claude Des
 | Item | Value |
 |------|-------|
 | Package | `ipgeolocation-io-mcp` |
-| Version | `1.0.5` |
+| Version | `1.0.6` |
 | Transport | `stdio` |
 | Node.js | `>=18` |
 | Free plan support | 7 tools, 1,000 credits per day |
@@ -180,7 +180,7 @@ Use these prompts after installation. They are short, easy to validate, and cove
 | `Give sunrise times for Karachi from 2026-03-10 to 2026-03-15.` | `get_astronomy_time_series` |
 | `Parse this user agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36` | `parse_user_agent` |
 
-If your client keeps using an older tool path after an update, restart the client and make sure it is loading version `1.0.5`.
+If your client keeps using an older tool path after an update, restart the client and make sure it is loading version `1.0.6`.
 
 ## Prompt Examples by Use Case
 
