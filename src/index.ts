@@ -16,7 +16,9 @@ const toolSelectionInstructionParts = [
   "If one IP needs two or more IP domains, make one lookup_ip call first with include and targeted fields/excludes.",
   "If multiple IPs need two or more domains each, make one bulk_lookup_ip call first with include and targeted fields/excludes.",
   "Use narrow IP tools (check_security, get_abuse_contact, lookup_company, lookup_network, lookup_currency) only for single-domain requests.",
+  "Leave optional parameters unset unless they change the answer.",
   "Use fields to request only required paths and use excludes to remove irrelevant data.",
+  "Leave force_refresh unset unless the user explicitly asks to refresh, rerun, or bypass cache.",
   "If the first response is a superset of what is needed, answer from that response and do not call another tool for formatting.",
   "For ASN queries, make at most one lookup_asn call per target and include set. Do not re-call lookup_asn for the same target only to change fields/excludes or output shape.",
   "Never call the same tool twice for the same target in one answer unless the prior call failed or required data is truly missing.",
@@ -27,7 +29,7 @@ const TOOL_SELECTION_INSTRUCTIONS = toolSelectionInstructionParts.join(" ");
 
 const server = new McpServer({
   name: "ipgeolocation-io-mcp",
-  version: "1.0.4",
+  version: "1.0.5",
 }, {
   instructions: TOOL_SELECTION_INSTRUCTIONS,
 });

@@ -135,7 +135,7 @@ Tool selection rule: if this tool is used, call it once per ASN/IP target and in
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Bypass MCP cache and fetch fresh upstream data."),
+          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
       },
     },
     async (params) => {

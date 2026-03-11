@@ -73,7 +73,7 @@ Use lookup_ip with include=security when the same request also needs other IP do
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Bypass MCP cache and fetch fresh upstream data."),
+          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
       },
     },
 
@@ -144,7 +144,7 @@ Use bulk_lookup_ip with include=security when the same batch also needs geolocat
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Bypass MCP cache and fetch fresh upstream data."),
+          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
       },
     },
     async (params) => {

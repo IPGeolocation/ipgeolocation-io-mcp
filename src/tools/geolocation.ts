@@ -253,7 +253,7 @@ Omit ip to use the caller's IP. Use lookup_asn only for peers, upstreams, downst
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Bypass MCP cache and fetch fresh upstream data."),
+          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
       },
     },
     async (params) => {
@@ -341,7 +341,7 @@ Use it when multiple IPs need location or mixed IP domains. Include modules such
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Bypass MCP cache and fetch fresh upstream data."),
+          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
       },
     },
     async (params) => {
@@ -425,7 +425,7 @@ Tool selection rule: if this tool is used, call it once per IP target and post-p
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Bypass MCP cache and fetch fresh upstream data."),
+          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
       },
     },
     async (params) => {
@@ -470,7 +470,7 @@ Tool selection rule: use this tool for currency-only or country-metadata-only re
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Bypass MCP cache and fetch fresh upstream data."),
+          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
       },
     },
     async (params) => {
@@ -515,7 +515,7 @@ Tool selection rule: use this tool for network-only requests. If the request als
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Bypass MCP cache and fetch fresh upstream data."),
+          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
       },
     },
     async (params) => {
