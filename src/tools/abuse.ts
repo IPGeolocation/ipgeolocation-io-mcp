@@ -44,7 +44,7 @@ Use lookup_ip with include=abuse when the same request also needs geolocation or
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Bypass MCP cache and fetch fresh upstream data."),
+          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
       },
     },
     async (params) => {

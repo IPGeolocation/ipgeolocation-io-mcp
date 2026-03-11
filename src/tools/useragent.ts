@@ -36,7 +36,7 @@ This MCP tool parses only the uaString you pass. It does not infer a caller user
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Bypass MCP cache and fetch fresh upstream data."),
+          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
       },
     },
     async (params) => {
@@ -83,7 +83,7 @@ Use this tool for multiple user-agent strings. For a single string, use parse_us
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Bypass MCP cache and fetch fresh upstream data."),
+          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
       },
     },
     async (params) => {

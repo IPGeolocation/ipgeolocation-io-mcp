@@ -204,7 +204,7 @@ Location can be specified by coordinates, city/address, or IP. If no location is
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Bypass MCP cache and fetch fresh upstream data."),
+          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
       },
     },
     async (params) => {
