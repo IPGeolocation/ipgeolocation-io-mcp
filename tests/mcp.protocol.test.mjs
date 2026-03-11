@@ -52,6 +52,22 @@ test("manifest mcp_config is aligned for stdio startup", async () => {
   );
 });
 
+test("registry metadata stays aligned across package and server manifest", async () => {
+  const packageJson = JSON.parse(await readRepoFile("package.json"));
+  const serverJson = JSON.parse(await readRepoFile("server.json"));
+
+  assert.equal(
+    packageJson.mcpName,
+    "io.github.IPGeolocation/ipgeolocation-io-mcp"
+  );
+  assert.equal(serverJson.name, packageJson.mcpName);
+  assert.equal(serverJson.version, packageJson.version);
+  assert.equal(serverJson.packages[0].identifier, packageJson.name);
+  assert.equal(serverJson.packages[0].version, packageJson.version);
+  assert.equal(serverJson.packages[0].registryType, "npm");
+  assert.equal(serverJson.packages[0].transport.type, "stdio");
+});
+
 test("timezone and astronomy tool docs reflect free non-English lang 401 behavior", async () => {
   const timezoneSource = await readRepoFile("src/tools/timezone.ts");
   const astronomySource = await readRepoFile("src/tools/astronomy.ts");

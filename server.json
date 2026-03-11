@@ -1,0 +1,33 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.IPGeolocation/ipgeolocation-io-mcp",
+  "title": "IPGeolocation.io MCP Server",
+  "description": "Official ipgeolocation.io MCP server for IP intelligence, timezones, astronomy, and user-agent.",
+  "version": "1.0.6",
+  "websiteUrl": "https://ipgeolocation.io",
+  "repository": {
+    "url": "https://github.com/IPGeolocation/ipgeolocation-io-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "ipgeolocation-io-mcp",
+      "version": "1.0.6",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "IPGEOLOCATION_API_KEY",
+          "description": "API key for ipgeolocation.io. Free and paid keys are supported.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string",
+          "placeholder": "<IPGEOLOCATION_API_KEY>"
+        }
+      ]
+    }
+  ]
+}
