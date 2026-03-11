@@ -14,7 +14,7 @@ We build and maintain this server so you can use our APIs from Codex, Claude Des
 | Paid plan support | All 16 tools, advanced IP intelligence, bulk operations |
 | Bundle manifest | `manifest.json` included |
 
-## Contents
+## Table of Contents
 
 - [What We Provide](#what-we-provide)
 - [Install](#install)
