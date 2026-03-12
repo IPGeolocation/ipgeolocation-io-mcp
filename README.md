@@ -7,7 +7,7 @@ We build and maintain this server so you can use our APIs from Codex, Claude Des
 | Item | Value |
 |------|-------|
 | Package | `ipgeolocation-io-mcp` |
-| Version | `1.0.8` |
+| Version | `1.0.9` |
 | Transport | `stdio` |
 | Node.js | `>=18` |
 | Free plan support | 7 tools, 1,000 credits per day |
@@ -59,6 +59,8 @@ What you get:
 
 `get_my_ip` works without an API key. All other tools require one.
 
+You can sign up for a free IPGeolocation API key here: [https://app.ipgeolocation.io/signup](https://app.ipgeolocation.io/signup)
+
 ### Install by Client
 
 #### Codex CLI
@@ -89,6 +91,26 @@ We ship `manifest.json` for clients that support MCP Bundles. If you want to con
 ```
 
 Restart Claude Desktop after saving the config.
+
+#### Cline
+
+Open the MCP Servers panel in Cline, go to **Configure**, then open **Advanced MCP Settings**. Add this to `cline_mcp_settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "ipgeolocation": {
+      "command": "npx",
+      "args": ["-y", "ipgeolocation-io-mcp"],
+      "env": {
+        "IPGEOLOCATION_API_KEY": "<IPGEOLOCATION_API_KEY>"
+      }
+    }
+  }
+}
+```
+
+Restart Cline after saving the config.
 
 #### Cursor
 
@@ -180,7 +202,7 @@ Use these prompts after installation. They are short, easy to validate, and cove
 | Give sunrise times for Karachi from 2026-03-10 to 2026-03-15. | `get_astronomy_time_series` |
 | Parse this user agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 | `parse_user_agent` |
 
-If your client keeps using an older tool path after an update, restart the client and make sure it is loading version `1.0.8`.
+If your client keeps using an older tool path after an update, restart the client and make sure it is loading version `1.0.9`.
 
 ## Prompt Examples by Use Case
 
