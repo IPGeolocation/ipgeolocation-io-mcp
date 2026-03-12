@@ -7,7 +7,7 @@ We build and maintain this server so you can use our APIs from Codex, Claude Des
 | Item | Value |
 |------|-------|
 | Package | `ipgeolocation-io-mcp` |
-| Version | `1.0.7` |
+| Version | `1.0.8` |
 | Transport | `stdio` |
 | Node.js | `>=18` |
 | Free plan support | 7 tools, 1,000 credits per day |
@@ -180,7 +180,7 @@ Use these prompts after installation. They are short, easy to validate, and cove
 | Give sunrise times for Karachi from 2026-03-10 to 2026-03-15. | `get_astronomy_time_series` |
 | Parse this user agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 | `parse_user_agent` |
 
-If your client keeps using an older tool path after an update, restart the client and make sure it is loading version `1.0.7`.
+If your client keeps using an older tool path after an update, restart the client and make sure it is loading version `1.0.8`.
 
 ## Prompt Examples by Use Case
 
@@ -1003,7 +1003,7 @@ Use `force_refresh: true` on cached tools when you explicitly want a fresh upstr
 
 ## License
 
-MIT
+[MIT License](https://github.com/IPGeolocation/ipgeolocation-io-mcp/blob/main/LICENSE)
 
 ## Privacy Policy
 
@@ -1011,7 +1011,8 @@ See our [Privacy Policy](https://ipgeolocation.io/privacy.html) for details on h
 
 ## Links
 
-- [ipgeolocation.io](https://ipgeolocation.io)
+- [IPGeolocation Website](https://ipgeolocation.io)
+- [GitHub Repository](https://github.com/IPGeolocation/ipgeolocation-io-mcp)
 - [API Documentation](https://ipgeolocation.io/documentation.html)
 - [Pricing](https://ipgeolocation.io/pricing.html)
 - [Sign Up](https://app.ipgeolocation.io/signup)
