@@ -1,0 +1,9 @@
+.git
+.github
+.idea
+.vscode
+artifacts
+coverage
+dist
+node_modules
+TODO.md
