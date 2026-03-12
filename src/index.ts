@@ -29,7 +29,7 @@ const TOOL_SELECTION_INSTRUCTIONS = toolSelectionInstructionParts.join(" ");
 
 const server = new McpServer({
   name: "ipgeolocation-io-mcp",
-  version: "1.0.8",
+  version: "1.0.9",
 }, {
   instructions: TOOL_SELECTION_INSTRUCTIONS,
 });
