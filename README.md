@@ -59,7 +59,7 @@ What you get:
 
 `get_my_ip` works without an API key. All other tools require one.
 
-You can sign up for a free IPGeolocation API key here: [https://app.ipgeolocation.io/signup](https://app.ipgeolocation.io/signup)
+[Sign up for a free IPGeolocation API key](https://app.ipgeolocation.io/signup)
 
 ### Install by Client
 
