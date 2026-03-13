@@ -1,5 +1,11 @@
 # IPGeolocation.io MCP Server
 
+[![npm version](https://img.shields.io/npm/v/ipgeolocation-io-mcp?logo=npm&label=npm)](https://www.npmjs.com/package/ipgeolocation-io-mcp)
+[![GitHub release](https://img.shields.io/github/v/release/IPGeolocation/ipgeolocation-io-mcp?logo=github&label=release)](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-live-0A7CFF)](https://registry.modelcontextprotocol.io/?q=ipgeolocation)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![License](https://img.shields.io/badge/license-MIT-0E8A16)](https://github.com/IPGeolocation/ipgeolocation-io-mcp/blob/main/LICENSE)
+
 Official MCP server for IP geolocation, IP security, abuse contacts, ASN, timezone, astronomy, and user-agent parsing.
 
 We build and maintain this server so you can use our APIs from Codex, Claude Desktop, Cursor, Windsurf, VS Code, and other MCP-compatible clients.
