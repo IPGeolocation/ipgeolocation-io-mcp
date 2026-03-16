@@ -13,12 +13,32 @@ We build and maintain this server so you can use our APIs from Codex, Claude Des
 | Item | Value |
 |------|-------|
 | Package | `ipgeolocation-io-mcp` |
-| Version | `1.0.9` |
+| Version | `1.0.10` |
 | Transport | `stdio` |
 | Node.js | `>=18` |
 | Free plan support | 7 tools, 1,000 credits per day |
 | Paid plan support | All 16 tools, advanced IP intelligence, bulk operations |
 | Bundle manifest | `manifest.json` included |
+
+## Quick Start
+
+[Sign up for a free IPGeolocation API key](https://app.ipgeolocation.io/signup), then add this MCP server to your client:
+
+```json
+{
+  "mcpServers": {
+    "ipgeolocation": {
+      "command": "npx",
+      "args": ["-y", "ipgeolocation-io-mcp"],
+      "env": {
+        "IPGEOLOCATION_API_KEY": "<IPGEOLOCATION_API_KEY>"
+      }
+    }
+  }
+}
+```
+
+Restart your client after saving the configuration.
 
 ## Table of Contents
 
@@ -208,7 +228,7 @@ Use these prompts after installation. They are short, easy to validate, and cove
 | Give sunrise times for Karachi from 2026-03-10 to 2026-03-15. | `get_astronomy_time_series` |
 | Parse this user agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 | `parse_user_agent` |
 
-If your client keeps using an older tool path after an update, restart the client and make sure it is loading version `1.0.9`.
+If your client keeps using an older tool path after an update, restart the client and make sure it is loading version `1.0.10`.
 
 ## Prompt Examples by Use Case
 
