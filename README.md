@@ -11,8 +11,6 @@ Official MCP server for IP geolocation, IP security, abuse contacts, ASN, timezo
 
 We build and maintain this server so you can use our APIs from Codex, Claude Desktop, Cursor, Windsurf, VS Code, and other MCP-compatible clients.
 
-<!-- For complete IP geolocation endpoint details, see the IP Location API documentation: https://ipgeolocation.io/ip-location-api.html -->
-
 | Item | Value |
 |------|-------|
 | Package | `ipgeolocation-io-mcp` |
@@ -120,6 +118,14 @@ We ship `manifest.json` for clients that support MCP Bundles. If you want to con
 ```
 
 Restart Claude Desktop after saving the config.
+
+#### Glama
+
+You can try the server in Glama at [IP Geolocation MCP Server on Glama](https://glama.ai/mcp/servers/IPGeolocation/ipgeolocation-io-mcp).
+
+For normal setup in Glama, only `IPGEOLOCATION_API_KEY` is required. Leave the other environment variable fields empty unless you explicitly want to tune cache, timeout, or output limits.
+
+If you do not already have a key, [sign up for a free IPGeolocation API key](https://app.ipgeolocation.io/signup).
 
 #### Cline
 
