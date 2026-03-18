@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/IPGeolocation/ipgeolocation-io-mcp#readme
+    about: Review installation, configuration, and usage guidance before opening an issue.
+  - name: IPGeolocation API docs
+    url: https://ipgeolocation.io/documentation.html
+    about: Check endpoint behavior, plans, and request parameters for the underlying API.
