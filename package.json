@@ -1,6 +1,6 @@
 {
   "name": "ipgeolocation-io-mcp",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "mcpName": "io.github.IPGeolocation/ipgeolocation-io-mcp",
   "description": "Official MCP server for IP geolocation, IP security, abuse contacts, ASN, timezone, astronomy, and user-agent parsing.",
   "type": "module",
