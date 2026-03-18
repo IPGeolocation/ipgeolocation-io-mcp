@@ -699,8 +699,6 @@ npm run test:integration  # integration tests only
 
 ## Pricing
 
-Canonical path: `ipgeolocation.io/pricing`
-
 For current plan details, credits, and pricing, see the [IPGeolocation pricing page](https://ipgeolocation.io/pricing.html).
 
 ## Links
@@ -716,7 +714,5 @@ For current plan details, credits, and pricing, see the [IPGeolocation pricing p
 [MIT](LICENSE)
 
 ## Privacy Policy
-
-Canonical path: `ipgeolocation.io/privacy`
 
 Read the [IPGeolocation Privacy Policy](https://ipgeolocation.io/privacy.html).
