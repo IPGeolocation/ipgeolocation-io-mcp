@@ -7,7 +7,7 @@
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-5FA04E?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-16A34A)](https://github.com/IPGeolocation/ipgeolocation-io-mcp/blob/main/LICENSE)
 
-Official MCP server for [ipgeolocation.io](https://ipgeolocation.io). Includes 16 MCP tools: IP geolocation, threat/VPN/proxy detection, timezone lookups and conversions, sunrise/sunset/moon data, ASN details, abuse contacts, and user-agent parsing. Seven tools work on the free plan (1,000 credits/day). Paid plans unlock all 16 plus bulk endpoints (up to 1,000 items per call).
+Official MCP server for [IPGeolocation.io](https://ipgeolocation.io). Includes 16 MCP tools: IP geolocation, threat/VPN/proxy detection, timezone lookups and conversions, sunrise/sunset/moon data, ASN details, abuse contacts, and user-agent parsing. Seven tools work on the free plan (1,000 credits/day). Paid plans unlock all 16 plus bulk endpoints (up to 1,000 items per call).
 
 Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and any other MCP client.
 
@@ -20,7 +20,7 @@ Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and a
 
 ## Quick Start
 
-1. [Get a free API key](https://app.ipgeolocation.io/signup)
+1. [Create a free IPGeolocation API key](https://app.ipgeolocation.io/signup)
 
 2. Add this to your MCP client config (see [Install by Client](#install-by-client) below for the exact config file path for your client):
 
@@ -70,7 +70,7 @@ Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and a
 
 - Node.js 18 or later
 - `npx` available in your terminal
-- An ipgeolocation.io API key for most tools
+- An IPGeolocation.io API key for most tools
 
 `get_my_ip` works without an API key. Everything else requires one.
 
@@ -191,7 +191,7 @@ Restart VS Code after saving.
 
 You can try the server on [Glama](https://glama.ai/mcp/servers/IPGeolocation/ipgeolocation-io-mcp) directly. Only `IPGEOLOCATION_API_KEY` is required. Leave other environment variable fields empty unless you want to change cache, timeout, or output limits.
 
-If you don't have a key yet, [sign up for free](https://app.ipgeolocation.io/signup).
+If you don't have a key yet, [create a free IPGeolocation API key](https://app.ipgeolocation.io/signup).
 
 ### Any Other MCP Client
 
@@ -264,7 +264,7 @@ All 16 tools. Paid plans also add `network`, `company`, and extended `asn` field
 | `include=security&fields=security` | 2 |
 | `include=abuse&fields=abuse` | 1 |
 
-For current plan details and pricing: [ipgeolocation.io/pricing](https://ipgeolocation.io/pricing.html)
+For current plan details and pricing, see the [IPGeolocation pricing page](https://ipgeolocation.io/pricing.html).
 
 ## Tool Reference
 
@@ -699,14 +699,16 @@ npm run test:integration  # integration tests only
 
 ## Pricing
 
-For current plan details, credits, and pricing: [ipgeolocation.io/pricing](https://ipgeolocation.io/pricing.html)
+Canonical path: `ipgeolocation.io/pricing`
+
+For current plan details, credits, and pricing, see the [IPGeolocation pricing page](https://ipgeolocation.io/pricing.html).
 
 ## Links
 
-- [Website](https://ipgeolocation.io)
-- [API Documentation](https://ipgeolocation.io/documentation.html)
-- [Pricing](https://ipgeolocation.io/pricing.html)
-- [Sign Up](https://app.ipgeolocation.io/signup)
+- [IPGeolocation Website](https://ipgeolocation.io)
+- [IPGeolocation API Documentation](https://ipgeolocation.io/documentation.html)
+- [IPGeolocation Pricing](https://ipgeolocation.io/pricing.html)
+- [Create a Free IPGeolocation API Key](https://app.ipgeolocation.io/signup)
 - [Changelog](CHANGELOG.md)
 
 ## License
@@ -715,4 +717,6 @@ For current plan details, credits, and pricing: [ipgeolocation.io/pricing](https
 
 ## Privacy Policy
 
-[ipgeolocation.io/privacy](https://ipgeolocation.io/privacy.html)
+Canonical path: `ipgeolocation.io/privacy`
+
+Read the [IPGeolocation Privacy Policy](https://ipgeolocation.io/privacy.html).
