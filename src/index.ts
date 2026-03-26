@@ -1,5 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import { registerGeolocationTools } from "./tools/geolocation.js";
 import { registerSecurityTools } from "./tools/security.js";
 import { registerTimezoneTools } from "./tools/timezone.js";
@@ -27,33 +30,71 @@ const toolSelectionInstructionParts = [
 
 const TOOL_SELECTION_INSTRUCTIONS = toolSelectionInstructionParts.join(" ");
 
-const server = new McpServer({
-  name: "ipgeolocation-io-mcp",
-  version: "1.0.11",
-}, {
-  instructions: TOOL_SELECTION_INSTRUCTIONS,
+export const configSchema = z.object({
+  apiKey: z.string().describe("Your IPGeolocation.io API key"),
 });
 
-registerGeolocationTools(server);
-registerSecurityTools(server);
-registerTimezoneTools(server);
-registerAstronomyTools(server);
-registerAsnTools(server);
-registerAbuseTools(server);
-registerUserAgentTools(server);
+type SessionConfig = z.infer<typeof configSchema>;
 
-const transport = new StdioServerTransport();
-// Keep the process alive while waiting for stdio JSON-RPC messages.
-process.stdin.resume();
+function applySessionConfig(config: Partial<SessionConfig> = {}): void {
+  if (config.apiKey) {
+    process.env.IPGEOLOCATION_API_KEY = config.apiKey;
+  }
+}
 
-await server.connect(transport);
+export function createMcpServer(): McpServer {
+  const server = new McpServer({
+    name: "ipgeolocation-io-mcp",
+    version: "1.0.11",
+  }, {
+    instructions: TOOL_SELECTION_INSTRUCTIONS,
+  });
 
-process.on("SIGINT", async () => {
-  await server.close();
-  process.exit(0);
-});
+  registerGeolocationTools(server);
+  registerSecurityTools(server);
+  registerTimezoneTools(server);
+  registerAstronomyTools(server);
+  registerAsnTools(server);
+  registerAbuseTools(server);
+  registerUserAgentTools(server);
 
-process.on("SIGTERM", async () => {
-  await server.close();
-  process.exit(0);
-});
+  return server;
+}
+
+export default function createServer(
+  { config = {} }: { config?: Partial<SessionConfig> } = {}
+) {
+  applySessionConfig(config);
+  return createMcpServer().server;
+}
+
+export async function startStdioServer(): Promise<void> {
+  const server = createMcpServer();
+  const transport = new StdioServerTransport();
+
+  // Keep the process alive while waiting for stdio JSON-RPC messages.
+  process.stdin.resume();
+  await server.connect(transport);
+
+  process.on("SIGINT", async () => {
+    await server.close();
+    process.exit(0);
+  });
+
+  process.on("SIGTERM", async () => {
+    await server.close();
+    process.exit(0);
+  });
+}
+
+function isEntrypoint(): boolean {
+  if (!process.argv[1]) {
+    return false;
+  }
+
+  return path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+}
+
+if (isEntrypoint()) {
+  await startStdioServer();
+}

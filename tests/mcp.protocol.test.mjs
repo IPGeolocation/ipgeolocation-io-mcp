@@ -39,6 +39,26 @@ test("server entrypoint includes global tool-selection instructions", async () =
   assert.match(indexSource, /Use fields to request only required paths/);
 });
 
+test("server entrypoint exports Smithery-compatible config without auto-starting on import", async () => {
+  const moduleUrl = new URL("../dist/index.js", import.meta.url);
+  moduleUrl.searchParams.set("t", `${Date.now()}-${Math.random()}`);
+  const entrypoint = await import(moduleUrl.href);
+
+  assert.equal(typeof entrypoint.default, "function");
+  assert.equal(typeof entrypoint.startStdioServer, "function");
+  assert.equal(typeof entrypoint.createMcpServer, "function");
+  assert.ok(entrypoint.configSchema);
+
+  const validConfig = entrypoint.configSchema.safeParse({
+    apiKey: "test-key",
+  });
+  const invalidConfig = entrypoint.configSchema.safeParse({});
+
+  assert.equal(validConfig.success, true);
+  assert.equal(invalidConfig.success, false);
+  assert.ok(entrypoint.default({ config: { apiKey: "test-key" } }));
+});
+
 test("manifest mcp_config is aligned for stdio startup", async () => {
   const manifest = JSON.parse(await readRepoFile("manifest.json"));
 
@@ -85,13 +105,13 @@ test("timezone and astronomy tool docs reflect free non-English lang 401 behavio
 test("README keeps parse_user_agent as paid-only without mentioning GET in that section", async () => {
   const readme = await readRepoFile("README.md");
   const match = readme.match(
-    /<summary><strong>parse_user_agent<\/strong>[\s\S]*?<\/details>/
+    /### parse_user_agent[\s\S]*?(?=\n### |\n## |\n# |$)/
   );
 
   assert.ok(match, "parse_user_agent section must exist in README");
   const section = match[0];
-  assert.match(section, /Plan: paid only/);
-  assert.match(section, /Credits: 1/);
+  assert.match(section, /Paid\./);
+  assert.match(section, /1 credit/);
   assert.match(section, /The user-agent string to parse/);
   assert.doesNotMatch(section, /GET `\/v3\/user-agent`/);
 });
