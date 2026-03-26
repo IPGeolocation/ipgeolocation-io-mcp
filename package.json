@@ -1,13 +1,13 @@
 {
   "name": "ipgeolocation-io-mcp",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "mcpName": "io.github.IPGeolocation/ipgeolocation-io-mcp",
   "description": "Official MCP server for IP geolocation, IP security, abuse contacts, ASN, timezone, astronomy, and user-agent parsing.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "ipgeolocation-io-mcp": "./dist/index.js"
+    "ipgeolocation-io-mcp": "./dist/cli.js"
   },
   "files": [
     "dist",
@@ -18,7 +18,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build": "tsc && printf '%s\\n' '#!/usr/bin/env node' | cat - dist/index.js > dist/index.js.tmp && mv dist/index.js.tmp dist/index.js && chmod +x dist/index.js",
+    "build": "tsc && printf '%s\\n' '#!/usr/bin/env node' | cat - dist/cli.js > dist/cli.js.tmp && mv dist/cli.js.tmp dist/cli.js && chmod +x dist/cli.js",
     "test": "npm run build && node --test --test-concurrency=1 tests",
     "test:unit": "npm run build && node --test --test-concurrency=1 tests/client.test.mjs tests/response.test.mjs tests/validation.test.mjs",
     "test:integration": "npm run build && node --test --test-concurrency=1 tests/tools.integration.test.mjs tests/mcp.protocol.test.mjs",

@@ -63,9 +63,9 @@ test("manifest mcp_config is aligned for stdio startup", async () => {
   const manifest = JSON.parse(await readRepoFile("manifest.json"));
 
   assert.equal(manifest.server.type, "node");
-  assert.equal(manifest.server.entry_point, "dist/index.js");
+  assert.equal(manifest.server.entry_point, "dist/cli.js");
   assert.equal(manifest.server.mcp_config.command, "node");
-  assert.deepEqual(manifest.server.mcp_config.args, ["${__dirname}/dist/index.js"]);
+  assert.deepEqual(manifest.server.mcp_config.args, ["${__dirname}/dist/cli.js"]);
   assert.equal(
     manifest.server.mcp_config.env.IPGEOLOCATION_API_KEY,
     "${user_config.api_key}"

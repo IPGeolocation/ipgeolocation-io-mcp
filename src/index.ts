@@ -1,7 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { registerGeolocationTools } from "./tools/geolocation.js";
 import { registerSecurityTools } from "./tools/security.js";
@@ -45,7 +43,7 @@ function applySessionConfig(config: Partial<SessionConfig> = {}): void {
 export function createMcpServer(): McpServer {
   const server = new McpServer({
     name: "ipgeolocation-io-mcp",
-    version: "1.0.12",
+    version: "1.0.13",
   }, {
     instructions: TOOL_SELECTION_INSTRUCTIONS,
   });
@@ -85,16 +83,4 @@ export async function startStdioServer(): Promise<void> {
     await server.close();
     process.exit(0);
   });
-}
-
-function isEntrypoint(): boolean {
-  if (!process.argv[1]) {
-    return false;
-  }
-
-  return path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-}
-
-if (isEntrypoint()) {
-  await startStdioServer();
 }

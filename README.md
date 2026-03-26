@@ -14,7 +14,7 @@ Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and a
 | Item | Value |
 |------|-------|
 | Package | `ipgeolocation-io-mcp` |
-| Version | `1.0.12` |
+| Version | `1.0.13` |
 | Transport | `stdio` |
 | Node.js | `>=18` |
 
@@ -663,13 +663,13 @@ npm run build
 Run it directly:
 
 ```bash
-IPGEOLOCATION_API_KEY=<YOUR_KEY> node dist/index.js
+IPGEOLOCATION_API_KEY=<YOUR_KEY> node dist/cli.js
 ```
 
 Inspect with MCP Inspector:
 
 ```bash
-IPGEOLOCATION_API_KEY=<YOUR_KEY> npx @modelcontextprotocol/inspector node dist/index.js
+IPGEOLOCATION_API_KEY=<YOUR_KEY> npx @modelcontextprotocol/inspector node dist/cli.js
 ```
 
 ## Docker
