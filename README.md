@@ -14,7 +14,7 @@ Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and a
 | Item | Value |
 |------|-------|
 | Package | `ipgeolocation-io-mcp` |
-| Version | `1.0.12` |
+| Version | `1.0.13` |
 | Transport | `stdio` |
 | Node.js | `>=18` |
 
