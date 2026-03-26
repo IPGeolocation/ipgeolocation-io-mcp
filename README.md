@@ -663,13 +663,13 @@ npm run build
 Run it directly:
 
 ```bash
-IPGEOLOCATION_API_KEY=<YOUR_KEY> node dist/index.js
+IPGEOLOCATION_API_KEY=<YOUR_KEY> node dist/cli.js
 ```
 
 Inspect with MCP Inspector:
 
 ```bash
-IPGEOLOCATION_API_KEY=<YOUR_KEY> npx @modelcontextprotocol/inspector node dist/index.js
+IPGEOLOCATION_API_KEY=<YOUR_KEY> npx @modelcontextprotocol/inspector node dist/cli.js
 ```
 
 ## Docker
