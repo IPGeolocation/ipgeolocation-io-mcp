@@ -45,7 +45,7 @@ function applySessionConfig(config: Partial<SessionConfig> = {}): void {
 export function createMcpServer(): McpServer {
   const server = new McpServer({
     name: "ipgeolocation-io-mcp",
-    version: "1.0.11",
+    version: "1.0.12",
   }, {
     instructions: TOOL_SELECTION_INSTRUCTIONS,
   });
