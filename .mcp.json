@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ipgeolocation": {
+      "command": "npx",
+      "args": ["-y", "ipgeolocation-io-mcp"],
+      "env": {
+        "IPGEOLOCATION_API_KEY": "${IPGEOLOCATION_API_KEY}"
+      }
+    }
+  }
+}
