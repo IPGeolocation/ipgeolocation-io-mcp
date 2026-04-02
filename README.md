@@ -24,7 +24,7 @@ Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and a
 
 2. Cursor users can install in one click:
 
-   [![Add to Cursor](./assets/add-to-cursor.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=ipgeolocation&config=eyJpcGdlb2xvY2F0aW9uIjp7ImNvbW1hbmQiOiJucHgiLCJhcmdzIjpbIi15IiwiaXBnZW9sb2NhdGlvbi1pby1tY3AiXSwiZW52Ijp7IklQR0VPTE9DQVRJT05fQVBJX0tFWSI6IiR7SVBHRU9MT0NBVElPTl9BUElfS0VZfSJ9fX0=)
+   [↗ Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=ipgeolocation&config=eyJpcGdlb2xvY2F0aW9uIjp7ImNvbW1hbmQiOiJucHgiLCJhcmdzIjpbIi15IiwiaXBnZW9sb2NhdGlvbi1pby1tY3AiXSwiZW52Ijp7IklQR0VPTE9DQVRJT05fQVBJX0tFWSI6IiR7SVBHRU9MT0NBVElPTl9BUElfS0VZfSJ9fX0=)
 
 3. Add this to your MCP client config (see [Install by Client](#install-by-client) below for the exact config file path for your client):
 
@@ -133,7 +133,7 @@ Restart Cline after saving.
 
 One-click install:
 
-[![Add to Cursor](./assets/add-to-cursor.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=ipgeolocation&config=eyJpcGdlb2xvY2F0aW9uIjp7ImNvbW1hbmQiOiJucHgiLCJhcmdzIjpbIi15IiwiaXBnZW9sb2NhdGlvbi1pby1tY3AiXSwiZW52Ijp7IklQR0VPTE9DQVRJT05fQVBJX0tFWSI6IiR7SVBHRU9MT0NBVElPTl9BUElfS0VZfSJ9fX0=)
+[↗ Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=ipgeolocation&config=eyJpcGdlb2xvY2F0aW9uIjp7ImNvbW1hbmQiOiJucHgiLCJhcmdzIjpbIi15IiwiaXBnZW9sb2NhdGlvbi1pby1tY3AiXSwiZW52Ijp7IklQR0VPTE9DQVRJT05fQVBJX0tFWSI6IiR7SVBHRU9MT0NBVElPTl9BUElfS0VZfSJ9fX0=)
 
 Or add to `.cursor/mcp.json` manually:
 
