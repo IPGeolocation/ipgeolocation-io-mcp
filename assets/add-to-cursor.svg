@@ -1,0 +1,33 @@
+<svg width="188" height="44" viewBox="0 0 188 44" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Add to Cursor</title>
+  <desc id="desc">Install the IPGeolocation.io MCP Server in Cursor.</desc>
+  <defs>
+    <linearGradient id="bg" x1="12" y1="6" x2="176" y2="38" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B0F16"/>
+      <stop offset="1" stop-color="#121A27"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="24" y1="10" x2="44" y2="34" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#34D399"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="22" y1="8" x2="166" y2="8" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="188" height="44" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feOffset dy="2"/>
+      <feGaussianBlur stdDeviation="3"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.0196 0 0 0 0 0.0353 0 0 0 0 0.0588 0 0 0 0.26 0"/>
+      <feBlend in2="SourceGraphic" result="shape"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="6" y="4" width="176" height="32" rx="16" fill="url(#bg)"/>
+    <rect x="6.5" y="4.5" width="175" height="31" rx="15.5" stroke="#243042"/>
+    <path d="M22 9H166" stroke="url(#shine)" stroke-linecap="round"/>
+    <rect x="18" y="10" width="20" height="20" rx="10" fill="#0F1724"/>
+    <path d="M24 25.2L28.7 18.8H26L30.1 14.8H34L29.7 20.3H32.7L28.7 25.2H24Z" fill="url(#accent)"/>
+    <text x="48" y="22" fill="#F8FAFC" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" letter-spacing="0.2px">Add to Cursor</text>
+    <text x="141" y="22" fill="#8AA0B8" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="11" font-weight="500">one-click</text>
+  </g>
+</svg>
