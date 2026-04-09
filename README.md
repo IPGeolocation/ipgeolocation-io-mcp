@@ -26,7 +26,7 @@ Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and a
 
 2. Cursor users can install in one click:
 
-   [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=ipgeolocation&config=eyJjb21tYW5kIjoibnB4IC15IGlwZ2VvbG9jYXRpb24taW8tbWNwIiwiZW52Ijp7IklQR0VPTE9DQVRJT05fQVBJX0tFWSI6IiJ9fQ%3D%3D)
+   [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=ipgeolocation&config=eyJjb21tYW5kIjoibnB4IC15IGlwZ2VvbG9jYXRpb24taW8tbWNwIiwiZW52Ijp7IklQR0VPTE9DQVRJT05fQVBJX0tFWSI6IiJ9fQ%3D%3D)
 
 3. Add this to your MCP client config (see [Install by Client](#install-by-client) below for the exact config file path for your client):
 
