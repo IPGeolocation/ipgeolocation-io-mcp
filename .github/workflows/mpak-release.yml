@@ -1,0 +1,72 @@
+name: mpak Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Require workflow dispatch on a tag ref
+        run: |
+          if [ "${{ github.ref_type }}" != "tag" ]; then
+            echo "Run this workflow against a release tag, for example:"
+            echo "gh workflow run mpak-release.yml --ref v1.0.13"
+            exit 1
+          fi
+
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build root distribution
+        run: npm run build
+
+      - name: Prepare isolated mpak package
+        run: node scripts/prepare-mpak-package.mjs
+
+      - name: Build universal mpak bundle
+        id: build_bundle
+        uses: NimbleBrainInc/mcpb-pack@bcc565454580b378121fef0f5086d2979f07ddbd
+        with:
+          directory: artifacts/mpak-package
+          upload: false
+          announce: false
+          platform-os: any
+          platform-arch: any
+
+      - name: Verify release exists
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: gh release view "${{ github.ref_name }}"
+
+      - name: Upload mpak assets to the tagged release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            "${{ steps.build_bundle.outputs.bundle-path }}" \
+            artifacts/mpak-package/server.json \
+            --clobber
+
+      - name: Announce universal mpak bundle
+        uses: NimbleBrainInc/mcpb-pack@bcc565454580b378121fef0f5086d2979f07ddbd
+        with:
+          directory: artifacts/mpak-package
+          bundle-path: ${{ steps.build_bundle.outputs.bundle-path }}
+          build: false
+          upload: false
+          announce-required: true
+          platform-os: any
+          platform-arch: any

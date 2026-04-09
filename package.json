@@ -19,6 +19,7 @@
   },
   "scripts": {
     "build": "tsc && printf '%s\\n' '#!/usr/bin/env node' | cat - dist/cli.js > dist/cli.js.tmp && mv dist/cli.js.tmp dist/cli.js && chmod +x dist/cli.js",
+    "prepare:mpak": "node scripts/prepare-mpak-package.mjs",
     "test": "npm run build && node --test --test-concurrency=1 tests",
     "test:unit": "npm run build && node --test --test-concurrency=1 tests/client.test.mjs tests/response.test.mjs tests/validation.test.mjs",
     "test:integration": "npm run build && node --test --test-concurrency=1 tests/tools.integration.test.mjs tests/mcp.protocol.test.mjs",
@@ -80,7 +81,10 @@
     "zod": "^3.24.0"
   },
   "overrides": {
-    "express-rate-limit": "8.2.2"
+    "@hono/node-server": "1.19.13",
+    "express-rate-limit": "8.2.2",
+    "hono": "4.12.12",
+    "path-to-regexp": "8.4.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
