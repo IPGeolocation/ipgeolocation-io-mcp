@@ -11,14 +11,19 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
+const workspaceRoot = path.resolve(repoRoot, "..");
 const artifactsRoot = path.join(repoRoot, "artifacts");
+const requestedSourceDir = process.env.MPAK_SOURCE_DIR
+  ? path.resolve(repoRoot, process.env.MPAK_SOURCE_DIR)
+  : repoRoot;
 const requestedOutputDir = process.env.MPAK_STAGING_DIR
   ? path.resolve(repoRoot, process.env.MPAK_STAGING_DIR)
   : path.join(artifactsRoot, "mpak-package");
+const sourceDir = requestedSourceDir;
 const outputDir = requestedOutputDir;
 const packagingDir = path.join(repoRoot, "packaging", "mpak");
-const distDir = path.join(repoRoot, "dist");
-const licensePath = path.join(repoRoot, "LICENSE");
+const distDir = path.join(sourceDir, "dist");
+const licensePath = path.join(sourceDir, "LICENSE");
 
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));
@@ -81,12 +86,23 @@ function buildStagingServer(rootServerMetadata, rootManifest, version, bundleNam
   };
 }
 
-const rootPackage = readJson(path.join(repoRoot, "package.json"));
-const rootLockfile = readJson(path.join(repoRoot, "package-lock.json"));
-const rootManifest = readJson(path.join(repoRoot, "manifest.json"));
-const rootServerMetadata = readJson(path.join(repoRoot, "server.json"));
+const rootPackage = readJson(path.join(sourceDir, "package.json"));
+const rootLockfile = readJson(path.join(sourceDir, "package-lock.json"));
+const rootManifest = readJson(path.join(sourceDir, "manifest.json"));
+const rootServerMetadata = readJson(path.join(sourceDir, "server.json"));
 const mpakConfig = readJson(path.join(packagingDir, "config.json"));
 const version = rootPackage.version;
+
+if (
+  sourceDir !== repoRoot &&
+  sourceDir !== workspaceRoot &&
+  !sourceDir.startsWith(`${repoRoot}${path.sep}`) &&
+  !sourceDir.startsWith(`${workspaceRoot}${path.sep}`)
+) {
+  throw new Error(
+    "MPAK_SOURCE_DIR must stay within the repository or the GitHub Actions workspace.",
+  );
+}
 
 if (
   outputDir !== artifactsRoot &&
