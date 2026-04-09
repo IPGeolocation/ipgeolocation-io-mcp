@@ -72,7 +72,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ inputs.release_tag }}" \
-            "${{ steps.build_bundle.outputs.bundle-path }}" \
+            "artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}" \
             artifacts/mpak-package/server.json \
             --clobber
 
@@ -80,7 +80,7 @@ jobs:
         uses: NimbleBrainInc/mcpb-pack@bcc565454580b378121fef0f5086d2979f07ddbd
         with:
           directory: tooling/artifacts/mpak-package
-          bundle-path: ${{ steps.build_bundle.outputs.bundle-path }}
+          bundle-path: tooling/artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}
           build: false
           upload: false
           announce-required: true
