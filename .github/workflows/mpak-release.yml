@@ -2,6 +2,14 @@ name: mpak Release
 
 on:
   workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Git ref to build the mpak bundle from
+        required: true
+        default: main
+      release_tag:
+        description: Existing GitHub release tag to upload assets to
+        required: true
 
 permissions:
   contents: write
@@ -13,49 +21,57 @@ jobs:
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          path: tooling
+
+      - name: Check out source ref
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ inputs.source_ref }}
+          path: source
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22"
           cache: "npm"
+          cache-dependency-path: source/package-lock.json
 
-      - name: Require workflow dispatch on a tag ref
-        run: |
-          if [ "${{ github.ref_type }}" != "tag" ]; then
-            echo "Run this workflow against a release tag, for example:"
-            echo "gh workflow run mpak-release.yml --ref v1.0.13"
-            exit 1
-          fi
+      - name: Verify release exists
+        working-directory: tooling
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: gh release view "${{ inputs.release_tag }}"
 
       - name: Install root dependencies
+        working-directory: source
         run: npm ci --ignore-scripts
 
       - name: Build root distribution
+        working-directory: source
         run: npm run build
 
       - name: Prepare isolated mpak package
+        working-directory: tooling
+        env:
+          MPAK_SOURCE_DIR: ../source
         run: node scripts/prepare-mpak-package.mjs
 
       - name: Build universal mpak bundle
         id: build_bundle
         uses: NimbleBrainInc/mcpb-pack@bcc565454580b378121fef0f5086d2979f07ddbd
         with:
-          directory: artifacts/mpak-package
+          directory: tooling/artifacts/mpak-package
           upload: false
           announce: false
           platform-os: any
           platform-arch: any
 
-      - name: Verify release exists
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: gh release view "${{ github.ref_name }}"
-
       - name: Upload mpak assets to the tagged release
+        working-directory: tooling
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${{ github.ref_name }}" \
+          gh release upload "${{ inputs.release_tag }}" \
             "${{ steps.build_bundle.outputs.bundle-path }}" \
             artifacts/mpak-package/server.json \
             --clobber
@@ -63,7 +79,7 @@ jobs:
       - name: Announce universal mpak bundle
         uses: NimbleBrainInc/mcpb-pack@bcc565454580b378121fef0f5086d2979f07ddbd
         with:
-          directory: artifacts/mpak-package
+          directory: tooling/artifacts/mpak-package
           bundle-path: ${{ steps.build_bundle.outputs.bundle-path }}
           build: false
           upload: false
