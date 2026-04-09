@@ -77,12 +77,109 @@ jobs:
             --clobber
 
       - name: Announce universal mpak bundle
-        uses: NimbleBrainInc/mcpb-pack@bcc565454580b378121fef0f5086d2979f07ddbd
-        with:
-          directory: tooling/artifacts/mpak-package
-          bundle-path: ${{ steps.build_bundle.outputs.bundle-path }}
-          build: false
-          upload: false
-          announce-required: true
-          platform-os: any
-          platform-arch: any
+        working-directory: tooling/artifacts/mpak-package
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          BUNDLE_FILENAME: ${{ steps.build_bundle.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+
+          if [ ! -f "$BUNDLE_FILENAME" ]; then
+            echo "::error::Bundle not found: $BUNDLE_FILENAME"
+            exit 1
+          fi
+
+          OIDC_TOKEN=$(curl -fsS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https://mpak.dev" \
+            | jq -r '.value')
+
+          if [ "$OIDC_TOKEN" = "null" ] || [ -z "$OIDC_TOKEN" ]; then
+            echo "::error::Failed to get OIDC token. Ensure permissions.id-token=write is set."
+            exit 1
+          fi
+
+          NAME=$(jq -r '.name' manifest.json)
+          VERSION=$(jq -r '.version' manifest.json)
+          PRERELEASE=$(gh release view "$RELEASE_TAG" --json isPrerelease --jq '.isPrerelease')
+
+          if stat -f%z "$BUNDLE_FILENAME" >/dev/null 2>&1; then
+            SIZE=$(stat -f%z "$BUNDLE_FILENAME")
+          else
+            SIZE=$(stat -c%s "$BUNDLE_FILENAME")
+          fi
+
+          if command -v shasum >/dev/null 2>&1; then
+            SHA256=$(shasum -a 256 "$BUNDLE_FILENAME" | awk '{print $1}')
+          else
+            SHA256=$(sha256sum "$BUNDLE_FILENAME" | awk '{print $1}')
+          fi
+
+          PAYLOAD=$(jq -n \
+            --arg name "$NAME" \
+            --arg version "$VERSION" \
+            --slurpfile manifest manifest.json \
+            --arg release_tag "$RELEASE_TAG" \
+            --argjson prerelease "$PRERELEASE" \
+            --arg filename "$BUNDLE_FILENAME" \
+            --arg os "any" \
+            --arg arch "any" \
+            --arg sha256 "$SHA256" \
+            --argjson size "$SIZE" \
+            '{
+              name: $name,
+              version: $version,
+              manifest: $manifest[0],
+              release_tag: $release_tag,
+              prerelease: $prerelease,
+              artifact: {
+                filename: $filename,
+                os: $os,
+                arch: $arch,
+                sha256: $sha256,
+                size: $size
+              }
+            }')
+
+          echo "Announcing $NAME v$VERSION for release $RELEASE_TAG"
+
+          MAX_ATTEMPTS=4
+          ATTEMPT=1
+
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            RESPONSE=$(curl -sS -w "\n%{http_code}" \
+              -X POST "https://registry.mpak.dev/v1/bundles/announce" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $OIDC_TOKEN" \
+              -d "$PAYLOAD")
+
+            HTTP_CODE=$(printf '%s\n' "$RESPONSE" | tail -n 1)
+            BODY=$(printf '%s\n' "$RESPONSE" | sed '$d')
+
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "Bundle announced successfully"
+              echo "$BODY" | jq .
+              exit 0
+            fi
+
+            if [ "$HTTP_CODE" -eq 409 ]; then
+              echo "Bundle already registered"
+              echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
+              exit 0
+            fi
+
+            if printf '%s' "$BODY" | grep -Eq 'not found in release'; then
+              if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+                WAIT_SECONDS=$((ATTEMPT * 5))
+                echo "Release assets not visible yet, retrying in ${WAIT_SECONDS}s..."
+                sleep "$WAIT_SECONDS"
+                ATTEMPT=$((ATTEMPT + 1))
+                continue
+              fi
+            fi
+
+            echo "::error::Failed to announce bundle (HTTP $HTTP_CODE)"
+            echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
+            exit 1
+          done
