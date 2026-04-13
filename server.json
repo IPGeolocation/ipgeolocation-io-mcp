@@ -3,7 +3,7 @@
   "name": "io.github.IPGeolocation/ipgeolocation-io-mcp",
   "title": "IPGeolocation.io MCP Server",
   "description": "Official MCP server for IP geolocation, security, ASN, abuse, timezone, astronomy, and user-agent.",
-  "version": "1.0.14",
+  "version": "1.0.16",
   "websiteUrl": "https://github.com/IPGeolocation/ipgeolocation-io-mcp#readme",
   "icons": [
     {
@@ -26,7 +26,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "ipgeolocation-io-mcp",
-      "version": "1.0.14",
+      "version": "1.0.16",
       "transport": {
         "type": "stdio"
       },

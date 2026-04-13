@@ -63,7 +63,7 @@ export function createMcpServer(
 ): McpServer {
   const server = new McpServer({
     name: "ipgeolocation-io-mcp",
-    version: "1.0.14",
+    version: "1.0.16",
   }, {
     instructions: TOOL_SELECTION_INSTRUCTIONS,
   });
