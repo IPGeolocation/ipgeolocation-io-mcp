@@ -38,6 +38,7 @@ jobs:
           platform-arch: any
 
       - name: Finalize mpak bundle metadata
-        run: node scripts/finalize-mpak-bundle.mjs \
-          "artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}" \
-          artifacts/mpak-package
+        run: >-
+          node scripts/finalize-mpak-bundle.mjs
+          "artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}"
+          "artifacts/mpak-package"

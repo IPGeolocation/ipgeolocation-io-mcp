@@ -67,9 +67,10 @@ jobs:
 
       - name: Finalize mpak bundle metadata
         working-directory: tooling
-        run: node scripts/finalize-mpak-bundle.mjs \
-          "artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}" \
-          artifacts/mpak-package
+        run: >-
+          node scripts/finalize-mpak-bundle.mjs
+          "artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}"
+          "artifacts/mpak-package"
 
       - name: Install mpak scanner
         run: uv pip install --system mpak-scanner
