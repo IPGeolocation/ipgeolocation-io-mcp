@@ -1,0 +1,85 @@
+name: mpak Scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Git ref to scan
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          path: tooling
+
+      - name: Check out source ref
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ inputs.source_ref }}
+          path: source
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: source/package-lock.json
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a
+        with:
+          version: "0.11.5"
+          enable-cache: false
+
+      - name: Install root dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts
+
+      - name: Build root distribution
+        working-directory: source
+        run: npm run build
+
+      - name: Prepare isolated mpak package
+        working-directory: tooling
+        env:
+          MPAK_SOURCE_DIR: ../source
+        run: node scripts/prepare-mpak-package.mjs
+
+      - name: Build universal mpak bundle
+        id: build_bundle
+        uses: NimbleBrainInc/mcpb-pack@bcc565454580b378121fef0f5086d2979f07ddbd
+        with:
+          directory: tooling/artifacts/mpak-package
+          upload: false
+          announce: false
+          platform-os: any
+          platform-arch: any
+
+      - name: Finalize mpak bundle metadata
+        working-directory: tooling
+        run: node scripts/finalize-mpak-bundle.mjs \
+          "artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}" \
+          artifacts/mpak-package
+
+      - name: Install mpak scanner
+        run: uv pip install --system mpak-scanner
+
+      - name: Run mpak scanner
+        working-directory: tooling/artifacts/mpak-package
+        run: mpak-scanner scan "${{ steps.build_bundle.outputs.bundle-path }}" --json > scan-results.json
+
+      - name: Upload scanner results
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: mpak-scan-results
+          path: tooling/artifacts/mpak-package/scan-results.json

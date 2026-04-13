@@ -1,54 +1,11 @@
-const DEFAULT_MAX_BULK_ITEMS = 1000;
-const DEFAULT_MAX_ITEMS_IN_RESPONSE = 250;
-const DEFAULT_MAX_RESPONSE_CHARS = 200000;
-const DEFAULT_MAX_ERROR_CHARS = 4000;
+import {
+  getMaxBulkItems,
+  getMaxErrorChars,
+  getMaxItemsInResponse,
+  getMaxResponseChars,
+} from "../config.js";
 
-function parsePositiveIntEnv(
-  name: string,
-  fallback: number,
-  min: number,
-  max: number
-): number {
-  const raw = process.env[name];
-  if (!raw) {
-    return fallback;
-  }
-
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
-    return fallback;
-  }
-
-  return parsed;
-}
-
-export const MAX_BULK_ITEMS = parsePositiveIntEnv(
-  "IPGEOLOCATION_MCP_MAX_BULK_ITEMS",
-  DEFAULT_MAX_BULK_ITEMS,
-  1,
-  50000
-);
-
-const MAX_ITEMS_IN_RESPONSE = parsePositiveIntEnv(
-  "IPGEOLOCATION_MCP_MAX_RESULT_ITEMS",
-  DEFAULT_MAX_ITEMS_IN_RESPONSE,
-  1,
-  50000
-);
-
-const MAX_RESPONSE_CHARS = parsePositiveIntEnv(
-  "IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS",
-  DEFAULT_MAX_RESPONSE_CHARS,
-  10000,
-  2000000
-);
-
-const MAX_ERROR_CHARS = parsePositiveIntEnv(
-  "IPGEOLOCATION_MCP_MAX_ERROR_CHARS",
-  DEFAULT_MAX_ERROR_CHARS,
-  200,
-  50000
-);
+export const MAX_BULK_ITEMS = getMaxBulkItems();
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -60,11 +17,12 @@ function prepareArraysForTransport(
   topLevel = false
 ): unknown {
   if (Array.isArray(value)) {
+    const maxItemsInResponse = getMaxItemsInResponse();
     const items = value
-      .slice(0, MAX_ITEMS_IN_RESPONSE)
+      .slice(0, maxItemsInResponse)
       .map((item) => prepareArraysForTransport(item, state));
 
-    if (value.length <= MAX_ITEMS_IN_RESPONSE) {
+    if (value.length <= maxItemsInResponse) {
       return items;
     }
 
@@ -72,7 +30,7 @@ function prepareArraysForTransport(
       return {
         truncated: true,
         total_items: value.length,
-        shown_items: MAX_ITEMS_IN_RESPONSE,
+        shown_items: maxItemsInResponse,
         note: "Response truncated for transport limits. Narrow the query or split batches.",
         items,
       };
@@ -109,13 +67,14 @@ function prepareResultForTransport(result: unknown): unknown {
 }
 
 function buildOversizedResponsePayload(text: string): string {
+  const maxResponseChars = getMaxResponseChars();
   let preview = text;
 
   while (true) {
     const payload = JSON.stringify(
       {
         truncated: true,
-        note: `Response exceeded ${MAX_RESPONSE_CHARS.toLocaleString()} characters. Narrow the query or request fewer fields.`,
+        note: `Response exceeded ${maxResponseChars.toLocaleString()} characters. Narrow the query or request fewer fields.`,
         total_chars: text.length,
         shown_chars: preview.length,
         preview,
@@ -124,11 +83,11 @@ function buildOversizedResponsePayload(text: string): string {
       2
     );
 
-    if (payload.length <= MAX_RESPONSE_CHARS || preview.length === 0) {
+    if (payload.length <= maxResponseChars || preview.length === 0) {
       return payload;
     }
 
-    const overflow = payload.length - MAX_RESPONSE_CHARS;
+    const overflow = payload.length - maxResponseChars;
     const reduction = Math.max(overflow, Math.ceil(preview.length * 0.1), 1);
     preview = preview.slice(0, Math.max(0, preview.length - reduction));
   }
@@ -137,8 +96,9 @@ function buildOversizedResponsePayload(text: string): string {
 export function formatToolResult(result: unknown): string {
   const prepared = prepareResultForTransport(result);
   const text = JSON.stringify(prepared, null, 2);
+  const maxResponseChars = getMaxResponseChars();
 
-  if (text.length <= MAX_RESPONSE_CHARS) {
+  if (text.length <= maxResponseChars) {
     return text;
   }
 
@@ -147,13 +107,14 @@ export function formatToolResult(result: unknown): string {
 
 export function errorToolResponse(error: unknown) {
   const rawMessage = error instanceof Error ? error.message : String(error);
+  const maxErrorChars = getMaxErrorChars();
   const message =
-    rawMessage.length <= MAX_ERROR_CHARS
+    rawMessage.length <= maxErrorChars
       ? rawMessage
       : `${rawMessage.slice(
           0,
-          MAX_ERROR_CHARS
-        )}... [error truncated at ${MAX_ERROR_CHARS.toLocaleString()} characters]`;
+          maxErrorChars
+        )}... [error truncated at ${maxErrorChars.toLocaleString()} characters]`;
 
   return {
     content: [

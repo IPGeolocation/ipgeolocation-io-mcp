@@ -8,6 +8,7 @@ import { registerAstronomyTools } from "./tools/astronomy.js";
 import { registerAsnTools } from "./tools/asn.js";
 import { registerAbuseTools } from "./tools/abuse.js";
 import { registerUserAgentTools } from "./tools/useragent.js";
+import { RuntimeConfig, withRuntimeConfig } from "./config.js";
 
 const toolSelectionInstructionParts = [
   "Plan tool usage before making calls.",
@@ -34,27 +35,47 @@ export const configSchema = z.object({
 
 type SessionConfig = z.infer<typeof configSchema>;
 
-function applySessionConfig(config: Partial<SessionConfig> = {}): void {
-  if (config.apiKey) {
-    process.env.IPGEOLOCATION_API_KEY = config.apiKey;
-  }
+function withServerRuntimeConfig(server: McpServer, config: Partial<RuntimeConfig>): McpServer {
+  const registerTool = ((
+    name: unknown,
+    metadata: unknown,
+    handler: unknown
+  ) => {
+    const typedHandler = handler as (...args: unknown[]) => unknown;
+    return (server.registerTool as unknown as (
+      toolName: unknown,
+      toolMetadata: unknown,
+      toolHandler: (...args: unknown[]) => unknown
+    ) => unknown)(
+      name,
+      metadata,
+      (...args: unknown[]) => withRuntimeConfig(config, () => typedHandler(...args))
+    );
+  }) as McpServer["registerTool"];
+
+  return {
+    registerTool,
+  } as unknown as McpServer;
 }
 
-export function createMcpServer(): McpServer {
+export function createMcpServer(
+  config: Partial<SessionConfig> = {}
+): McpServer {
   const server = new McpServer({
     name: "ipgeolocation-io-mcp",
-    version: "1.0.13",
+    version: "1.0.14",
   }, {
     instructions: TOOL_SELECTION_INSTRUCTIONS,
   });
+  const configuredServer = withServerRuntimeConfig(server, config);
 
-  registerGeolocationTools(server);
-  registerSecurityTools(server);
-  registerTimezoneTools(server);
-  registerAstronomyTools(server);
-  registerAsnTools(server);
-  registerAbuseTools(server);
-  registerUserAgentTools(server);
+  registerGeolocationTools(configuredServer);
+  registerSecurityTools(configuredServer);
+  registerTimezoneTools(configuredServer);
+  registerAstronomyTools(configuredServer);
+  registerAsnTools(configuredServer);
+  registerAbuseTools(configuredServer);
+  registerUserAgentTools(configuredServer);
 
   return server;
 }
@@ -62,8 +83,7 @@ export function createMcpServer(): McpServer {
 export default function createServer(
   { config = {} }: { config?: Partial<SessionConfig> } = {}
 ) {
-  applySessionConfig(config);
-  return createMcpServer().server;
+  return createMcpServer(config).server;
 }
 
 export async function startStdioServer(): Promise<void> {

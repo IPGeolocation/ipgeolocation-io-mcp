@@ -2,11 +2,12 @@
   "manifest_version": "0.3",
   "name": "ipgeolocation-io-mcp",
   "display_name": "IPGeolocation.io MCP Server",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "Official MCP server for IP geolocation, IP security, abuse contacts, ASN, timezone, astronomy, and user-agent parsing.",
   "long_description": "Official MCP server from ipgeolocation.io. Provides 16 tools for IP geolocation, IP security, abuse contact lookup, ASN data, timezone lookups and conversions, astronomy data, and user-agent parsing. Supports free and paid API plans. Bulk operations use a default cap of 1,000 items per request in this MCP server.",
   "author": {
     "name": "ipgeolocation.io",
+    "email": "support@ipgeolocation.io",
     "url": "https://ipgeolocation.io"
   },
   "repository": {
@@ -16,6 +17,7 @@
   "homepage": "https://ipgeolocation.io",
   "documentation": "https://ipgeolocation.io/documentation.html",
   "support": "https://github.com/IPGeolocation/ipgeolocation-io-mcp/issues",
+  "icon": "icon.png",
   "license": "MIT",
   "privacy_policies": [
     "https://ipgeolocation.io/privacy.html"
@@ -90,6 +92,19 @@
     "platforms": ["darwin", "win32", "linux"],
     "runtimes": {
       "node": ">=18.0.0"
+    }
+  },
+  "_meta": {
+    "org.mpaktrust": {
+      "mtf_version": "0.1",
+      "level": 2,
+      "permissions": {
+        "filesystem": "none",
+        "network": "outbound",
+        "environment": "read",
+        "subprocess": "none",
+        "native": "none"
+      }
     }
   },
   "user_config": {

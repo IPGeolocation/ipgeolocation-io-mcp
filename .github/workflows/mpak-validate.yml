@@ -28,6 +28,7 @@ jobs:
         run: node scripts/prepare-mpak-package.mjs
 
       - name: Validate mpak bundle build
+        id: build_bundle
         uses: NimbleBrainInc/mcpb-pack@bcc565454580b378121fef0f5086d2979f07ddbd
         with:
           directory: artifacts/mpak-package
@@ -35,3 +36,8 @@ jobs:
           announce: false
           platform-os: any
           platform-arch: any
+
+      - name: Finalize mpak bundle metadata
+        run: node scripts/finalize-mpak-bundle.mjs \
+          "artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}" \
+          artifacts/mpak-package
