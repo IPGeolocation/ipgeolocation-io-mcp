@@ -1,13 +1,13 @@
+import {
+  getConfiguredApiKey,
+  getRequestTimeoutMs,
+} from "./config.js";
+
 const API_BASE = "https://api.ipgeolocation.io";
-const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
 const MAX_UPSTREAM_ERROR_CHARS = 4000;
 
-let apiKey: string | undefined;
-
 export function getApiKey(): string {
-  if (!apiKey) {
-    apiKey = process.env.IPGEOLOCATION_API_KEY;
-  }
+  const apiKey = getConfiguredApiKey();
   if (!apiKey) {
     throw new Error(
       "API key not configured. Set the IPGEOLOCATION_API_KEY environment variable."
@@ -26,25 +26,11 @@ export class ApiError extends Error {
   }
 }
 
-function parseTimeoutMs(): number {
-  const value = process.env.IPGEOLOCATION_REQUEST_TIMEOUT_MS;
-  if (!value) {
-    return DEFAULT_REQUEST_TIMEOUT_MS;
-  }
-
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 1000 || parsed > 120000) {
-    return DEFAULT_REQUEST_TIMEOUT_MS;
-  }
-
-  return parsed;
-}
-
 async function fetchWithTimeout(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const timeoutMs = parseTimeoutMs();
+  const timeoutMs = getRequestTimeoutMs();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 

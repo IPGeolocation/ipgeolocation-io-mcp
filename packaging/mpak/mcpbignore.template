@@ -1,0 +1,13 @@
+# Prune non-runtime dependency files from bundled node_modules to keep the
+# mpak artifact smaller and avoid scanner noise from vendored docs/workflows.
+node_modules/**/.github/**
+node_modules/**/README*
+node_modules/**/readme*
+node_modules/**/CHANGELOG*
+node_modules/**/History*
+node_modules/**/HISTORY*
+node_modules/**/docs/**
+node_modules/**/doc/**
+node_modules/**/test/**
+node_modules/**/tests/**
+node_modules/**/__tests__/**
