@@ -17,7 +17,7 @@
   "homepage": "https://ipgeolocation.io",
   "documentation": "https://ipgeolocation.io/documentation.html",
   "support": "https://github.com/IPGeolocation/ipgeolocation-io-mcp/issues",
-  "icon": "icon.png",
+  "icon": "https://static.ipgeolocation.io/web-assets/images/brand/ipgeolocation-logo-512-white-bg.png",
   "license": "MIT",
   "privacy_policies": [
     "https://ipgeolocation.io/privacy.html"

@@ -14,6 +14,8 @@ on:
 permissions:
   contents: write
   id-token: write
+  attestations: write
+  artifact-metadata: write
 
 jobs:
   publish:
@@ -73,6 +75,42 @@ jobs:
           "artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}"
           "artifacts/mpak-package"
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22
+
+      - name: Sign mpak bundle with Sigstore keyless
+        id: sign_bundle
+        working-directory: tooling/artifacts/mpak-package
+        run: |
+          set -euo pipefail
+
+          BUNDLE_FILENAME="${{ steps.build_bundle.outputs.bundle-path }}"
+          SIGNATURE_BUNDLE="${BUNDLE_FILENAME}.sigstore.json"
+
+          cosign sign-blob \
+            --yes \
+            --bundle "$SIGNATURE_BUNDLE" \
+            "$BUNDLE_FILENAME"
+
+          echo "signature_bundle=$SIGNATURE_BUNDLE" >> "$GITHUB_OUTPUT"
+
+      - name: Generate build provenance attestation
+        id: attest_bundle
+        uses: actions/attest@281a49d4cbb0a72c9575a50d18f6deb515a11deb
+        with:
+          subject-path: tooling/artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}
+
+      - name: Stage provenance bundle asset
+        id: stage_attestation
+        working-directory: tooling
+        run: |
+          set -euo pipefail
+
+          ATTESTATION_ASSET="artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}.provenance.sigstore.json"
+          cp "${{ steps.attest_bundle.outputs.bundle-path }}" "$ATTESTATION_ASSET"
+
+          echo "attestation_asset=$ATTESTATION_ASSET" >> "$GITHUB_OUTPUT"
+
       - name: Upload mpak assets to the tagged release
         working-directory: tooling
         env:
@@ -81,6 +119,8 @@ jobs:
           gh release upload "${{ inputs.release_tag }}" \
             "artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}" \
             artifacts/mpak-package/server.json \
+            "artifacts/mpak-package/${{ steps.sign_bundle.outputs.signature_bundle }}" \
+            "${{ steps.stage_attestation.outputs.attestation_asset }}" \
             --clobber
 
       - name: Announce universal mpak bundle
