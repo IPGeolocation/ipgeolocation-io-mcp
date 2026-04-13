@@ -41,6 +41,21 @@ jobs:
           version: "0.11.5"
           enable-cache: false
 
+      - name: Install scanner supply-chain tools
+        run: |
+          set -euo pipefail
+
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b /usr/local/bin v1.29.1
+
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
+            | sh -s -- -b /usr/local/bin v0.104.1
+
+          curl -sSfL https://github.com/trufflesecurity/trufflehog/releases/download/v3.92.4/trufflehog_3.92.4_linux_amd64.tar.gz \
+            -o /tmp/trufflehog.tar.gz
+          tar -xzf /tmp/trufflehog.tar.gz -C /tmp trufflehog
+          install -m 0755 /tmp/trufflehog /usr/local/bin/trufflehog
+
       - name: Install root dependencies
         working-directory: source
         run: npm ci --ignore-scripts

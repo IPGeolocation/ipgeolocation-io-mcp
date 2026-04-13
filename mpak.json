@@ -1,0 +1,7 @@
+{
+  "$schema": "https://cdn.mpak.dev/schemas/2025-10-19/mpak.json",
+  "name": "@ipgeolocation/ipgeolocation-io-mcp",
+  "maintainers": [
+    "MudassarTariq"
+  ]
+}
