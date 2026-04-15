@@ -7,6 +7,12 @@ on:
         description: Git ref to scan
         required: true
         default: main
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -14,6 +20,8 @@ permissions:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    env:
+      SOURCE_REF: ${{ inputs.source_ref || github.event.pull_request.head.sha || github.sha }}
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -23,7 +31,7 @@ jobs:
       - name: Check out source ref
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ env.SOURCE_REF }}
           path: source
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
