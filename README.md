@@ -1,6 +1,6 @@
 # IPGeolocation.io MCP Server
 
-[![SafeSkill 89/100](https://img.shields.io/badge/SafeSkill-89%2F100_Passes%20with%20Notes-yellow)](https://safeskill.dev/scan/ipgeolocation-ipgeolocation-io-mcp)
+[![SafeSkill](https://safeskill.dev/api/badge/ipgeolocation-io-mcp)](https://safeskill.dev/scan/ipgeolocation-io-mcp)
 
 [![npm version](https://img.shields.io/npm/v/ipgeolocation-io-mcp?logo=npm&label=npm&color=CB3837)](https://www.npmjs.com/package/ipgeolocation-io-mcp)
 [![GitHub release](https://img.shields.io/github/v/release/IPGeolocation/ipgeolocation-io-mcp?logo=github&label=release&color=181717)](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases)
