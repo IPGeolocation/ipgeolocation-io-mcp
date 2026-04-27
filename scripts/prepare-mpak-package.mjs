@@ -190,12 +190,6 @@ writeJson(
 cpSync(distDir, path.join(outputDir, "dist"), { recursive: true });
 installBundledDependencies(outputDir);
 pruneBundledDependencyNoise(outputDir);
-mkdirSync(path.join(outputDir, "deps"), { recursive: true });
-cpSync(
-  path.join(outputDir, "package-lock.json"),
-  path.join(outputDir, "deps", "package-lock.json"),
-);
-
 if (existsSync(licensePath)) {
   cpSync(licensePath, path.join(outputDir, "LICENSE"));
 }

@@ -2,7 +2,6 @@
   "manifest_version": "0.3",
   "name": "ipgeolocation-io-mcp",
   "display_name": "IPGeolocation.io MCP Server",
-  "version": "1.0.17",
   "description": "Official MCP server for IP geolocation, IP security, abuse contacts, ASN, timezone, astronomy, and user-agent parsing.",
   "long_description": "Official MCP server from ipgeolocation.io. Provides 16 tools for IP geolocation, IP security, abuse contact lookup, ASN data, timezone lookups and conversions, astronomy data, and user-agent parsing. Supports free and paid API plans. Bulk operations use a default cap of 1,000 items per request in this MCP server.",
   "author": {
@@ -27,29 +26,79 @@
     "entry_point": "dist/cli.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/dist/cli.js"],
+      "args": [
+        "${__dirname}/dist/cli.js"
+      ],
       "env": {
         "IPGEOLOCATION_API_KEY": "${user_config.api_key}"
       }
     }
   },
   "tools": [
-    { "name": "lookup_ip", "description": "IP geolocation lookup for any IPv4/IPv6 address or domain" },
-    { "name": "bulk_lookup_ip", "description": "Bulk IP geolocation for up to 1,000 IPs per MCP request" },
-    { "name": "get_my_ip", "description": "Returns the caller's public IP address" },
-    { "name": "lookup_company", "description": "Organization using an IP vs. ASN holder comparison" },
-    { "name": "lookup_currency", "description": "Currency and country metadata for any IP" },
-    { "name": "lookup_network", "description": "BGP route prefix, connection type, and anycast detection" },
-    { "name": "check_security", "description": "VPN, proxy, Tor, and bot detection with threat scores" },
-    { "name": "bulk_security_check", "description": "Bulk security check for up to 1,000 IPs per MCP request" },
-    { "name": "get_timezone", "description": "Timezone lookup by IANA name, coordinates, IP, or airport code" },
-    { "name": "convert_timezone", "description": "Convert time between two locations" },
-    { "name": "get_astronomy", "description": "Sunrise, sunset, moonrise, moonset, twilight, and moon phases" },
-    { "name": "get_astronomy_time_series", "description": "Daily astronomy data for a date range up to 90 days" },
-    { "name": "parse_user_agent", "description": "Parse a user-agent string into device, browser, OS details" },
-    { "name": "bulk_parse_user_agent", "description": "Bulk parse up to 1,000 user-agent strings per MCP request" },
-    { "name": "lookup_asn", "description": "ASN details with peers, upstreams, downstreams, and WHOIS" },
-    { "name": "get_abuse_contact", "description": "Abuse contact email, phone, and address for any IP" }
+    {
+      "name": "lookup_ip",
+      "description": "IP geolocation lookup for any IPv4/IPv6 address or domain"
+    },
+    {
+      "name": "bulk_lookup_ip",
+      "description": "Bulk IP geolocation for up to 1,000 IPs per MCP request"
+    },
+    {
+      "name": "get_my_ip",
+      "description": "Returns the caller's public IP address"
+    },
+    {
+      "name": "lookup_company",
+      "description": "Organization using an IP vs. ASN holder comparison"
+    },
+    {
+      "name": "lookup_currency",
+      "description": "Currency and country metadata for any IP"
+    },
+    {
+      "name": "lookup_network",
+      "description": "BGP route prefix, connection type, and anycast detection"
+    },
+    {
+      "name": "check_security",
+      "description": "VPN, proxy, Tor, and bot detection with threat scores"
+    },
+    {
+      "name": "bulk_security_check",
+      "description": "Bulk security check for up to 1,000 IPs per MCP request"
+    },
+    {
+      "name": "get_timezone",
+      "description": "Timezone lookup by IANA name, coordinates, IP, or airport code"
+    },
+    {
+      "name": "convert_timezone",
+      "description": "Convert time between two locations"
+    },
+    {
+      "name": "get_astronomy",
+      "description": "Sunrise, sunset, moonrise, moonset, twilight, and moon phases"
+    },
+    {
+      "name": "get_astronomy_time_series",
+      "description": "Daily astronomy data for a date range up to 90 days"
+    },
+    {
+      "name": "parse_user_agent",
+      "description": "Parse a user-agent string into device, browser, OS details"
+    },
+    {
+      "name": "bulk_parse_user_agent",
+      "description": "Bulk parse up to 1,000 user-agent strings per MCP request"
+    },
+    {
+      "name": "lookup_asn",
+      "description": "ASN details with peers, upstreams, downstreams, and WHOIS"
+    },
+    {
+      "name": "get_abuse_contact",
+      "description": "Abuse contact email, phone, and address for any IP"
+    }
   ],
   "keywords": [
     "mcp",
@@ -89,7 +138,11 @@
   ],
   "compatibility": {
     "claude_desktop": ">=0.10.0",
-    "platforms": ["darwin", "win32", "linux"],
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
     "runtimes": {
       "node": ">=18.0.0"
     }
@@ -115,5 +168,6 @@
       "sensitive": true,
       "required": true
     }
-  }
+  },
+  "version": "1.0.18"
 }
