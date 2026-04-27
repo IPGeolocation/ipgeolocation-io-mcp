@@ -1,6 +1,5 @@
 {
   "name": "ipgeolocation-io-mcp",
-  "version": "1.0.17",
   "mcpName": "io.github.IPGeolocation/ipgeolocation-io-mcp",
   "description": "Official MCP server for IP geolocation, IP security, abuse contacts, ASN, timezone, astronomy, and user-agent parsing.",
   "type": "module",
@@ -21,7 +20,7 @@
   "scripts": {
     "build": "tsc && printf '%s\\n' '#!/usr/bin/env node' | cat - dist/cli.js > dist/cli.js.tmp && mv dist/cli.js.tmp dist/cli.js && chmod +x dist/cli.js",
     "prepare:mpak": "node scripts/prepare-mpak-package.mjs",
-    "test": "npm run build && node --test --test-concurrency=1 tests",
+    "test": "npm run test:unit && npm run test:integration",
     "test:unit": "npm run build && node --test --test-concurrency=1 tests/client.test.mjs tests/response.test.mjs tests/validation.test.mjs",
     "test:integration": "npm run build && node --test --test-concurrency=1 tests/tools.integration.test.mjs tests/mcp.protocol.test.mjs",
     "test:live": "npm run test:live:free && npm run test:live:paid",
@@ -82,13 +81,14 @@
     "zod": "3.25.76"
   },
   "overrides": {
-    "@hono/node-server": "1.19.13",
+    "@hono/node-server": "1.19.14",
     "express-rate-limit": "8.2.2",
-    "hono": "4.12.12",
+    "hono": "4.12.15",
     "path-to-regexp": "8.4.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0"
-  }
+  },
+  "version": "1.0.18"
 }
