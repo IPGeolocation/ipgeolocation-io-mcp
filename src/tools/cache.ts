@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import {
   getCacheMaxEntries,
   getCacheTtlMs,
+  getConfiguredApiKey,
 } from "../config.js";
 
 type CacheEntry = {
@@ -9,6 +11,19 @@ type CacheEntry = {
 };
 
 const cache = new Map<string, CacheEntry>();
+
+function cacheNamespace(): string {
+  const apiKey = getConfiguredApiKey();
+  if (!apiKey) {
+    return "no-api-key";
+  }
+
+  return createHash("sha256").update(apiKey).digest("base64url").slice(0, 24);
+}
+
+function scopedKey(key: string): string {
+  return `${cacheNamespace()}|${key}`;
+}
 
 function evictExpired(now = Date.now()): void {
   for (const [key, entry] of cache.entries()) {
@@ -31,12 +46,13 @@ function evictOverflow(): void {
 
 export function getCachedValue(key: string): unknown | undefined {
   evictExpired();
-  const entry = cache.get(key);
+  const namespacedKey = scopedKey(key);
+  const entry = cache.get(namespacedKey);
   if (!entry) {
     return undefined;
   }
   if (entry.expiresAt <= Date.now()) {
-    cache.delete(key);
+    cache.delete(namespacedKey);
     return undefined;
   }
   return entry.value;
@@ -44,7 +60,7 @@ export function getCachedValue(key: string): unknown | undefined {
 
 export function setCachedValue(key: string, value: unknown): void {
   const now = Date.now();
-  cache.set(key, {
+  cache.set(scopedKey(key), {
     value,
     expiresAt: now + getCacheTtlMs(),
   });

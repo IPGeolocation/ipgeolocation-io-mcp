@@ -16,7 +16,7 @@ Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and a
 | Item | Value |
 |------|-------|
 | Package | `ipgeolocation-io-mcp` |
-| Version | `1.0.17` |
+| Version | `1.0.19` |
 | Transport | `stdio` |
 | Node.js | `>=18` |
 
@@ -605,7 +605,7 @@ The text answers below show what a client might say. Exact wording depends on th
 
 ## Error Codes
 
-All tools return structured errors instead of crashing the server.
+All tools return structured errors instead of crashing the server. API errors include the upstream status/message plus a `guidance` field so MCP clients can tell the user what to check next instead of only repeating the upstream response.
 
 | Code | Meaning |
 |------|---------|
@@ -613,13 +613,16 @@ All tools return structured errors instead of crashing the server.
 | `401` | Missing/invalid API key, free plan calling a paid tool, or non-English `lang` on free plan |
 | `404` | Resource not found (e.g., ASN does not exist) |
 | `405` | Method or subscription restriction from the upstream API |
+| `413` | POST body is larger than the upstream API allows |
+| `415` | POST request is missing the required `application/json` content type |
 | `423` | Bogon or private IP (`10.x.x.x`, `192.168.x.x`, etc.) |
 | `429` | Rate limit, daily credit limit, or account quota exceeded |
-| `499` | Upstream validation error or unsupported query |
+| `499` | Client-side request or connection timeout was too short |
+| `5xx` | Upstream API server-side error |
 | `502` | Server could not reach the upstream API |
 | `504` | Upstream API timed out |
 
-Exact status codes can vary by endpoint and request mode. If an upstream endpoint returns a different error, the server passes it through with a structured message.
+Exact status codes can vary by endpoint and request mode. If an upstream endpoint returns a status outside this table, the server does not guess the cause. It passes the upstream status and message through with `category: "undocumented_api_error"` and adds guidance for the MCP client to explain the response as an undocumented upstream status without inventing a cause.
 
 ## How It Works
 
@@ -640,6 +643,7 @@ At runtime:
 Tools that return stable data (not current-time lookups) cache their responses in process memory. Repeated lookups are faster and don't use additional credits. Client retries don't generate duplicate API calls.
 
 - Process-level cache, not client or model memory
+- Cache entries are scoped by API key, so separate MCP sessions do not share cached upstream data
 - Default TTL: 5 minutes (`300000` ms)
 - Cache resets when the server process stops
 - Cache misses on TTL expiry, changed parameters, or `force_refresh: true`

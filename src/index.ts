@@ -30,7 +30,7 @@ const toolSelectionInstructionParts = [
 const TOOL_SELECTION_INSTRUCTIONS = toolSelectionInstructionParts.join(" ");
 
 export const configSchema = z.object({
-  apiKey: z.string().describe("Your IPGeolocation.io API key"),
+  apiKey: z.string().min(1).describe("Your IPGeolocation.io API key"),
 });
 
 type SessionConfig = z.infer<typeof configSchema>;
@@ -63,7 +63,7 @@ export function createMcpServer(
 ): McpServer {
   const server = new McpServer({
     name: "ipgeolocation-io-mcp",
-    version: "1.0.17",
+    version: "1.0.19",
   }, {
     instructions: TOOL_SELECTION_INSTRUCTIONS,
   });
