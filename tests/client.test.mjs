@@ -94,6 +94,29 @@ test("getMyIp does not include API key in request", async (t) => {
   assert.equal(capturedUrl.searchParams.get("apiKey"), null);
 });
 
+test("getMyIp preserves upstream non-ok error messages", async (t) => {
+  clearClientEnv();
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    clearClientEnv();
+    globalThis.fetch = originalFetch;
+  });
+
+  globalThis.fetch = async () =>
+    jsonResponse({ error: "Too many requests for this API key." }, 429);
+
+  const client = await import(clientModuleUrl());
+  await assert.rejects(
+    () => client.getMyIp(),
+    (error) => {
+      assert.equal(error.name, "ApiError");
+      assert.equal(error.status, 429);
+      assert.equal(error.message, "429: Too many requests for this API key.");
+      return true;
+    }
+  );
+});
+
 test("maps AbortError to ApiError 504 timeout", async (t) => {
   clearClientEnv();
   process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
@@ -170,6 +193,98 @@ test("returns truncated upstream error body for non-ok responses", async (t) => 
       assert.equal(error.status, 500);
       assert.match(error.message, /truncated upstream error body/);
       assert.ok(error.message.length < 4300);
+      return true;
+    }
+  );
+});
+
+test("returns upstream JSON error message for auth failures", async (t) => {
+  clearClientEnv();
+  process.env.IPGEOLOCATION_API_KEY = "expired_api_key";
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    clearClientEnv();
+    globalThis.fetch = originalFetch;
+  });
+
+  globalThis.fetch = async () =>
+    jsonResponse(
+      {
+        message:
+          "Provided API key is not valid. Contact technical support for assistance at support@ipgeolocation.io",
+      },
+      401
+    );
+
+  const client = await import(clientModuleUrl());
+  await assert.rejects(
+    () => client.getIpGeolocation({ ip: "8.8.8.8" }),
+    (error) => {
+      assert.equal(error.name, "ApiError");
+      assert.equal(error.status, 401);
+      assert.equal(
+        error.message,
+        "401: Provided API key is not valid. Contact technical support for assistance at support@ipgeolocation.io"
+      );
+      return true;
+    }
+  );
+});
+
+test("redacts API keys from upstream error messages", async (t) => {
+  clearClientEnv();
+  process.env.IPGEOLOCATION_API_KEY = "sensitive_test_key_123";
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    clearClientEnv();
+    globalThis.fetch = originalFetch;
+  });
+
+  globalThis.fetch = async () =>
+    jsonResponse(
+      {
+        message:
+          "Request rejected for https://api.ipgeolocation.io/v3/ipgeo?apiKey=sensitive_test_key_123&ip=8.8.8.8",
+      },
+      401
+    );
+
+  const client = await import(clientModuleUrl());
+  await assert.rejects(
+    () => client.getIpGeolocation({ ip: "8.8.8.8" }),
+    (error) => {
+      assert.equal(error.name, "ApiError");
+      assert.equal(error.status, 401);
+      assert.doesNotMatch(error.message, /sensitive_test_key_123/);
+      assert.match(error.message, /apiKey=\[REDACTED_API_KEY\]/);
+      return true;
+    }
+  );
+});
+
+test("redacts API keys from transport failures", async (t) => {
+  clearClientEnv();
+  process.env.IPGEOLOCATION_API_KEY = "sensitive_test_key_456";
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    clearClientEnv();
+    globalThis.fetch = originalFetch;
+  });
+
+  globalThis.fetch = async () => {
+    throw new Error(
+      "fetch failed for apiKey=sensitive_test_key_456 while connecting"
+    );
+  };
+
+  const client = await import(clientModuleUrl());
+  await assert.rejects(
+    () => client.getSecurity({ ip: "8.8.8.8" }),
+    (error) => {
+      assert.equal(error.name, "ApiError");
+      assert.equal(error.status, 502);
+      assert.doesNotMatch(error.message, /sensitive_test_key_456/);
+      assert.match(error.message, /\[REDACTED_API_KEY\]/);
       return true;
     }
   );

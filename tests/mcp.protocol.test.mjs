@@ -31,12 +31,37 @@ test("server entrypoint includes global tool-selection instructions", async () =
   const indexSource = await readRepoFile("dist/index.js");
 
   assert.match(indexSource, /instructions:/);
-  assert.match(indexSource, /If one IP needs two or more IP domains, make one lookup_ip call first/);
-  assert.match(indexSource, /Use narrow IP tools .* only for single-domain requests\./);
-  assert.match(indexSource, /If the first response is a superset of what is needed, answer from that response and do not call another tool for formatting\./);
-  assert.match(indexSource, /For ASN queries, make at most one lookup_asn call per target and include set\./);
-  assert.match(indexSource, /Never call the same tool twice for the same target in one answer unless the prior call failed or required data is truly missing\./);
+  assert.match(
+    indexSource,
+    /If one IP needs two or more IP domains, make one lookup_ip call first/
+  );
+  assert.match(
+    indexSource,
+    /Use narrow IP tools .* only for single-domain requests\./
+  );
+  assert.match(
+    indexSource,
+    /If the first response is a superset of what is needed, answer from that response and do not call another tool for formatting\./
+  );
+  assert.match(
+    indexSource,
+    /For ASN queries, make at most one lookup_asn call per target and include set\./
+  );
+  assert.match(
+    indexSource,
+    /Never call the same tool twice for the same target in one answer unless the prior call failed or required data is truly missing\./
+  );
   assert.match(indexSource, /Use fields to request only required paths/);
+});
+
+test("server runtime version matches package version", async () => {
+  const packageJson = JSON.parse(await readRepoFile("package.json"));
+  const indexSource = await readRepoFile("dist/index.js");
+
+  assert.match(
+    indexSource,
+    new RegExp(`version:\\s*"${packageJson.version}"`)
+  );
 });
 
 test("server entrypoint exports Smithery-compatible config without auto-starting on import", async () => {
@@ -53,10 +78,22 @@ test("server entrypoint exports Smithery-compatible config without auto-starting
     apiKey: "test-key",
   });
   const invalidConfig = entrypoint.configSchema.safeParse({});
+  const emptyApiKeyConfig = entrypoint.configSchema.safeParse({ apiKey: "" });
 
   assert.equal(validConfig.success, true);
   assert.equal(invalidConfig.success, false);
+  assert.equal(emptyApiKeyConfig.success, false);
   assert.ok(entrypoint.default({ config: { apiKey: "test-key" } }));
+});
+
+test("Dockerfile starts the stdio CLI entrypoint", async () => {
+  const dockerfile = await readRepoFile("Dockerfile");
+
+  assert.match(dockerfile, /ENTRYPOINT \["node", "\/app\/dist\/cli\.js"\]/);
+  assert.doesNotMatch(
+    dockerfile,
+    /ENTRYPOINT \["node", "\/app\/dist\/index\.js"\]/
+  );
 });
 
 test("manifest mcp_config is aligned for stdio startup", async () => {
@@ -65,7 +102,9 @@ test("manifest mcp_config is aligned for stdio startup", async () => {
   assert.equal(manifest.server.type, "node");
   assert.equal(manifest.server.entry_point, "dist/cli.js");
   assert.equal(manifest.server.mcp_config.command, "node");
-  assert.deepEqual(manifest.server.mcp_config.args, ["${__dirname}/dist/cli.js"]);
+  assert.deepEqual(manifest.server.mcp_config.args, [
+    "${__dirname}/dist/cli.js",
+  ]);
   assert.equal(
     manifest.server.mcp_config.env.IPGEOLOCATION_API_KEY,
     "${user_config.api_key}"
@@ -75,10 +114,15 @@ test("manifest mcp_config is aligned for stdio startup", async () => {
 test("registry metadata stays aligned across package and server manifest", async () => {
   const packageJson = JSON.parse(await readRepoFile("package.json"));
   const serverJson = JSON.parse(await readRepoFile("server.json"));
+  const readme = await readRepoFile("README.md");
 
   assert.equal(
     packageJson.mcpName,
     "io.github.IPGeolocation/ipgeolocation-io-mcp"
+  );
+  assert.match(
+    readme,
+    new RegExp(`\\| Version \\| \`${packageJson.version}\` \\|`)
   );
   assert.equal(serverJson.name, packageJson.mcpName);
   assert.equal(serverJson.version, packageJson.version);

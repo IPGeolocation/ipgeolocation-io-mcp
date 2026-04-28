@@ -2,9 +2,16 @@ import {
   getConfiguredApiKey,
   getRequestTimeoutMs,
 } from "./config.js";
+import { redactSensitiveText } from "./redaction.js";
 
 const API_BASE = "https://api.ipgeolocation.io";
 const MAX_UPSTREAM_ERROR_CHARS = 4000;
+const UPSTREAM_ERROR_MESSAGE_KEYS = [
+  "message",
+  "error",
+  "detail",
+  "description",
+];
 
 export function getApiKey(): string {
   const apiKey = getConfiguredApiKey();
@@ -46,11 +53,63 @@ async function fetchWithTimeout(
 
     throw new ApiError(
       502,
-      `502: Failed to reach upstream API (${error instanceof Error ? error.message : String(error)})`
+      `502: Failed to reach upstream API (${redactSensitiveText(
+        error instanceof Error ? error.message : String(error)
+      )})`
     );
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function parseUpstreamErrorMessage(text: string, fallback: string): string {
+  if (!text) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (typeof parsed === "string") {
+      return parsed;
+    }
+
+    if (typeof parsed === "object" && parsed !== null) {
+      for (const key of UPSTREAM_ERROR_MESSAGE_KEYS) {
+        const value = (parsed as Record<string, unknown>)[key];
+        if (typeof value === "string" && value.trim()) {
+          return value;
+        }
+      }
+    }
+  } catch {
+    // Keep the raw body below when the upstream error is not JSON.
+  }
+
+  return text;
+}
+
+async function throwUpstreamResponseError(
+  response: Response,
+  fallback = response.statusText
+): Promise<never> {
+  let message: string;
+  try {
+    const text = await response.text();
+    message = parseUpstreamErrorMessage(text, fallback);
+  } catch {
+    message = fallback;
+  }
+
+  message = redactSensitiveText(message);
+
+  if (message.length > MAX_UPSTREAM_ERROR_CHARS) {
+    message = `${message.slice(
+      0,
+      MAX_UPSTREAM_ERROR_CHARS
+    )}... [truncated upstream error body]`;
+  }
+
+  throw new ApiError(response.status, `${response.status}: ${message}`);
 }
 
 async function request(
@@ -88,22 +147,7 @@ async function request(
   const response = await fetchWithTimeout(url.toString(), fetchOptions);
 
   if (!response.ok) {
-    let message: string;
-    try {
-      const text = await response.text();
-      message = text || response.statusText;
-    } catch {
-      message = response.statusText;
-    }
-
-    if (message.length > MAX_UPSTREAM_ERROR_CHARS) {
-      message = `${message.slice(
-        0,
-        MAX_UPSTREAM_ERROR_CHARS
-      )}... [truncated upstream error body]`;
-    }
-
-    throw new ApiError(response.status, `${response.status}: ${message}`);
+    await throwUpstreamResponseError(response);
   }
 
   try {
@@ -132,7 +176,10 @@ export async function getIpGeolocation(params: {
 export async function getMyIp(): Promise<string> {
   const response = await fetchWithTimeout(`${API_BASE}/v3/getip`);
   if (!response.ok) {
-    throw new ApiError(response.status, "Failed to retrieve IP address");
+    await throwUpstreamResponseError(
+      response,
+      "Failed to retrieve IP address"
+    );
   }
   let data: { ip: string };
   try {

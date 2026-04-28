@@ -20,9 +20,10 @@
   "scripts": {
     "build": "tsc && printf '%s\\n' '#!/usr/bin/env node' | cat - dist/cli.js > dist/cli.js.tmp && mv dist/cli.js.tmp dist/cli.js && chmod +x dist/cli.js",
     "prepare:mpak": "node scripts/prepare-mpak-package.mjs",
-    "test": "npm run test:unit && npm run test:integration",
+    "test": "npm run test:unit && npm run test:integration && npm run test:redteam",
     "test:unit": "npm run build && node --test --test-concurrency=1 tests/client.test.mjs tests/response.test.mjs tests/validation.test.mjs",
     "test:integration": "npm run build && node --test --test-concurrency=1 tests/tools.integration.test.mjs tests/mcp.protocol.test.mjs",
+    "test:redteam": "npm run build && node --test --test-concurrency=1 tests/redteam.security.test.mjs",
     "test:live": "npm run test:live:free && npm run test:live:paid",
     "test:live:free": "npm run build && node tests/live.smoke.mjs free",
     "test:live:paid": "npm run build && node tests/live.smoke.mjs paid",
@@ -90,5 +91,5 @@
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0"
   },
-  "version": "1.0.18"
+  "version": "1.0.19"
 }

@@ -23,6 +23,7 @@ If you discover a security vulnerability, please report it responsibly:
 - The API key is read from the `IPGEOLOCATION_API_KEY` environment variable or injected per-session via the MCP runtime config.
 - The key is never logged, cached to disk, or included in error messages.
 - The key is transmitted only to `https://api.ipgeolocation.io` over HTTPS.
+- In-memory response cache entries are scoped by an API-key hash so different runtime-config sessions do not share cached upstream data.
 
 ### Network Access
 
