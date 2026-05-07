@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
@@ -84,6 +86,33 @@ test("server entrypoint exports Smithery-compatible config without auto-starting
   assert.equal(invalidConfig.success, false);
   assert.equal(emptyApiKeyConfig.success, false);
   assert.ok(entrypoint.default({ config: { apiKey: "test-key" } }));
+});
+
+test("package main can run as a stdio server for generic hosts", async () => {
+  const packageJson = JSON.parse(await readRepoFile("package.json"));
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [path.join(repoRoot, "dist/index.js")],
+    cwd: repoRoot,
+    env: {
+      IPGEOLOCATION_API_KEY: "test-key",
+    },
+    stderr: "pipe",
+  });
+  const client = new Client({
+    name: "entrypoint-test",
+    version: "1.0.0",
+  });
+
+  try {
+    await client.connect(transport, { timeout: 5000 });
+    assert.deepEqual(client.getServerVersion(), {
+      name: "ipgeolocation-io-mcp",
+      version: packageJson.version,
+    });
+  } finally {
+    await client.close();
+  }
 });
 
 test("Dockerfile starts the stdio CLI entrypoint", async () => {
