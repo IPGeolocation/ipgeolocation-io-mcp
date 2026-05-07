@@ -5,7 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/ipgeolocation-io-mcp?logo=npm&label=npm&color=CB3837)](https://www.npmjs.com/package/ipgeolocation-io-mcp)
 [![GitHub release](https://img.shields.io/github/v/release/IPGeolocation/ipgeolocation-io-mcp?logo=github&label=release&color=181717)](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-live-0A7CFF?logo=modelcontextprotocol&logoColor=white)](https://registry.modelcontextprotocol.io/?q=ipgeolocation)
-[![Glama](https://glama.ai/mcp/servers/IPGeolocation/ipgeolocation-io-mcp/badges/score.svg)](https://glama.ai/mcp/servers/IPGeolocation/ipgeolocation-io-mcp)
+[![Glama](https://img.shields.io/badge/Glama-listed-0A7CFF)](https://glama.ai/mcp/servers/IPGeolocation/ipgeolocation-io-mcp)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-5FA04E?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-16A34A)](https://github.com/IPGeolocation/ipgeolocation-io-mcp/blob/main/LICENSE)
 
