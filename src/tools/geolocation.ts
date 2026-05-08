@@ -214,13 +214,11 @@ export function registerGeolocationTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Unified IP lookup via GET /v3/ipgeo. Cost: 1 credit for base IP data; security adds 2 credits and abuse adds 1 credit when included. Use this first when one IP request needs multiple domains such as location, company/ASN, network, timezone, currency, security, or abuse.
+      description: `Read-only unified IP lookup via GET /v3/ipgeo. Base lookup costs 1 credit; include=security adds 2 credits and include=abuse adds 1 credit. Use this first when one IP or domain needs multiple data domains: location, company/ASN, network, timezone, currency, security, abuse, user_agent, hostname, geo_accuracy, or dma_code.
 
-Free plan supports core location data, country metadata, currency, time_zone, basic ASN, and fields/excludes. Paid plan adds domain lookup, company, network, extended ASN, non-English lang, and include modules such as security or abuse. If fields reference an include-only module, this server infers the required include automatically.
+Returns root IP/domain data plus location, country_metadata, currency, asn, network, company, and time_zone objects. Paid include modules add security, abuse, user_agent, hostname, dma_code, or geo_accuracy. Free plans support core location, country_metadata, currency, time_zone, basic ASN, fields, and excludes; paid plans add domain lookup, company, network, extended ASN, non-English lang, and include modules.
 
-Returns JSON with root IP data plus objects such as location, country_metadata, currency, asn, network, company, and time_zone. Requested include modules add objects such as security, abuse, user_agent, hostname, dma_code, or geo_accuracy.
-
-Omit ip to use the caller's IP. fields/excludes use comma-separated dot paths; ip is always returned, non-existent excludes do not error, and include takes priority over fields/excludes. Use lookup_asn only for peers, upstreams, downstreams, routes, or WHOIS. Use check_security or get_abuse_contact only for single-domain lookups.`,
+ip omitted means caller IP. fields/excludes use comma-separated dot paths; ip is always returned, unknown excludes do not error, and include wins over fields/excludes. This server auto-adds include modules referenced by fields. Use lookup_asn only for peers, upstreams, downstreams, routes, or WHOIS; use check_security or get_abuse_contact only for security-only or abuse-only requests.`,
       inputSchema: {
         ip: z
           .string()
@@ -255,7 +253,9 @@ Omit ip to use the caller's IP. fields/excludes use comma-separated dot paths; i
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
+          .describe(
+            "Default false. Set true only when the user asks to bypass cached lookup_ip data; a successful refresh makes a new upstream request and can consume credits."
+          ),
       },
     },
     async (params) => {
@@ -305,9 +305,9 @@ Omit ip to use the caller's IP. fields/excludes use comma-separated dot paths; i
       annotations: {
         readOnlyHint: true,
       },
-      description: `Bulk IP lookup via POST /v3/ipgeo-bulk. Paid only. Cost: 1 credit per valid IP for base geolocation. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs per request.
+      description: `Read-only bulk IP lookup via POST /v3/ipgeo-bulk. Paid only. Base geolocation costs 1 credit per valid IP, with security adding 2 and abuse adding 1 per valid IP. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs per request.
 
-Use it when multiple IPs need location or mixed IP domains. Include modules such as security or abuse add their normal per-valid-IP credit costs. Private, bogon, and malformed IPs are not billed by the upstream API. fields, excludes, lang, and include behave like lookup_ip for each item. For bulk security-only checks, prefer bulk_security_check.`,
+Use it when multiple IPs or domains need location data or mixed IP domains. Private, bogon, and malformed IPs are not billed by the upstream API. fields, excludes, lang, and include behave like lookup_ip for each item; this server also infers include modules from fields. For security-only batches, use bulk_security_check.`,
       inputSchema: {
         ips: z
           .array(z.string())
@@ -343,7 +343,9 @@ Use it when multiple IPs need location or mixed IP domains. Include modules such
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
+          .describe(
+            "Default false. Set true only when the user asks to bypass cached bulk geolocation data; a successful refresh makes a new upstream request and can consume credits."
+          ),
       },
     },
     async (params) => {
@@ -390,7 +392,7 @@ Use it when multiple IPs need location or mixed IP domains. Include modules such
         readOnlyHint: true,
       },
       description:
-        "Return the public IP address of the machine running this MCP server via GET /v3/getip. No API key, account, or credits are required. Returns a plain IP address string, not geolocation data. Use this only when the user asks for the server or caller public IP; use lookup_ip for location, ASN, timezone, currency, security, or abuse data.",
+        "Return the public IP address of the machine running this MCP server via GET /v3/getip. No input parameters, API key, account, or credits are required. Returns a plain IP address string, not geolocation data. Use this only when the user asks for the server or caller public IP; use lookup_ip for location, ASN, timezone, currency, security, or abuse data.",
       inputSchema: {},
     },
     async () => {
@@ -412,11 +414,9 @@ Use it when multiple IPs need location or mixed IP domains. Include modules such
       annotations: {
         readOnlyHint: true,
       },
-      description: `Decision policy: this is a single-domain tool. Use it only when the user asks for ownership data (company/ASN) only. If the same IP request also needs security, abuse, location/city, timezone, network, or currency data, call lookup_ip once with include and targeted fields/excludes instead of chaining tools.
+      description: `Read-only ownership lookup via GET /v3/ipgeo. Paid only. Cost: 1 credit. Use only for company/ASN ownership; use lookup_ip once if the same IP request also needs location, security, abuse, network, timezone, or currency.
 
-Ownership lookup via GET /v3/ipgeo with company and ASN only. Paid only. Cost: 1 credit. Returns JSON containing company and asn objects: company name/type/domain plus ASN as_number, organization, country, type, domain, date_allocated, and rir when available.
-
-ip is optional and omitted means the caller's IP. force_refresh bypasses this server's cache only when the user asks to refresh or rerun. If this tool is used, call it once per IP target and post-process locally.`,
+Returns { company, asn }: company name/type/domain plus ASN as_number, organization, country, type, domain, date_allocated, and rir when available. ip omitted means caller IP. force_refresh bypasses cache and makes a fresh upstream request only when the user asks. Call once per IP target and post-process locally.`,
       inputSchema: {
         ip: z
           .string()
@@ -427,7 +427,9 @@ ip is optional and omitted means the caller's IP. force_refresh bypasses this se
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
+          .describe(
+            "Default false. Set true only when the user asks to refresh cached ownership data; a successful refresh makes a new upstream request and can consume credits."
+          ),
       },
     },
     async (params) => {
@@ -459,9 +461,9 @@ ip is optional and omitted means the caller's IP. force_refresh bypasses this se
       annotations: {
         readOnlyHint: true,
       },
-      description: `Currency and country metadata lookup via GET /v3/ipgeo with currency and country_metadata only. Works on free and paid plans. Cost: 1 credit.
+      description: `Read-only currency and country metadata lookup via GET /v3/ipgeo. Works on free and paid plans. Cost: 1 credit per successful lookup.
 
-Returns JSON containing currency and country_metadata objects, including currency code/name/symbol and country-level metadata returned by the upstream API. ip is optional and omitted means the caller's IP. force_refresh bypasses this server's cache only when the user asks.
+Returns { currency, country_metadata }: currency code/name/symbol plus country calling_code, tld, and languages. ip selects the IP used to derive country and currency; omit it for caller IP. force_refresh bypasses cache and makes a fresh upstream request only when the user asks.
 
 Use this tool for currency-only or country-metadata-only requests. If the request needs more IP data, prefer one lookup_ip call with targeted fields/excludes.`,
       inputSchema: {
@@ -469,12 +471,14 @@ Use this tool for currency-only or country-metadata-only requests. If the reques
           .string()
           .optional()
           .describe(
-            "IPv4 or IPv6 address to look up. Omit to check the caller's IP."
+            "IPv4 or IPv6 address whose country determines the returned currency and country metadata. Omit to use the caller's IP."
           ),
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
+          .describe(
+            "Default false. Set true only when the user asks to refresh cached currency/country data; a successful refresh makes a new upstream request and can consume credits."
+          ),
       },
     },
     async (params) => {
@@ -506,9 +510,9 @@ Use this tool for currency-only or country-metadata-only requests. If the reques
       annotations: {
         readOnlyHint: true,
       },
-      description: `Network lookup via GET /v3/ipgeo with network only. Paid only. Cost: 1 credit. Returns JSON containing the network object, including route prefix, connection type, anycast status, and related routing fields returned by the upstream API.
+      description: `Read-only network lookup via GET /v3/ipgeo. Paid only. Cost: 1 credit. Returns { network } with route CIDR prefix, connection_type, and is_anycast.
 
-ip is optional and omitted means the caller's IP. force_refresh bypasses this server's cache only when the user asks. Use this tool for network-only requests. If the request also needs other IP domains, prefer one lookup_ip call with include plus targeted fields/excludes.`,
+ip omitted means caller IP. force_refresh bypasses cache and makes a fresh upstream request only when the user asks. Use this for network-only requests; use lookup_ip once if the request also needs location, ASN/company, timezone, currency, security, or abuse.`,
       inputSchema: {
         ip: z
           .string()
@@ -519,7 +523,9 @@ ip is optional and omitted means the caller's IP. force_refresh bypasses this se
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
+          .describe(
+            "Default false. Set true only when the user asks to refresh cached network data; a successful refresh makes a new upstream request and can consume credits."
+          ),
       },
     },
     async (params) => {

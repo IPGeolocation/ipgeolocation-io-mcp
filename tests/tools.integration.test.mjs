@@ -350,19 +350,19 @@ test("registers all MCP tools with expected metadata", async (t) => {
 
   assert.match(
     tools.get("check_security").definition.description,
-    /single-domain tool/i
+    /Use only for security\/threat data/i
   );
   assert.match(
     tools.get("get_abuse_contact").definition.description,
-    /single-domain tool/i
+    /Use only for abuse contact data/i
   );
   assert.match(
     tools.get("lookup_company").definition.description,
-    /single-domain tool/i
+    /Use only for company\/ASN ownership/i
   );
   assert.match(
     tools.get("lookup_asn").definition.description,
-    /Call this tool once per ASN\/IP target/i
+    /Query by asn or ip; asn takes priority/i
   );
 
   const bulkLookupIpsSchema = tools.get("bulk_lookup_ip").definition.inputSchema.ips;

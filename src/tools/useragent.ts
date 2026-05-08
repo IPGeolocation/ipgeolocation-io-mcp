@@ -24,9 +24,9 @@ export function registerUserAgentTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Parse an explicit user-agent string via POST /v3/user-agent. Paid only for this POST-based tool. Cost: 1 credit per successful user-agent. Returns JSON with parsed user_agent_string, name, version, version_major, device, engine, and operating_system fields; device and OS types can classify Robot, Hacker, Anonymized, or Unknown values.
+      description: `Read-only custom user-agent parsing via POST /v3/user-agent. Paid only for POST payload parsing. Cost: 1 credit per successful string. This tool parses only the explicit uaString value; it cannot read caller headers or transport metadata.
 
-uaString must be the exact non-empty user-agent string to parse. This MCP tool does not infer a caller user-agent from the MCP transport. force_refresh bypasses this server's cache only when the user asks. Use bulk_parse_user_agent for multiple strings.`,
+Returns { user_agent_string, name, version, version_major, device, engine, operating_system }; device.type and operating_system.type can include Desktop, Mobile, Robot, Hacker, Anonymized, or Unknown. uaString must be the exact non-empty user-agent string to parse. force_refresh bypasses cache and makes a fresh upstream request only when the user asks. Use bulk_parse_user_agent for multiple strings.`,
       inputSchema: {
         uaString: z
           .string()
@@ -36,7 +36,9 @@ uaString must be the exact non-empty user-agent string to parse. This MCP tool d
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
+          .describe(
+            "Default false. Set true only when the user asks to refresh cached user-agent parsing data; a successful refresh makes a new upstream request and can consume credits."
+          ),
       },
     },
     async (params) => {
@@ -69,9 +71,9 @@ uaString must be the exact non-empty user-agent string to parse. This MCP tool d
       annotations: {
         readOnlyHint: true,
       },
-      description: `Bulk user-agent parsing via POST /v3/user-agent-bulk for up to ${MAX_BULK_ITEMS.toLocaleString()} strings per MCP request. Paid only. Cost: 1 credit per successful user-agent string.
+      description: `Read-only bulk user-agent parsing via POST /v3/user-agent-bulk. Paid only. Cost: 1 credit per successful string. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} explicit user-agent strings.
 
-Returns one parsed result per string with the same user_agent_string, name, version, version_major, device, engine, and operating_system fields as parse_user_agent. uaStrings must be a non-empty array of explicit user-agent strings. force_refresh bypasses this server's cache only when the user asks. Use parse_user_agent for one string.`,
+Returns one parsed object per string with user_agent_string, name, version, version_major, device, engine, and operating_system fields. uaStrings must be a non-empty array of exact user-agent strings; use parse_user_agent for one string. force_refresh bypasses cache and makes a fresh upstream request only when the user asks.`,
       inputSchema: {
         uaStrings: z
           .array(z.string())
@@ -83,7 +85,9 @@ Returns one parsed result per string with the same user_agent_string, name, vers
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
+          .describe(
+            "Default false. Set true only when the user asks to refresh cached bulk user-agent parsing data; a successful refresh makes a new upstream request and can consume credits."
+          ),
       },
     },
     async (params) => {

@@ -47,13 +47,11 @@ export function registerAstronomyTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Single-date astronomy lookup via GET /v3/astronomy. Works on free and paid plans. Cost: 1 credit. Look up by coordinates, location, or IP, with optional date and elevation. If no location selector is provided, the API uses the caller's IP location.
+      description: `Read-only single-date astronomy lookup via GET /v3/astronomy. Works on free and paid plans. Cost: 1 credit. Use for one date and real-time sun/moon position; use get_astronomy_time_series for daily sunrise, moon, and twilight data across a date range.
 
-Returns location details plus astronomy data such as sunrise, sunset, moonrise, moonset, morning and evening twilight blocks, day length, sun and moon status, positions, and moon phase fields.
+Returns { location, astronomy } plus ip for IP/caller lookups. astronomy includes date/current_time, sunrise/sunset, moonrise/moonset, morning/evening twilight blocks, day_length, sun and moon status, altitude, azimuth, distance, moon_phase, moon_illumination_percentage, and moon_angle.
 
-Use this tool for one date, especially when the answer needs real-time positional fields such as sun or moon altitude and azimuth. Use get_astronomy_time_series instead for daily sunrise, sunset, moon, or twilight data across a date range.
-
-lat and long must be provided together; date must be YYYY-MM-DD; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include the full date. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans.`,
+Select by lat/long, location, IP, or caller IP when no selector is provided. lat and long must be provided together; date must be YYYY-MM-DD; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include full dates. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans.`,
       inputSchema: {
         lat: z
           .string()
@@ -149,11 +147,11 @@ lat and long must be provided together; date must be YYYY-MM-DD; elevation must 
       annotations: {
         readOnlyHint: true,
       },
-      description: `Daily astronomy time series via GET /v3/astronomy/timeSeries for up to 90 days. Works on free and paid plans. Cost: 1 credit per request.
+      description: `Read-only daily astronomy series via GET /v3/astronomy/timeSeries. Works on free and paid plans. Cost: 1 credit per request. Use for date ranges up to 90 days; use get_astronomy for one date or real-time sun/moon altitude and azimuth.
 
-Returns location details plus an astronomy array with one daily entry per date. Use get_astronomy instead when you need real-time positional fields such as sun or moon altitude and azimuth.
+Returns { location, astronomy: [...] } with one daily item per date containing sunrise/sunset, moonrise/moonset, twilight blocks, day_length, sun/moon status, and moon_phase. Select by lat/long, location, IP, or caller IP when no selector is provided.
 
-Location can be specified by coordinates, city/address, or IP. If no location is given, uses the caller's IP. dateStart and dateEnd are required YYYY-MM-DD values with a maximum 90-day span. lat and long must be provided together; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include the full date. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans. force_refresh bypasses this server's cache only when the user asks.`,
+dateStart and dateEnd are required YYYY-MM-DD values with a maximum 90-day span. lat and long must be provided together; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include full dates. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans. force_refresh bypasses cache and makes a fresh upstream request only when the user asks.`,
       inputSchema: {
         lat: z
           .string()
@@ -206,7 +204,9 @@ Location can be specified by coordinates, city/address, or IP. If no location is
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
+          .describe(
+            "Default false. Set true only when the user asks to refresh cached astronomy time-series data; a successful refresh makes a new upstream request and can consume credits."
+          ),
       },
     },
     async (params) => {

@@ -17,11 +17,11 @@ export function registerAbuseTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Decision policy: this is a single-domain tool. Use it only when the user asks for abuse contact data only. If the same IP request also needs security, ownership/company/ASN, location/city, timezone, network, or currency data, call lookup_ip once with include and targeted fields/excludes instead of chaining tools.
+      description: `Read-only abuse contact lookup via GET /v3/abuse. Paid only. Cost: 1 credit. Use only for abuse contact data; use lookup_ip with include=abuse when the same IP also needs location, security, ASN/company, timezone, network, or currency.
 
-Dedicated abuse lookup via GET /v3/abuse. Paid only. Cost: 1 credit. Returns JSON rooted at ip and abuse with route, registered country, name, organization, kind, address, emails, and phone_numbers for reporting abuse.
+Returns { ip, abuse } with route, country, name, organization, kind, address, emails, and phone_numbers for reporting abuse.
 
-fields/excludes use comma-separated paths such as abuse.emails; ip is always returned. force_refresh bypasses this server's cache only when the user asks. Use lookup_ip with include=abuse when the same request also needs geolocation or other IP domains. If this tool is used, call it once per IP target and post-process locally.`,
+fields/excludes use comma-separated abuse.* paths such as abuse.emails; ip is always returned. force_refresh bypasses cache and makes a fresh upstream request only when the user asks. Call once per IP target and post-process locally.`,
       inputSchema: {
         ip: z
           .string()
@@ -33,18 +33,20 @@ fields/excludes use comma-separated paths such as abuse.emails; ip is always ret
           .string()
           .optional()
           .describe(
-            "Comma-separated fields to return (e.g. emails,organization). Reduces response size. Works on all plans."
+            "Comma-separated abuse fields to return (e.g. abuse.emails,abuse.organization). Reduces response size."
           ),
         excludes: z
           .string()
           .optional()
           .describe(
-            "Comma-separated fields to exclude from response (e.g. phone_numbers,address)."
+            "Comma-separated abuse fields to exclude from response (e.g. abuse.phone_numbers,abuse.address)."
           ),
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
+          .describe(
+            "Default false. Set true only when the user asks to refresh cached abuse contact data; a successful refresh makes a new upstream request and can consume credits."
+          ),
       },
     },
     async (params) => {
