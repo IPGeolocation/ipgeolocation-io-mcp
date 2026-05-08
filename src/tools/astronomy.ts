@@ -47,9 +47,11 @@ export function registerAstronomyTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Astronomy lookup via GET /v3/astronomy. Works on free and paid plans. Cost: 1 credit. Look up by coordinates, location, or IP, with optional date and elevation.
+      description: `Single-date astronomy lookup via GET /v3/astronomy. Works on free and paid plans. Cost: 1 credit. Look up by coordinates, location, or IP, with optional date and elevation. If no location selector is provided, the API uses the caller's IP location.
 
 Returns location details plus astronomy data such as sunrise, sunset, moonrise, moonset, morning and evening twilight blocks, day length, sun and moon status, positions, and moon phase fields.
+
+Use this tool for one date, especially when the answer needs real-time positional fields such as sun or moon altitude and azimuth. Use get_astronomy_time_series instead for daily sunrise, sunset, moon, or twilight data across a date range.
 
 The lang parameter for non-English location field responses is available on paid plans only. On free plans, using a non-English lang value returns 401 Unauthorized.`,
       inputSchema: {

@@ -20,6 +20,8 @@ const toolSelectionInstructionParts = [
   "If one IP needs two or more IP domains, make one lookup_ip call first with include and targeted fields/excludes.",
   "If multiple IPs need two or more domains each, make one bulk_lookup_ip call first with include and targeted fields/excludes.",
   "Use narrow IP tools (check_security, get_abuse_contact, lookup_company, lookup_network, lookup_currency) only for single-domain requests.",
+  "Use get_timezone for timezone lookup/current local time and convert_timezone only for source-to-destination time conversion.",
+  "Use get_astronomy for one date or real-time sun/moon position, and get_astronomy_time_series for date ranges.",
   "Leave optional parameters unset unless they change the answer.",
   "Use fields to request only required paths and use excludes to remove irrelevant data.",
   "Leave force_refresh unset unless the user explicitly asks to refresh, rerun, or bypass cache.",
