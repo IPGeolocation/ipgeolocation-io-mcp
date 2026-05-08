@@ -53,7 +53,7 @@ Returns location details plus astronomy data such as sunrise, sunset, moonrise, 
 
 Use this tool for one date, especially when the answer needs real-time positional fields such as sun or moon altitude and azimuth. Use get_astronomy_time_series instead for daily sunrise, sunset, moon, or twilight data across a date range.
 
-The lang parameter for non-English location field responses is available on paid plans only. On free plans, using a non-English lang value returns 401 Unauthorized.`,
+lat and long must be provided together; date must be YYYY-MM-DD; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include the full date. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans.`,
       inputSchema: {
         lat: z
           .string()
@@ -153,7 +153,7 @@ The lang parameter for non-English location field responses is available on paid
 
 Returns location details plus an astronomy array with one daily entry per date. Use get_astronomy instead when you need real-time positional fields such as sun or moon altitude and azimuth.
 
-Location can be specified by coordinates, city/address, or IP. If no location is given, uses the caller's IP.`,
+Location can be specified by coordinates, city/address, or IP. If no location is given, uses the caller's IP. dateStart and dateEnd are required YYYY-MM-DD values with a maximum 90-day span. lat and long must be provided together; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include the full date. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans. force_refresh bypasses this server's cache only when the user asks.`,
       inputSchema: {
         lat: z
           .string()

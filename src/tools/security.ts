@@ -48,9 +48,9 @@ export function registerSecurityTools(server: McpServer) {
       },
       description: `Decision policy: this is a single-domain tool. Use it only when the user asks for security/threat data only. If the same IP request also needs ownership/company/ASN, location/city, network, timezone, currency, or abuse data, call lookup_ip once with include and targeted fields/excludes instead of chaining tools.
 
-Dedicated IP security lookup via GET /v3/security. Paid only. Cost: 2 credits. Returns threat score plus VPN, proxy, Tor, bot, spam, attacker, relay, anonymity, and cloud-provider indicators.
+Dedicated IP security lookup via GET /v3/security. Paid only. Cost: 2 credits. Returns JSON rooted at ip and security with threat score plus VPN, proxy, Tor, bot, spam, attacker, relay, anonymity, and cloud-provider indicators.
 
-Use lookup_ip with include=security when the same request also needs other IP domains. Tool selection rule: if this tool is used, call it once per IP target and post-process locally. Do not re-call check_security for the same IP just to change fields/excludes or to reformat output.`,
+fields/excludes use comma-separated dot paths such as security.threat_score; ip is always returned. force_refresh bypasses this server's cache only when the user asks. Use lookup_ip with include=security when the same request also needs other IP domains. If this tool is used, call it once per IP target and post-process locally.`,
       inputSchema: {
         ip: z
           .string()
@@ -118,9 +118,9 @@ Use lookup_ip with include=security when the same request also needs other IP do
       },
       description: `Decision policy: this is a single-domain bulk tool. Use it only when the user asks for security/threat data only. If each IP request also needs other domains (ownership, location, network, timezone, currency, or abuse), call bulk_lookup_ip once with include and targeted fields/excludes.
 
-Bulk IP security lookup via POST /v3/security-bulk for up to ${MAX_BULK_ITEMS.toLocaleString()} IPs per MCP request. Paid only. Cost: 2 credits per valid IP.
+Bulk IP security lookup via POST /v3/security-bulk for up to ${MAX_BULK_ITEMS.toLocaleString()} IPs per MCP request. Paid only. Cost: 2 credits per valid IP. Private, bogon, and malformed IPs are not billed by the upstream API.
 
-Use bulk_lookup_ip with include=security when the same batch also needs geolocation or other IP domains. Tool selection rule: call this tool once per IP batch and post-process locally. Do not re-call bulk_security_check for the same batch only to change fields/excludes or output shape.`,
+Returns one security result per valid IP with the same security object as check_security. fields/excludes use security.* dot paths for each item; force_refresh bypasses this server's cache only when the user asks. Use bulk_lookup_ip with include=security when the same batch also needs geolocation or other IP domains. Call this tool once per IP batch and post-process locally.`,
       inputSchema: {
         ips: z
           .array(z.string())

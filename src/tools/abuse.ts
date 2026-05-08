@@ -19,9 +19,9 @@ export function registerAbuseTools(server: McpServer) {
       },
       description: `Decision policy: this is a single-domain tool. Use it only when the user asks for abuse contact data only. If the same IP request also needs security, ownership/company/ASN, location/city, timezone, network, or currency data, call lookup_ip once with include and targeted fields/excludes instead of chaining tools.
 
-Dedicated abuse lookup via GET /v3/abuse. Paid only. Cost: 1 credit. Returns route, country, organization, address, emails, and phone numbers for reporting abuse.
+Dedicated abuse lookup via GET /v3/abuse. Paid only. Cost: 1 credit. Returns JSON rooted at ip and abuse with route, registered country, name, organization, kind, address, emails, and phone_numbers for reporting abuse.
 
-Use lookup_ip with include=abuse when the same request also needs geolocation or other IP domains. Tool selection rule: if this tool is used, call it once per IP target and post-process locally. Do not re-call get_abuse_contact for the same IP just to change fields/excludes or to reformat output.`,
+fields/excludes use comma-separated paths such as abuse.emails; ip is always returned. force_refresh bypasses this server's cache only when the user asks. Use lookup_ip with include=abuse when the same request also needs geolocation or other IP domains. If this tool is used, call it once per IP target and post-process locally.`,
       inputSchema: {
         ip: z
           .string()

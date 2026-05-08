@@ -24,9 +24,9 @@ export function registerUserAgentTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Parse an explicit user-agent string via POST /v3/user-agent. Paid only. Cost: 1 credit. Returns browser, device, OS, and engine details.
+      description: `Parse an explicit user-agent string via POST /v3/user-agent. Paid only for this POST-based tool. Cost: 1 credit per successful user-agent. Returns JSON with parsed user_agent_string, name, version, version_major, device, engine, and operating_system fields; device and OS types can classify Robot, Hacker, Anonymized, or Unknown values.
 
-This MCP tool parses only the uaString you pass. It does not infer a caller user-agent from the MCP transport. For multiple strings, use bulk_parse_user_agent.`,
+uaString must be the exact non-empty user-agent string to parse. This MCP tool does not infer a caller user-agent from the MCP transport. force_refresh bypasses this server's cache only when the user asks. Use bulk_parse_user_agent for multiple strings.`,
       inputSchema: {
         uaString: z
           .string()
@@ -69,9 +69,9 @@ This MCP tool parses only the uaString you pass. It does not infer a caller user
       annotations: {
         readOnlyHint: true,
       },
-      description: `Bulk user-agent parsing via POST /v3/user-agent-bulk for up to ${MAX_BULK_ITEMS.toLocaleString()} strings per MCP request. Paid only. Cost: 1 credit per string.
+      description: `Bulk user-agent parsing via POST /v3/user-agent-bulk for up to ${MAX_BULK_ITEMS.toLocaleString()} strings per MCP request. Paid only. Cost: 1 credit per successful user-agent string.
 
-Use this tool for multiple user-agent strings. For a single string, use parse_user_agent.`,
+Returns one parsed result per string with the same user_agent_string, name, version, version_major, device, engine, and operating_system fields as parse_user_agent. uaStrings must be a non-empty array of explicit user-agent strings. force_refresh bypasses this server's cache only when the user asks. Use parse_user_agent for one string.`,
       inputSchema: {
         uaStrings: z
           .array(z.string())

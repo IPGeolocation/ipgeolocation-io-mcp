@@ -167,7 +167,7 @@ test("timezone and astronomy tool docs include Glama-facing selection guidance",
 
   assert.match(
     timezoneSource,
-    /Free plan returns 401 for non-English language values\./
+    /non-English lang is paid-only and returns 401 on free plans\./
   );
   assert.match(
     timezoneSource,
@@ -176,13 +176,33 @@ test("timezone and astronomy tool docs include Glama-facing selection guidance",
   assert.match(timezoneSource, /Use convert_timezone instead/i);
   assert.match(
     astronomySource,
-    /Free plan returns 401 for non-English language values\./
+    /non-English lang is paid-only and returns 401 on free plans\./
   );
   assert.match(
     astronomySource,
     /If no location selector is provided, the API uses the caller's IP location\./
   );
   assert.match(astronomySource, /Use get_astronomy_time_series instead/i);
+});
+
+test("tool descriptions include response shape and parameter semantics for Glama scoring", async () => {
+  const geolocationSource = await readRepoFile("src/tools/geolocation.ts");
+  const securitySource = await readRepoFile("src/tools/security.ts");
+  const asnSource = await readRepoFile("src/tools/asn.ts");
+  const abuseSource = await readRepoFile("src/tools/abuse.ts");
+  const userAgentSource = await readRepoFile("src/tools/useragent.ts");
+
+  assert.match(geolocationSource, /Returns JSON with root IP data/);
+  assert.match(geolocationSource, /fields\/excludes use comma-separated dot paths/);
+  assert.match(geolocationSource, /not geolocation data/);
+  assert.match(geolocationSource, /Private, bogon, and malformed/);
+  assert.match(securitySource, /Returns JSON rooted at ip and security/);
+  assert.match(securitySource, /security\.\* dot paths/);
+  assert.match(asnSource, /Returns JSON rooted at asn/);
+  assert.match(asnSource, /asn takes priority over ip/);
+  assert.match(abuseSource, /Returns JSON rooted at ip and abuse/);
+  assert.match(userAgentSource, /Paid only for this POST-based tool/);
+  assert.match(userAgentSource, /uaString must be the exact non-empty user-agent string/);
 });
 
 test("README keeps parse_user_agent as paid-only without mentioning GET in that section", async () => {
