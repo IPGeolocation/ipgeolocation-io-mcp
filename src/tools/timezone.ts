@@ -17,9 +17,11 @@ export function registerTimezoneTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Timezone lookup via GET /v3/timezone. Works on free and paid plans. Cost: 1 credit. Look up by IANA timezone, coordinates, location, IP, airport code, or UN/LOCODE.
+      description: `Timezone lookup via GET /v3/timezone. Works on free and paid plans. Cost: 1 credit. Look up current local time and timezone metadata by IANA timezone, coordinates, location, IP, airport code, or UN/LOCODE.
 
 Returns location details plus a time_zone object with offsets, current time values, date/time variants, abbreviations, DST status, and transition dates. Airport lookups also include airport details.
+
+Use this tool when the user asks what timezone or current local time applies to one place, IP, airport, or UN/LOCODE. Use convert_timezone instead when the user provides a source and destination and asks to convert a time between them.
 
 The lang parameter for non-English responses is available on paid plans only. On free plans, using a non-English lang value returns 401 Unauthorized.`,
       inputSchema: {

@@ -161,7 +161,7 @@ test("registry metadata stays aligned across package and server manifest", async
   assert.equal(serverJson.packages[0].transport.type, "stdio");
 });
 
-test("timezone and astronomy tool docs reflect free non-English lang 401 behavior", async () => {
+test("timezone and astronomy tool docs include Glama-facing selection guidance", async () => {
   const timezoneSource = await readRepoFile("src/tools/timezone.ts");
   const astronomySource = await readRepoFile("src/tools/astronomy.ts");
 
@@ -170,9 +170,19 @@ test("timezone and astronomy tool docs reflect free non-English lang 401 behavio
     /Free plan returns 401 for non-English language values\./
   );
   assert.match(
+    timezoneSource,
+    /Use this tool when the user asks what timezone or current local time applies/i
+  );
+  assert.match(timezoneSource, /Use convert_timezone instead/i);
+  assert.match(
     astronomySource,
     /Free plan returns 401 for non-English language values\./
   );
+  assert.match(
+    astronomySource,
+    /If no location selector is provided, the API uses the caller's IP location\./
+  );
+  assert.match(astronomySource, /Use get_astronomy_time_series instead/i);
 });
 
 test("README keeps parse_user_agent as paid-only without mentioning GET in that section", async () => {
