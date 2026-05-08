@@ -17,13 +17,11 @@ export function registerTimezoneTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Timezone lookup via GET /v3/timezone. Works on free and paid plans. Cost: 1 credit. Look up current local time and timezone metadata by IANA timezone, coordinates, location, IP, airport code, or UN/LOCODE.
+      description: `Read-only timezone lookup via GET /v3/timezone. Works on free and paid plans. Cost: 1 credit. Use when the user asks for one place, IP, airport, UN/LOCODE, or IANA timezone's current local time or timezone metadata; use convert_timezone for source-to-destination conversion.
 
-Returns location details plus a time_zone object with offsets, current time values, date/time variants, abbreviations, DST status, and transition dates. Airport lookups also include airport details.
+Returns { time_zone } plus location, airport, city, or ip context depending on selector. time_zone includes name, offset, offset_with_dst, current_time, current_time_unix, date/time variants, time_24, time_12, timezone abbreviations, is_dst, dst_savings, dst_exists, and dst_start/dst_end when available.
 
-Use this tool when the user asks what timezone or current local time applies to one place, IP, airport, or UN/LOCODE. Use convert_timezone instead when the user provides a source and destination and asks to convert a time between them.
-
-Parameter priority follows the upstream API: tz, then lat/long, location, ip, iata_code, icao_code, then lo_code. lat and long must be provided together. The lang parameter only changes location fields; non-English lang is paid-only and returns 401 on free plans.`,
+Selector priority is tz, lat/long, location, ip, iata_code, icao_code, then lo_code. lat and long must be provided together. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans.`,
       inputSchema: {
         tz: z
           .string()
@@ -112,11 +110,9 @@ Parameter priority follows the upstream API: tz, then lat/long, location, ip, ia
       annotations: {
         readOnlyHint: true,
       },
-      description: `Convert time between two locations via GET /v3/timezone/convert. Works on free and paid plans. Cost: 1 credit.
+      description: `Read-only time conversion via GET /v3/timezone/convert. Works on free and paid plans. Cost: 1 credit. Use only when the user provides one source selector and one destination selector; use get_timezone for a single place's current time or metadata.
 
-Use this when converting a supplied time or current time from one source to one destination. Use get_timezone instead for one place's current time or timezone metadata.
-
-Specify one complete source selector and one complete destination selector by IANA timezone, coordinates, location, airport code, or UN/LOCODE. Coordinate selectors require both lat and long on each side. time is optional and must be yyyy-MM-dd HH:mm or yyyy-MM-dd HH:mm:ss when supplied. Returns original time, converted time, diff_hour, and diff_min.`,
+Source/destination selectors are tz_from/tz_to, location_from/location_to, iata_from/iata_to, icao_from/icao_to, locode_from/locode_to, or lat_from+long_from and lat_to+long_to. time is optional and must be yyyy-MM-dd HH:mm or yyyy-MM-dd HH:mm:ss. Returns original time, converted time, diff_hour, and diff_min.`,
       inputSchema: {
         time: z
           .string()

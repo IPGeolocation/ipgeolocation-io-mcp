@@ -92,11 +92,9 @@ export function registerAsnTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Detailed ASN lookup via GET /v3/asn. Paid only. Cost: 1 credit per successful lookup. Query by AS number or IP. Returns JSON rooted at asn, with core ASN details and optional peers, downstreams, upstreams, routes, and raw whois_response.
+      description: `Read-only ASN enrichment via GET /v3/asn. Paid only. Cost: 1 credit. Query by asn or ip; asn takes priority over ip. Use for ASN relationships, route prefixes, allocation details, or WHOIS; use lookup_ip for basic ASN with geolocation.
 
-Use lookup_ip for basic ASN fields included with IP geolocation. Use lookup_asn when the user asks for ASN relationships, route prefixes, allocation details, or WHOIS. Decide include values before the call, then use fields/excludes dot paths to trim the response locally.
-
-asn takes priority over ip. include accepts peers, downstreams, upstreams, routes, and whois_response. fields/excludes can use full paths such as asn.upstreams.as_number or root-relative paths such as upstreams.as_number. force_refresh bypasses this server's cache only when the user asks. Call this tool once per ASN/IP target and post-process locally.`,
+Returns { asn } with core fields plus optional peers, downstreams, upstreams, routes, and whois_response. include accepts peers, downstreams, upstreams, routes, and whois_response. fields/excludes can use full paths such as asn.upstreams.as_number or root-relative paths such as upstreams.as_number. force_refresh bypasses cache and makes a fresh upstream request only when the user asks.`,
       inputSchema: {
         asn: z
           .string()
@@ -131,7 +129,9 @@ asn takes priority over ip. include accepts peers, downstreams, upstreams, route
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
+          .describe(
+            "Default false. Set true only when the user asks to refresh cached ASN data; a successful refresh makes a new upstream request and can consume credits."
+          ),
       },
     },
     async (params) => {

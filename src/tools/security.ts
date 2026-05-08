@@ -46,11 +46,11 @@ export function registerSecurityTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Decision policy: this is a single-domain tool. Use it only when the user asks for security/threat data only. If the same IP request also needs ownership/company/ASN, location/city, network, timezone, currency, or abuse data, call lookup_ip once with include and targeted fields/excludes instead of chaining tools.
+      description: `Read-only security lookup via GET /v3/security. Paid only. Cost: 2 credits. Use only for security/threat data; use lookup_ip with include=security when the same request also needs location, ASN/company, network, timezone, currency, or abuse.
 
-Dedicated IP security lookup via GET /v3/security. Paid only. Cost: 2 credits. Returns JSON rooted at ip and security with threat score plus VPN, proxy, Tor, bot, spam, attacker, relay, anonymity, and cloud-provider indicators.
+Returns { ip, security } with threat_score, VPN, proxy, residential proxy, Tor, relay, anonymity, bot, spam, known attacker, and cloud-provider fields; provider names, confidence scores, and last_seen dates appear when available.
 
-fields/excludes use comma-separated dot paths such as security.threat_score; ip is always returned. force_refresh bypasses this server's cache only when the user asks. Use lookup_ip with include=security when the same request also needs other IP domains. If this tool is used, call it once per IP target and post-process locally.`,
+fields/excludes use comma-separated security.* dot paths; ip is always returned. force_refresh bypasses cache and makes a fresh upstream request only when the user asks. Call once per IP target and post-process locally.`,
       inputSchema: {
         ip: z
           .string()
@@ -73,7 +73,9 @@ fields/excludes use comma-separated dot paths such as security.threat_score; ip 
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
+          .describe(
+            "Default false. Set true only when the user asks to refresh cached security data; a successful refresh makes a new upstream request and can consume credits."
+          ),
       },
     },
 
@@ -116,11 +118,9 @@ fields/excludes use comma-separated dot paths such as security.threat_score; ip 
       annotations: {
         readOnlyHint: true,
       },
-      description: `Decision policy: this is a single-domain bulk tool. Use it only when the user asks for security/threat data only. If each IP request also needs other domains (ownership, location, network, timezone, currency, or abuse), call bulk_lookup_ip once with include and targeted fields/excludes.
+      description: `Read-only bulk security lookup via POST /v3/security-bulk. Paid only. Cost: 2 credits per valid IP. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs; private, bogon, and malformed IPs are not billed by the upstream API.
 
-Bulk IP security lookup via POST /v3/security-bulk for up to ${MAX_BULK_ITEMS.toLocaleString()} IPs per MCP request. Paid only. Cost: 2 credits per valid IP. Private, bogon, and malformed IPs are not billed by the upstream API.
-
-Returns one security result per valid IP with the same security object as check_security. fields/excludes use security.* dot paths for each item; force_refresh bypasses this server's cache only when the user asks. Use bulk_lookup_ip with include=security when the same batch also needs geolocation or other IP domains. Call this tool once per IP batch and post-process locally.`,
+Use only for security-only batches; use bulk_lookup_ip with include=security when each IP also needs geolocation or other IP domains. Returns one { ip, security } result per valid IP with the same security fields as check_security. fields/excludes use security.* dot paths per item. force_refresh bypasses cache and makes a fresh upstream request only when the user asks.`,
       inputSchema: {
         ips: z
           .array(z.string())
@@ -144,7 +144,9 @@ Returns one security result per valid IP with the same security object as check_
         force_refresh: z
           .boolean()
           .optional()
-          .describe("Default false. Leave unset unless the user asks to refresh or rerun."),
+          .describe(
+            "Default false. Set true only when the user asks to refresh cached bulk security data; a successful refresh makes a new upstream request and can consume credits."
+          ),
       },
     },
     async (params) => {
