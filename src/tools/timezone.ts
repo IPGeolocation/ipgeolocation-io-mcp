@@ -23,7 +23,7 @@ Returns location details plus a time_zone object with offsets, current time valu
 
 Use this tool when the user asks what timezone or current local time applies to one place, IP, airport, or UN/LOCODE. Use convert_timezone instead when the user provides a source and destination and asks to convert a time between them.
 
-The lang parameter for non-English responses is available on paid plans only. On free plans, using a non-English lang value returns 401 Unauthorized.`,
+Parameter priority follows the upstream API: tz, then lat/long, location, ip, iata_code, icao_code, then lo_code. lat and long must be provided together. The lang parameter only changes location fields; non-English lang is paid-only and returns 401 on free plans.`,
       inputSchema: {
         tz: z
           .string()
@@ -114,7 +114,9 @@ The lang parameter for non-English responses is available on paid plans only. On
       },
       description: `Convert time between two locations via GET /v3/timezone/convert. Works on free and paid plans. Cost: 1 credit.
 
-Specify source and destination by IANA timezone, coordinates, location, airport code, or UN/LOCODE. Returns original time, converted time, diff_hour, and diff_min.`,
+Use this when converting a supplied time or current time from one source to one destination. Use get_timezone instead for one place's current time or timezone metadata.
+
+Specify one complete source selector and one complete destination selector by IANA timezone, coordinates, location, airport code, or UN/LOCODE. Coordinate selectors require both lat and long on each side. time is optional and must be yyyy-MM-dd HH:mm or yyyy-MM-dd HH:mm:ss when supplied. Returns original time, converted time, diff_hour, and diff_min.`,
       inputSchema: {
         time: z
           .string()

@@ -214,11 +214,13 @@ export function registerGeolocationTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Unified IP lookup via GET /v3/ipgeo. Cost: 1 credit. Use this first when one IP request needs multiple domains such as location, company/ASN, network, timezone, currency, security, or abuse.
+      description: `Unified IP lookup via GET /v3/ipgeo. Cost: 1 credit for base IP data; security adds 2 credits and abuse adds 1 credit when included. Use this first when one IP request needs multiple domains such as location, company/ASN, network, timezone, currency, security, or abuse.
 
 Free plan supports core location data, country metadata, currency, time_zone, basic ASN, and fields/excludes. Paid plan adds domain lookup, company, network, extended ASN, non-English lang, and include modules such as security or abuse. If fields reference an include-only module, this server infers the required include automatically.
 
-Omit ip to use the caller's IP. Use lookup_asn only for peers, upstreams, downstreams, routes, or WHOIS. Use check_security or get_abuse_contact only for single-domain lookups.`,
+Returns JSON with root IP data plus objects such as location, country_metadata, currency, asn, network, company, and time_zone. Requested include modules add objects such as security, abuse, user_agent, hostname, dma_code, or geo_accuracy.
+
+Omit ip to use the caller's IP. fields/excludes use comma-separated dot paths; ip is always returned, non-existent excludes do not error, and include takes priority over fields/excludes. Use lookup_asn only for peers, upstreams, downstreams, routes, or WHOIS. Use check_security or get_abuse_contact only for single-domain lookups.`,
       inputSchema: {
         ip: z
           .string()
@@ -303,9 +305,9 @@ Omit ip to use the caller's IP. Use lookup_asn only for peers, upstreams, downst
       annotations: {
         readOnlyHint: true,
       },
-      description: `Bulk IP lookup via POST /v3/ipgeo-bulk. Paid only. Cost: 1 credit per IP for base geolocation. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs per request.
+      description: `Bulk IP lookup via POST /v3/ipgeo-bulk. Paid only. Cost: 1 credit per valid IP for base geolocation. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs per request.
 
-Use it when multiple IPs need location or mixed IP domains. Include modules such as security or abuse add their normal per-IP credit costs. For bulk security-only checks, prefer bulk_security_check.`,
+Use it when multiple IPs need location or mixed IP domains. Include modules such as security or abuse add their normal per-valid-IP credit costs. Private, bogon, and malformed IPs are not billed by the upstream API. fields, excludes, lang, and include behave like lookup_ip for each item. For bulk security-only checks, prefer bulk_security_check.`,
       inputSchema: {
         ips: z
           .array(z.string())
@@ -388,7 +390,7 @@ Use it when multiple IPs need location or mixed IP domains. Include modules such
         readOnlyHint: true,
       },
       description:
-        "Return the public IP address of the machine running this MCP server via /v3/getip. No API key or credits required.",
+        "Return the public IP address of the machine running this MCP server via GET /v3/getip. No API key, account, or credits are required. Returns a plain IP address string, not geolocation data. Use this only when the user asks for the server or caller public IP; use lookup_ip for location, ASN, timezone, currency, security, or abuse data.",
       inputSchema: {},
     },
     async () => {
@@ -412,9 +414,9 @@ Use it when multiple IPs need location or mixed IP domains. Include modules such
       },
       description: `Decision policy: this is a single-domain tool. Use it only when the user asks for ownership data (company/ASN) only. If the same IP request also needs security, abuse, location/city, timezone, network, or currency data, call lookup_ip once with include and targeted fields/excludes instead of chaining tools.
 
-Ownership lookup via GET /v3/ipgeo with company and ASN only. Paid only. Cost: 1 credit. Returns the company using the IP and the ASN holder routing it.
+Ownership lookup via GET /v3/ipgeo with company and ASN only. Paid only. Cost: 1 credit. Returns JSON containing company and asn objects: company name/type/domain plus ASN as_number, organization, country, type, domain, date_allocated, and rir when available.
 
-Tool selection rule: if this tool is used, call it once per IP target and post-process locally. Do not re-call lookup_company for the same IP just to change output shape.`,
+ip is optional and omitted means the caller's IP. force_refresh bypasses this server's cache only when the user asks to refresh or rerun. If this tool is used, call it once per IP target and post-process locally.`,
       inputSchema: {
         ip: z
           .string()
@@ -459,7 +461,9 @@ Tool selection rule: if this tool is used, call it once per IP target and post-p
       },
       description: `Currency and country metadata lookup via GET /v3/ipgeo with currency and country_metadata only. Works on free and paid plans. Cost: 1 credit.
 
-Tool selection rule: use this tool for currency-only or country-metadata-only requests. If the request needs more IP data, prefer one lookup_ip call with targeted fields/excludes.`,
+Returns JSON containing currency and country_metadata objects, including currency code/name/symbol and country-level metadata returned by the upstream API. ip is optional and omitted means the caller's IP. force_refresh bypasses this server's cache only when the user asks.
+
+Use this tool for currency-only or country-metadata-only requests. If the request needs more IP data, prefer one lookup_ip call with targeted fields/excludes.`,
       inputSchema: {
         ip: z
           .string()
@@ -502,9 +506,9 @@ Tool selection rule: use this tool for currency-only or country-metadata-only re
       annotations: {
         readOnlyHint: true,
       },
-      description: `Network lookup via GET /v3/ipgeo with network only. Paid only. Cost: 1 credit. Returns route prefix, connection type, and anycast status.
+      description: `Network lookup via GET /v3/ipgeo with network only. Paid only. Cost: 1 credit. Returns JSON containing the network object, including route prefix, connection type, anycast status, and related routing fields returned by the upstream API.
 
-Tool selection rule: use this tool for network-only requests. If the request also needs other IP domains, prefer one lookup_ip call with include plus targeted fields/excludes.`,
+ip is optional and omitted means the caller's IP. force_refresh bypasses this server's cache only when the user asks. Use this tool for network-only requests. If the request also needs other IP domains, prefer one lookup_ip call with include plus targeted fields/excludes.`,
       inputSchema: {
         ip: z
           .string()

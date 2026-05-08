@@ -362,7 +362,7 @@ test("registers all MCP tools with expected metadata", async (t) => {
   );
   assert.match(
     tools.get("lookup_asn").definition.description,
-    /call lookup_asn once per ASN\/IP target/i
+    /Call this tool once per ASN\/IP target/i
   );
 
   const bulkLookupIpsSchema = tools.get("bulk_lookup_ip").definition.inputSchema.ips;
