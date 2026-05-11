@@ -94,7 +94,7 @@ export function registerAsnTools(server: McpServer) {
       },
       description: `Read-only ASN enrichment via GET /v3/asn. Paid only. Cost: 1 credit. Query by asn or ip; asn takes priority over ip. Use for ASN relationships, route prefixes, allocation details, or WHOIS; use lookup_ip for basic ASN with geolocation.
 
-Returns { asn } with core fields plus optional peers, downstreams, upstreams, routes, and whois_response. include accepts peers, downstreams, upstreams, routes, and whois_response. fields/excludes can use full paths such as asn.upstreams.as_number or root-relative paths such as upstreams.as_number. force_refresh bypasses cache and makes a fresh upstream request only when the user asks.`,
+Returns { asn } core fields plus included peers, downstreams, upstreams, routes, or whois_response. include accepts those five values. fields/excludes accept full asn.* paths or root-relative paths such as upstreams.as_number. force_refresh bypasses cache only when the user asks.`,
       inputSchema: {
         asn: z
           .string()

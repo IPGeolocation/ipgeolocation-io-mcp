@@ -50,7 +50,7 @@ export function registerSecurityTools(server: McpServer) {
 
 Returns { ip, security } with threat_score, VPN, proxy, residential proxy, Tor, relay, anonymity, bot, spam, known attacker, and cloud-provider fields; provider names, confidence scores, and last_seen dates appear when available.
 
-fields/excludes use comma-separated security.* dot paths; ip is always returned. force_refresh bypasses cache and makes a fresh upstream request only when the user asks. Call once per IP target and post-process locally.`,
+fields/excludes use comma-separated security.* dot paths; ip is always returned. force_refresh bypasses cache only when the user asks. Call once per IP target and post-process locally.`,
       inputSchema: {
         ip: z
           .string()
@@ -118,9 +118,9 @@ fields/excludes use comma-separated security.* dot paths; ip is always returned.
       annotations: {
         readOnlyHint: true,
       },
-      description: `Read-only bulk security lookup via POST /v3/security-bulk. Paid only. Cost: 2 credits per valid IP. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs; private, bogon, and malformed IPs are not billed by the upstream API.
+      description: `Read-only bulk security lookup via POST /v3/security-bulk. Paid only. Cost: 2 credits per valid IP. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs; private, bogon, and malformed IPs are not billed.
 
-Use only for security-only batches; use bulk_lookup_ip with include=security when each IP also needs geolocation or other IP domains. Returns one { ip, security } result per valid IP with the same security fields as check_security. fields/excludes use security.* dot paths per item. force_refresh bypasses cache and makes a fresh upstream request only when the user asks.`,
+Use for security-only batches; use bulk_lookup_ip with include=security when each IP also needs geolocation or other IP domains. Returns one { ip, security } result per valid IP. fields/excludes use security.* dot paths per item. force_refresh bypasses cache only when the user asks.`,
       inputSchema: {
         ips: z
           .array(z.string())
