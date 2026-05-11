@@ -21,7 +21,7 @@ export function registerAbuseTools(server: McpServer) {
 
 Returns { ip, abuse } with route, country, name, organization, kind, address, emails, and phone_numbers for reporting abuse.
 
-fields/excludes use comma-separated abuse.* paths such as abuse.emails; ip is always returned. force_refresh bypasses cache and makes a fresh upstream request only when the user asks. Call once per IP target and post-process locally.`,
+fields/excludes use comma-separated abuse.* paths such as abuse.emails; ip is always returned. force_refresh bypasses cache only when the user asks. Call once per IP target and post-process locally.`,
       inputSchema: {
         ip: z
           .string()

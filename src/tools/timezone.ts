@@ -17,9 +17,9 @@ export function registerTimezoneTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Read-only timezone lookup via GET /v3/timezone. Works on free and paid plans. Cost: 1 credit. Use when the user asks for one place, IP, airport, UN/LOCODE, or IANA timezone's current local time or timezone metadata; use convert_timezone for source-to-destination conversion.
+      description: `Read-only timezone lookup via GET /v3/timezone. Works on free and paid plans. Cost: 1 credit. Use when the user asks for one place, IP, airport, UN/LOCODE, or IANA timezone current local time or metadata; use convert_timezone for source-to-destination conversion.
 
-Returns { time_zone } plus location, airport, city, or ip context depending on selector. time_zone includes name, offset, offset_with_dst, current_time, current_time_unix, date/time variants, time_24, time_12, timezone abbreviations, is_dst, dst_savings, dst_exists, and dst_start/dst_end when available.
+Returns { time_zone } plus selector context such as location, airport, city, or ip. time_zone includes the zone name, current time, UTC offsets, date/time variants, abbreviations, and DST status/transition fields when available.
 
 Selector priority is tz, lat/long, location, ip, iata_code, icao_code, then lo_code. lat and long must be provided together. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans.`,
       inputSchema: {

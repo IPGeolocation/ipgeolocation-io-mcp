@@ -47,11 +47,11 @@ export function registerAstronomyTools(server: McpServer) {
       annotations: {
         readOnlyHint: true,
       },
-      description: `Read-only single-date astronomy lookup via GET /v3/astronomy. Works on free and paid plans. Cost: 1 credit. Use for one date and real-time sun/moon position; use get_astronomy_time_series for daily sunrise, moon, and twilight data across a date range.
+      description: `Read-only single-date astronomy lookup via GET /v3/astronomy. Works on free and paid plans. Cost: 1 credit. Use for one date or real-time sun/moon position; use get_astronomy_time_series for daily sunrise, moon, and twilight data across a date range.
 
-Returns { location, astronomy } plus ip for IP/caller lookups. astronomy includes date/current_time, sunrise/sunset, moonrise/moonset, morning/evening twilight blocks, day_length, sun and moon status, altitude, azimuth, distance, moon_phase, moon_illumination_percentage, and moon_angle.
+Returns { location, astronomy } plus ip for IP/caller lookups. astronomy includes date/current_time, sunrise/sunset, moonrise/moonset, twilight blocks, day_length, sun/moon position, distance, status, moon_phase, moon_illumination_percentage, and moon_angle.
 
-Select by lat/long, location, IP, or caller IP when no selector is provided. lat and long must be provided together; date must be YYYY-MM-DD; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include full dates. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans.`,
+Selector priority is lat/long, location, ip, then caller IP when no selector is provided. lat and long must be provided together; date must be YYYY-MM-DD; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include full dates. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans.`,
       inputSchema: {
         lat: z
           .string()
@@ -147,9 +147,9 @@ Select by lat/long, location, IP, or caller IP when no selector is provided. lat
       annotations: {
         readOnlyHint: true,
       },
-      description: `Read-only daily astronomy series via GET /v3/astronomy/timeSeries. Works on free and paid plans. Cost: 1 credit per request. Use for date ranges up to 90 days; use get_astronomy for one date or real-time sun/moon altitude and azimuth.
+      description: `Read-only daily astronomy series via GET /v3/astronomy/timeSeries. Works on free and paid plans. Cost: 1 credit per request. Use for date ranges up to 90 days; use get_astronomy for one date or real-time sun/moon position.
 
-Returns { location, astronomy: [...] } with one daily item per date containing sunrise/sunset, moonrise/moonset, twilight blocks, day_length, sun/moon status, and moon_phase. Select by lat/long, location, IP, or caller IP when no selector is provided.
+Returns { location, astronomy: [...] } with one daily item per date containing sunrise/sunset, moonrise/moonset, twilight blocks, day_length, sun/moon status, and moon_phase. Selector priority is lat/long, location, ip, then caller IP when no selector is provided.
 
 dateStart and dateEnd are required YYYY-MM-DD values with a maximum 90-day span. lat and long must be provided together; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include full dates. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans. force_refresh bypasses cache and makes a fresh upstream request only when the user asks.`,
       inputSchema: {

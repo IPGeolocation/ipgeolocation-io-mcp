@@ -216,7 +216,7 @@ export function registerGeolocationTools(server: McpServer) {
       },
       description: `Read-only unified IP lookup via GET /v3/ipgeo. Base lookup costs 1 credit; include=security adds 2 credits and include=abuse adds 1 credit. Use this first when one IP or domain needs multiple data domains: location, company/ASN, network, timezone, currency, security, abuse, user_agent, hostname, geo_accuracy, or dma_code.
 
-Returns root IP/domain data plus location, country_metadata, currency, asn, network, company, and time_zone objects. Paid include modules add security, abuse, user_agent, hostname, dma_code, or geo_accuracy. Free plans support core location, country_metadata, currency, time_zone, basic ASN, fields, and excludes; paid plans add domain lookup, company, network, extended ASN, non-English lang, and include modules.
+Returns root IP/domain data plus selected objects such as location, country_metadata, currency, asn, network, company, time_zone, security, abuse, user_agent, hostname, geo_accuracy, or dma_code. Free plans support core location, country_metadata, currency, time_zone, basic ASN, fields, and excludes; paid plans add domain lookup, company, network, extended ASN, non-English lang, and include modules.
 
 ip omitted means caller IP. fields/excludes use comma-separated dot paths; ip is always returned, unknown excludes do not error, and include wins over fields/excludes. This server auto-adds include modules referenced by fields. Use lookup_asn only for peers, upstreams, downstreams, routes, or WHOIS; use check_security or get_abuse_contact only for security-only or abuse-only requests.`,
       inputSchema: {
@@ -305,9 +305,9 @@ ip omitted means caller IP. fields/excludes use comma-separated dot paths; ip is
       annotations: {
         readOnlyHint: true,
       },
-      description: `Read-only bulk IP lookup via POST /v3/ipgeo-bulk. Paid only. Base geolocation costs 1 credit per valid IP, with security adding 2 and abuse adding 1 per valid IP. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs per request.
+      description: `Read-only bulk IP lookup via POST /v3/ipgeo-bulk. Paid only. Base geolocation costs 1 credit per valid IP; security adds 2 and abuse adds 1 per valid IP. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs per request.
 
-Use it when multiple IPs or domains need location data or mixed IP domains. Private, bogon, and malformed IPs are not billed by the upstream API. fields, excludes, lang, and include behave like lookup_ip for each item; this server also infers include modules from fields. For security-only batches, use bulk_security_check.`,
+Use when multiple IPs or domains need location data or mixed IP domains. Private, bogon, and malformed IPs are not billed. fields, excludes, lang, and include behave like lookup_ip for each item; this server also infers include modules from fields. For security-only batches, use bulk_security_check.`,
       inputSchema: {
         ips: z
           .array(z.string())
@@ -392,7 +392,7 @@ Use it when multiple IPs or domains need location data or mixed IP domains. Priv
         readOnlyHint: true,
       },
       description:
-        "Return the public IP address of the machine running this MCP server via GET /v3/getip. No input parameters, API key, account, or credits are required. Returns a plain IP address string, not geolocation data. Use this only when the user asks for the server or caller public IP; use lookup_ip for location, ASN, timezone, currency, security, or abuse data.",
+        "Return the public IP address of the machine running this MCP server via GET /v3/getip. Takes no input parameters and requires no API key, account, or credits. Returns a plain IP address string, not geolocation data. Use this only when the user asks for the server or caller public IP; use lookup_ip for location, ASN, timezone, currency, security, or abuse data.",
       inputSchema: {},
     },
     async () => {
@@ -416,7 +416,7 @@ Use it when multiple IPs or domains need location data or mixed IP domains. Priv
       },
       description: `Read-only ownership lookup via GET /v3/ipgeo. Paid only. Cost: 1 credit. Use only for company/ASN ownership; use lookup_ip once if the same IP request also needs location, security, abuse, network, timezone, or currency.
 
-Returns { company, asn }: company name/type/domain plus ASN as_number, organization, country, type, domain, date_allocated, and rir when available. ip omitted means caller IP. force_refresh bypasses cache and makes a fresh upstream request only when the user asks. Call once per IP target and post-process locally.`,
+Returns { company, asn }: company name/type/domain plus ASN allocation fields when available. ip omitted means caller IP. force_refresh bypasses cache only when the user asks. Call once per IP target and post-process locally.`,
       inputSchema: {
         ip: z
           .string()
@@ -463,7 +463,7 @@ Returns { company, asn }: company name/type/domain plus ASN as_number, organizat
       },
       description: `Read-only currency and country metadata lookup via GET /v3/ipgeo. Works on free and paid plans. Cost: 1 credit per successful lookup.
 
-Returns { currency, country_metadata }: currency code/name/symbol plus country calling_code, tld, and languages. ip selects the IP used to derive country and currency; omit it for caller IP. force_refresh bypasses cache and makes a fresh upstream request only when the user asks.
+Returns { currency, country_metadata }: currency code/name/symbol plus country calling_code, tld, and languages. ip selects the IP used to derive country and currency; omit it for caller IP. force_refresh bypasses cache only when the user asks.
 
 Use this tool for currency-only or country-metadata-only requests. If the request needs more IP data, prefer one lookup_ip call with targeted fields/excludes.`,
       inputSchema: {
