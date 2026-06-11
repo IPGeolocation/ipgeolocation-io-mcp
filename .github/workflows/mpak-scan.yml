@@ -24,27 +24,27 @@ jobs:
       SOURCE_REF: ${{ inputs.source_ref || github.event.pull_request.head.sha || github.sha }}
 
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           path: tooling
 
       - name: Check out source ref
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           ref: ${{ env.SOURCE_REF }}
           path: source
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: source/package-lock.json
 
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: "3.13"
 
-      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
         with:
           version: "0.11.5"
           enable-cache: false
@@ -84,7 +84,7 @@ jobs:
 
       - name: Build universal mpak bundle
         id: build_bundle
-        uses: NimbleBrainInc/mcpb-pack@bcc565454580b378121fef0f5086d2979f07ddbd
+        uses: NimbleBrainInc/mcpb-pack@e74c82722fa4b954ce7740f875d6c437ae471df6
         with:
           directory: tooling/artifacts/mpak-package
           upload: false
@@ -107,7 +107,7 @@ jobs:
         run: mpak-scanner scan "${{ steps.build_bundle.outputs.bundle-path }}" --json > scan-results.json
 
       - name: Upload scanner results
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: mpak-scan-results
           path: tooling/artifacts/mpak-package/scan-results.json
