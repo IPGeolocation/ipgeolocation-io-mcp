@@ -84,12 +84,13 @@
   "overrides": {
     "@hono/node-server": "1.19.14",
     "express-rate-limit": "8.5.1",
-    "hono": "4.12.18",
-    "path-to-regexp": "8.4.2"
+    "hono": "4.12.25",
+    "path-to-regexp": "8.4.2",
+    "qs": "6.15.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0"
   },
-  "version": "1.0.19"
+  "version": "1.0.20"
 }
