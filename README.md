@@ -9,7 +9,7 @@
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-5FA04E?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-16A34A)](https://github.com/IPGeolocation/ipgeolocation-io-mcp/blob/main/LICENSE)
 
-Official MCP server for [IPGeolocation.io](https://ipgeolocation.io). Includes 16 MCP tools: IP geolocation, threat/VPN/proxy detection, timezone lookups and conversions, sunrise/sunset/moon data, ASN details, abuse contacts, and user-agent parsing. Seven tools work on the free plan (1,000 credits/day). Paid plans unlock all 16 plus bulk endpoints (up to 1,000 items per call).
+Official MCP server for [IPGeolocation.io](https://ipgeolocation.io). Includes 16 MCP tools: IP geolocation, threat/VPN/proxy detection, timezone lookups and conversions, sunrise/sunset/moon data, ASN details, abuse contacts, and user-agent parsing. Seven tools work on the free plan (1,000 credits/day). Paid plans unlock all 16 plus bulk endpoints (up to 50,000 items per call; default 1,000, configurable via `IPGEOLOCATION_MCP_MAX_BULK_ITEMS`).
 
 Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and any other MCP client.
 
@@ -253,13 +253,13 @@ All 16 tools. Paid plans also add `network`, `company`, and extended `asn` field
 
 | Tool | Credits | What it does |
 |------|---------|--------------|
-| `bulk_lookup_ip` | 1 per IP | Batch geolocation for up to 1,000 IPs |
+| `bulk_lookup_ip` | 1 per IP | Batch geolocation, up to 50,000 IPs (default 1,000) |
 | `check_security` | 2 | VPN, proxy, Tor, bot, spam, and threat flags |
 | `bulk_security_check` | 2 per IP | Batch threat checks |
 | `lookup_company` | 1 | Company name and ASN holder for one IP |
 | `lookup_network` | 1 | Route prefix, connection type, anycast status |
 | `parse_user_agent` | 1 | Parse one UA string into browser, device, OS, engine |
-| `bulk_parse_user_agent` | 1 per UA | Batch UA parsing for up to 1,000 strings |
+| `bulk_parse_user_agent` | 1 per UA | Batch UA parsing, up to 50,000 strings (default 1,000) |
 | `lookup_asn` | 1 | ASN details, peers, upstreams, downstreams, routes, WHOIS |
 | `get_abuse_contact` | 1 | Abuse contact emails, phone, address, route |
 
