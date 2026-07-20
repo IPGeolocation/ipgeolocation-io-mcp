@@ -616,7 +616,7 @@ All tools return structured errors instead of crashing the server. API errors in
 | `413` | POST body is larger than the upstream API allows |
 | `415` | POST request is missing the required `application/json` content type |
 | `423` | Bogon or private IP (`10.x.x.x`, `192.168.x.x`, etc.) |
-| `429` | Rate limit, daily credit limit, or account quota exceeded |
+| `429` | Daily request limit (free plan) or subscription/surcharge quota exceeded |
 | `499` | Client-side request or connection timeout was too short |
 | `5xx` | Upstream API server-side error |
 | `502` | Server could not reach the upstream API |
