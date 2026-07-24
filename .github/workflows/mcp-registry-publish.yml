@@ -1,0 +1,107 @@
+name: MCP Registry Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing v-prefixed GitHub release tag to publish
+        required: true
+        type: string
+
+permissions: read-all
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ inputs.release_tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify release and package metadata
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          if ! git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            echo "::error::$RELEASE_TAG is not a Git tag."
+            exit 1
+          fi
+
+          TAG_SHA=$(git rev-list -n 1 "$RELEASE_TAG")
+          HEAD_SHA=$(git rev-parse HEAD)
+          if [ "$TAG_SHA" != "$HEAD_SHA" ]; then
+            echo "::error::$RELEASE_TAG resolves to $TAG_SHA, but HEAD is $HEAD_SHA."
+            exit 1
+          fi
+
+          VERSION=$(jq -r '.version' package.json)
+          SERVER_NAME=$(jq -r '.name' server.json)
+          PACKAGE_NAME=$(jq -r '.packages[0].identifier' server.json)
+
+          if [ "$RELEASE_TAG" != "v$VERSION" ]; then
+            echo "::error::$RELEASE_TAG does not match package version $VERSION."
+            exit 1
+          fi
+
+          jq -e \
+            --arg version "$VERSION" \
+            '.version == $version and .packages[0].version == $version' \
+            server.json >/dev/null
+
+          jq -e \
+            --arg server_name "$SERVER_NAME" \
+            '.mcpName == $server_name' \
+            package.json >/dev/null
+
+          ENCODED_PACKAGE_NAME=${PACKAGE_NAME//\//%2F}
+          NPM_METADATA=$(curl \
+            --fail \
+            --location \
+            --retry 3 \
+            --silent \
+            --show-error \
+            "https://registry.npmjs.org/$ENCODED_PACKAGE_NAME/$VERSION")
+
+          jq -e \
+            --arg version "$VERSION" \
+            --arg server_name "$SERVER_NAME" \
+            '.version == $version and .mcpName == $server_name' \
+            <<<"$NPM_METADATA" >/dev/null
+
+      - name: Install mcp-publisher
+        env:
+          MCP_PUBLISHER_VERSION: v1.8.0
+          MCP_PUBLISHER_SHA256: 1370446bbe74d562608e8005a6ccce02d146a661fbd78674e11cc70b9618d6cf
+        run: |
+          set -euo pipefail
+
+          ARCHIVE="$RUNNER_TEMP/mcp-publisher.tar.gz"
+          curl \
+            --fail \
+            --location \
+            --retry 3 \
+            --silent \
+            --show-error \
+            "https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_VERSION/mcp-publisher_linux_amd64.tar.gz" \
+            --output "$ARCHIVE"
+
+          echo "$MCP_PUBLISHER_SHA256  $ARCHIVE" | sha256sum -c -
+          tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP" mcp-publisher
+          chmod 0755 "$RUNNER_TEMP/mcp-publisher"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Authenticate to MCP Registry
+        run: mcp-publisher login github-oidc
+
+      - name: Publish server to MCP Registry
+        run: mcp-publisher publish server.json
