@@ -45,12 +45,13 @@ export function registerSecurityTools(server: McpServer) {
       title: "VPN/Proxy/Threat Detection",
       annotations: {
         readOnlyHint: true,
+        openWorldHint: true,
       },
-      description: `Read-only security lookup via GET /v3/security. Paid only. Cost: 2 credits. Use only for security/threat data; use lookup_ip with include=security when the same request also needs location, ASN/company, network, timezone, currency, or abuse.
+      description: `Read-only security lookup via GET /v3/security. Paid only. Cost: 2 credits. This endpoint is dedicated to security and threat data; lookup_ip with include=security provides security data together with location, ASN/company, network, timezone, currency, or abuse.
 
 Returns { ip, security } with threat_score, VPN, proxy, residential proxy, Tor, relay, anonymity, bot, spam, known attacker, and cloud-provider fields; provider names, confidence scores, and last_seen dates appear when available.
 
-fields/excludes use comma-separated security.* dot paths; ip is always returned. force_refresh bypasses cache only when the user asks. Call once per IP target and post-process locally.`,
+fields/excludes accept comma-separated security.* dot paths; ip is always returned. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
       inputSchema: {
         ip: z
           .string()
@@ -74,7 +75,7 @@ fields/excludes use comma-separated security.* dot paths; ip is always returned.
           .boolean()
           .optional()
           .describe(
-            "Default false. Set true only when the user asks to refresh cached security data; a successful refresh makes a new upstream request and can consume credits."
+            "Default false. When true, bypasses cached security data; a successful refresh makes a new upstream request and can consume credits."
           ),
       },
     },
@@ -117,10 +118,11 @@ fields/excludes use comma-separated security.* dot paths; ip is always returned.
       title: "Bulk Security Check",
       annotations: {
         readOnlyHint: true,
+        openWorldHint: true,
       },
       description: `Read-only bulk security lookup via POST /v3/security-bulk. Paid only. Cost: 2 credits per valid IP. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs; private, bogon, and malformed IPs are not billed.
 
-Use for security-only batches; use bulk_lookup_ip with include=security when each IP also needs geolocation or other IP domains. Returns one { ip, security } result per valid IP. fields/excludes use security.* dot paths per item. force_refresh bypasses cache only when the user asks.`,
+This endpoint is dedicated to security-only batches; bulk_lookup_ip with include=security provides security data together with geolocation or other IP domains. Returns one { ip, security } result per valid IP. fields/excludes accept security.* dot paths per item. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
       inputSchema: {
         ips: z
           .array(z.string())
@@ -145,7 +147,7 @@ Use for security-only batches; use bulk_lookup_ip with include=security when eac
           .boolean()
           .optional()
           .describe(
-            "Default false. Set true only when the user asks to refresh cached bulk security data; a successful refresh makes a new upstream request and can consume credits."
+            "Default false. When true, bypasses cached bulk security data; a successful refresh makes a new upstream request and can consume credits."
           ),
       },
     },

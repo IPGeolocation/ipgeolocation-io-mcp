@@ -127,6 +127,18 @@ test("Dockerfile starts the stdio CLI entrypoint", async () => {
 
 test("manifest mcp_config is aligned for stdio startup", async () => {
   const manifest = JSON.parse(await readRepoFile("manifest.json"));
+  const expectedConfigMappings = {
+    IPGEOLOCATION_API_KEY: "${user_config.api_key}",
+    IPGEOLOCATION_REQUEST_TIMEOUT_MS: "${user_config.request_timeout_ms}",
+    IPGEOLOCATION_MCP_CACHE_TTL_MS: "${user_config.cache_ttl_ms}",
+    IPGEOLOCATION_MCP_CACHE_MAX_ENTRIES:
+      "${user_config.cache_max_entries}",
+    IPGEOLOCATION_MCP_MAX_BULK_ITEMS: "${user_config.max_bulk_items}",
+    IPGEOLOCATION_MCP_MAX_RESULT_ITEMS: "${user_config.max_result_items}",
+    IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS:
+      "${user_config.max_response_chars}",
+    IPGEOLOCATION_MCP_MAX_ERROR_CHARS: "${user_config.max_error_chars}",
+  };
 
   assert.equal(manifest.server.type, "node");
   assert.equal(manifest.server.entry_point, "dist/cli.js");
@@ -134,14 +146,27 @@ test("manifest mcp_config is aligned for stdio startup", async () => {
   assert.deepEqual(manifest.server.mcp_config.args, [
     "${__dirname}/dist/cli.js",
   ]);
-  assert.equal(
-    manifest.server.mcp_config.env.IPGEOLOCATION_API_KEY,
-    "${user_config.api_key}"
+  assert.deepEqual(manifest.server.mcp_config.env, expectedConfigMappings);
+  assert.equal(manifest.icon, "icon.png");
+  assert.equal(manifest.user_config.api_key.sensitive, true);
+  assert.deepEqual(
+    Object.keys(manifest.user_config).sort(),
+    [
+      "api_key",
+      "cache_max_entries",
+      "cache_ttl_ms",
+      "max_bulk_items",
+      "max_error_chars",
+      "max_response_chars",
+      "max_result_items",
+      "request_timeout_ms",
+    ]
   );
 });
 
 test("registry metadata stays aligned across package and server manifest", async () => {
   const packageJson = JSON.parse(await readRepoFile("package.json"));
+  const manifest = JSON.parse(await readRepoFile("manifest.json"));
   const serverJson = JSON.parse(await readRepoFile("server.json"));
   const readme = await readRepoFile("README.md");
 
@@ -159,9 +184,14 @@ test("registry metadata stays aligned across package and server manifest", async
   assert.equal(serverJson.packages[0].version, packageJson.version);
   assert.equal(serverJson.packages[0].registryType, "npm");
   assert.equal(serverJson.packages[0].transport.type, "stdio");
+  assert.equal(packageJson.engines.node, ">=22.0.0");
+  assert.equal(
+    manifest.compatibility.runtimes.node,
+    packageJson.engines.node
+  );
 });
 
-test("timezone and astronomy tool docs include Glama-facing selection guidance", async () => {
+test("timezone and astronomy tool descriptions are factual and distinguish related endpoints", async () => {
   const timezoneSource = await readRepoFile("src/tools/timezone.ts");
   const astronomySource = await readRepoFile("src/tools/astronomy.ts");
 
@@ -171,9 +201,12 @@ test("timezone and astronomy tool docs include Glama-facing selection guidance",
   );
   assert.match(
     timezoneSource,
-    /Use when the user asks for one place, IP, airport, UN\/LOCODE/i
+    /provides current local time and metadata for one place, IP, airport, UN\/LOCODE/i
   );
-  assert.match(timezoneSource, /use convert_timezone for source-to-destination conversion/i);
+  assert.match(
+    timezoneSource,
+    /convert_timezone provides source-to-destination conversion/i
+  );
   assert.match(
     astronomySource,
     /non-English lang is paid-only and returns 401 on free plans\./
@@ -182,7 +215,10 @@ test("timezone and astronomy tool docs include Glama-facing selection guidance",
     astronomySource,
     /caller IP when no selector is provided/i
   );
-  assert.match(astronomySource, /use get_astronomy_time_series for daily sunrise/i);
+  assert.match(
+    astronomySource,
+    /get_astronomy_time_series provides daily sunrise/i
+  );
 });
 
 test("tool descriptions include response shape and parameter semantics for Glama scoring", async () => {
@@ -193,13 +229,13 @@ test("tool descriptions include response shape and parameter semantics for Glama
   const userAgentSource = await readRepoFile("src/tools/useragent.ts");
 
   assert.match(geolocationSource, /Returns root IP\/domain data/);
-  assert.match(geolocationSource, /fields\/excludes use comma-separated dot paths/);
+  assert.match(geolocationSource, /fields\/excludes accept comma-separated dot paths/);
   assert.match(geolocationSource, /not geolocation data/);
   assert.match(geolocationSource, /Private, bogon, and malformed/);
   assert.match(securitySource, /Returns \{ ip, security \}/);
   assert.match(securitySource, /security\.\* dot paths/);
   assert.match(asnSource, /Returns \{ asn \}/);
-  assert.match(asnSource, /asn takes priority over ip/);
+  assert.match(asnSource, /with asn taking priority/);
   assert.match(abuseSource, /Returns \{ ip, abuse \}/);
   assert.match(userAgentSource, /Paid only for POST payload parsing/);
   assert.match(userAgentSource, /uaString must be the exact non-empty user-agent string/);

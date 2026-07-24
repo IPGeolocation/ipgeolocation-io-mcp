@@ -78,7 +78,7 @@ test("red-team: successful tool results redact configured API keys and bearer to
   const { formatToolResult } = await import(distModuleUrl("tools/response.js"));
   const formatted = formatToolResult({
     upstream_echo:
-      `apiKey=${rawSecret} apiKey%3D${encodedSecret}%26ip=8.8.8.8 Authorization: Bearer ${rawSecret}`,
+      `apiKey=${rawSecret} apiKey%3D${encodedSecret}%26ip=8.8.8.8 x-ipgeolocation-api-key: ${rawSecret} Authorization: Bearer ${rawSecret}`,
     nested: {
       api_key: rawSecret,
     },
@@ -102,7 +102,7 @@ test("red-team: generic and API errors redact secrets in visible and structured 
   const apiErrorResponse = errorToolResponse(
     new ApiError(
       418,
-      `418: apiKey=${rawSecret} apiKey%3D${encodedSecret}%26x Authorization: Bearer ${rawSecret}`
+      `418: apiKey=${rawSecret} apiKey%3D${encodedSecret}%26x x-ipgeolocation-api-key: ${rawSecret} Authorization: Bearer ${rawSecret}`
     )
   );
   const genericErrorResponse = errorToolResponse(
@@ -198,8 +198,9 @@ test("red-team: prompt-injection-shaped user-agent input stays data-only", async
 
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(String(input));
+    const headers = new Headers(init.headers);
     const body = JSON.parse(String(init.body));
-    calls.push({ url, body });
+    calls.push({ url, headers, body });
     return new Response(
       JSON.stringify({
         user_agent_string: `${body.uaString} ${rawSecret}`,
@@ -219,25 +220,28 @@ test("red-team: prompt-injection-shaped user-agent input stays data-only", async
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url.origin, "https://api.ipgeolocation.io");
   assert.equal(calls[0].url.pathname, "/v3/user-agent");
-  assert.equal(calls[0].url.searchParams.get("apiKey"), rawSecret);
+  assert.equal(calls[0].url.searchParams.get("apiKey"), null);
+  assert.equal(calls[0].headers.get("x-ipgeolocation-api-key"), rawSecret);
   assert.equal(calls[0].body.uaString, maliciousUserAgent);
   assert.match(parsed.user_agent_string, /ignore previous instructions/);
   assertNoSecret(text, [rawSecret]);
   assert.match(text, /\[REDACTED_API_KEY\]/);
 });
 
-test("red-team: query parameter injection cannot override destination or apiKey", async (t) => {
+test("red-team: query parameter injection cannot override destination or authentication header", async (t) => {
   clearRedteamEnv();
   process.env.IPGEOLOCATION_API_KEY = "real_key";
   const originalFetch = globalThis.fetch;
   let capturedUrl;
+  let capturedHeaders;
   t.after(() => {
     clearRedteamEnv();
     globalThis.fetch = originalFetch;
   });
 
-  globalThis.fetch = async (input) => {
+  globalThis.fetch = async (input, init = {}) => {
     capturedUrl = new URL(String(input));
+    capturedHeaders = new Headers(init.headers);
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -252,9 +256,41 @@ test("red-team: query parameter injection cannot override destination or apiKey"
 
   assert.equal(capturedUrl.origin, "https://api.ipgeolocation.io");
   assert.equal(capturedUrl.pathname, "/v3/ipgeo");
-  assert.equal(capturedUrl.searchParams.get("apiKey"), "real_key");
+  assert.equal(capturedUrl.searchParams.get("apiKey"), null);
+  assert.equal(capturedHeaders.get("x-ipgeolocation-api-key"), "real_key");
   assert.equal(
     capturedUrl.searchParams.get("ip"),
     "8.8.8.8&apiKey=attacker&url=https://evil.example"
   );
+});
+
+test("red-team: dynamic response keys cannot modify object prototypes", async (t) => {
+  clearRedteamEnv();
+  t.after(clearRedteamEnv);
+
+  const payload = JSON.parse(
+    '{"__proto__":{"polluted":"yes"},"constructor":{"prototype":{"polluted":"yes"}},"safe":{"value":"ok"}}'
+  );
+  const { applyFieldsAndExcludes } = await import(
+    distModuleUrl("tools/projection.js")
+  );
+  const { formatToolResult } = await import(distModuleUrl("tools/response.js"));
+
+  const projected = applyFieldsAndExcludes(payload, {
+    fields: "__proto__.polluted,constructor.prototype.polluted,safe.value",
+  });
+  const formatted = JSON.parse(formatToolResult(payload));
+
+  assert.equal(Object.prototype.polluted, undefined);
+  assert.equal(Object.getPrototypeOf(projected), Object.prototype);
+  assert.equal(Object.getPrototypeOf(formatted), Object.prototype);
+  assert.equal(
+    Object.getOwnPropertyDescriptor(projected, "__proto__").value.polluted,
+    "yes"
+  );
+  assert.equal(
+    Object.getOwnPropertyDescriptor(formatted, "__proto__").value.polluted,
+    "yes"
+  );
+  assert.equal(projected.safe.value, "ok");
 });

@@ -49,11 +49,12 @@ function prepareArraysForTransport(
     return value;
   }
 
-  const prepared: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    prepared[key] = prepareArraysForTransport(entry, state);
-  }
-  return prepared;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [
+      key,
+      prepareArraysForTransport(entry, state),
+    ])
+  );
 }
 
 function prepareResultForTransport(result: unknown): unknown {
@@ -225,7 +226,10 @@ function classifyApiError(status: number): {
 }
 
 function stripStatusPrefix(message: string, status: number): string {
-  return message.replace(new RegExp(`^${status}:\\s*`), "");
+  const prefix = `${status}:`;
+  return message.startsWith(prefix)
+    ? message.slice(prefix.length).trimStart()
+    : message;
 }
 
 function isApiErrorLike(error: unknown): error is ApiErrorLike {

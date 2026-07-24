@@ -6,7 +6,8 @@
 [![GitHub release](https://img.shields.io/github/v/release/IPGeolocation/ipgeolocation-io-mcp?logo=github&label=release&color=181717)](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-live-0A7CFF?logo=modelcontextprotocol&logoColor=white)](https://registry.modelcontextprotocol.io/?q=ipgeolocation)
 [![Glama](https://img.shields.io/badge/Glama-listed-0A7CFF)](https://glama.ai/mcp/servers/IPGeolocation/ipgeolocation-io-mcp)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D18-5FA04E?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/IPGeolocation/ipgeolocation-io-mcp/badge)](https://scorecard.dev/viewer/?uri=github.com/IPGeolocation/ipgeolocation-io-mcp)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22-5FA04E?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-16A34A)](https://github.com/IPGeolocation/ipgeolocation-io-mcp/blob/main/LICENSE)
 
 Official MCP server for [IPGeolocation.io](https://ipgeolocation.io). Includes 16 MCP tools: IP geolocation, threat/VPN/proxy detection, timezone lookups and conversions, sunrise/sunset/moon data, ASN details, abuse contacts, and user-agent parsing. Seven tools work on the free plan (1,000 credits/day). Paid plans unlock all 16 plus bulk endpoints (up to 50,000 items per call; default 1,000, configurable via `IPGEOLOCATION_MCP_MAX_BULK_ITEMS`).
@@ -16,9 +17,9 @@ Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and a
 | Item | Value |
 |------|-------|
 | Package | `ipgeolocation-io-mcp` |
-| Version | `1.0.20` |
+| Version | `2.0.0` |
 | Transport | `stdio` |
-| Node.js | `>=18` |
+| Node.js | `>=22` |
 
 ## Quick Start
 
@@ -74,7 +75,7 @@ Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and a
 
 ### Requirements
 
-- Node.js 18 or later
+- Node.js 22 or later
 - `npx` available in your terminal
 - An IPGeolocation.io API key for most tools
 
@@ -635,6 +636,8 @@ At runtime:
 3. When a prompt matches a tool, the client calls it.
 4. The server validates inputs, calls our API, and returns structured JSON.
 5. Cacheable responses are stored in process memory so repeated identical requests skip the API call.
+
+Authenticated upstream requests send the API key in the `x-ipgeolocation-api-key` header. The key is not added to request URLs.
 
 `lookup_company`, `lookup_currency`, and `lookup_network` are wrappers around parts of the full IP lookup response. They exist as separate tools so MCP clients can discover them when a user only needs one piece of data.
 

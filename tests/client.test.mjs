@@ -40,7 +40,7 @@ test("getIpGeolocation throws when API key is not configured", async (t) => {
   );
 });
 
-test("getIpGeolocation sends apiKey and query params", async (t) => {
+test("getIpGeolocation sends API key in a header and keeps it out of the URL", async (t) => {
   clearClientEnv();
   process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
   const originalFetch = globalThis.fetch;
@@ -51,9 +51,11 @@ test("getIpGeolocation sends apiKey and query params", async (t) => {
 
   let capturedUrl;
   let capturedMethod;
+  let capturedHeaders;
   globalThis.fetch = async (url, options = {}) => {
     capturedUrl = new URL(url);
     capturedMethod = options.method || "GET";
+    capturedHeaders = new Headers(options.headers);
     return jsonResponse({ ok: true });
   };
 
@@ -66,7 +68,11 @@ test("getIpGeolocation sends apiKey and query params", async (t) => {
   assert.deepEqual(result, { ok: true });
   assert.equal(capturedMethod, "GET");
   assert.equal(capturedUrl.pathname, "/v3/ipgeo");
-  assert.equal(capturedUrl.searchParams.get("apiKey"), "test_api_key_local");
+  assert.equal(capturedUrl.searchParams.get("apiKey"), null);
+  assert.equal(
+    capturedHeaders.get("x-ipgeolocation-api-key"),
+    "test_api_key_local"
+  );
   assert.equal(capturedUrl.searchParams.get("ip"), "8.8.8.8");
   assert.equal(capturedUrl.searchParams.get("fields"), "location.city");
 });
@@ -81,8 +87,10 @@ test("getMyIp does not include API key in request", async (t) => {
   });
 
   let capturedUrl;
-  globalThis.fetch = async (url) => {
+  let capturedHeaders;
+  globalThis.fetch = async (url, options = {}) => {
     capturedUrl = new URL(url);
+    capturedHeaders = new Headers(options.headers);
     return jsonResponse({ ip: "198.51.100.10" });
   };
 
@@ -92,6 +100,7 @@ test("getMyIp does not include API key in request", async (t) => {
   assert.equal(ip, "198.51.100.10");
   assert.equal(capturedUrl.pathname, "/v3/getip");
   assert.equal(capturedUrl.searchParams.get("apiKey"), null);
+  assert.equal(capturedHeaders.get("x-ipgeolocation-api-key"), null);
 });
 
 test("getMyIp preserves upstream non-ok error messages", async (t) => {
@@ -244,7 +253,7 @@ test("redacts API keys from upstream error messages", async (t) => {
     jsonResponse(
       {
         message:
-          "Request rejected for https://api.ipgeolocation.io/v3/ipgeo?apiKey=sensitive_test_key_123&ip=8.8.8.8",
+          "Request rejected for https://api.ipgeolocation.io/v3/ipgeo?apiKey=sensitive_test_key_123&ip=8.8.8.8; x-ipgeolocation-api-key: unexpected_header_secret_789",
       },
       401
     );
@@ -256,7 +265,12 @@ test("redacts API keys from upstream error messages", async (t) => {
       assert.equal(error.name, "ApiError");
       assert.equal(error.status, 401);
       assert.doesNotMatch(error.message, /sensitive_test_key_123/);
+      assert.doesNotMatch(error.message, /unexpected_header_secret_789/);
       assert.match(error.message, /apiKey=\[REDACTED_API_KEY\]/);
+      assert.match(
+        error.message,
+        /x-ipgeolocation-api-key: \[REDACTED_API_KEY\]/
+      );
       return true;
     }
   );
@@ -273,7 +287,7 @@ test("redacts API keys from transport failures", async (t) => {
 
   globalThis.fetch = async () => {
     throw new Error(
-      "fetch failed for apiKey=sensitive_test_key_456 while connecting"
+      "fetch failed for x-ipgeolocation-api-key: sensitive_test_key_456 while connecting"
     );
   };
 

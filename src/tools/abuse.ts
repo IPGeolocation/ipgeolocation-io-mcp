@@ -16,12 +16,13 @@ export function registerAbuseTools(server: McpServer) {
       title: "Abuse Contact Lookup",
       annotations: {
         readOnlyHint: true,
+        openWorldHint: true,
       },
-      description: `Read-only abuse contact lookup via GET /v3/abuse. Paid only. Cost: 1 credit. Use only for abuse contact data; use lookup_ip with include=abuse when the same IP also needs location, security, ASN/company, timezone, network, or currency.
+      description: `Read-only abuse contact lookup via GET /v3/abuse. Paid only. Cost: 1 credit. This endpoint is dedicated to abuse contact data; lookup_ip with include=abuse provides abuse data together with location, security, ASN/company, timezone, network, or currency.
 
 Returns { ip, abuse } with route, country, name, organization, kind, address, emails, and phone_numbers for reporting abuse.
 
-fields/excludes use comma-separated abuse.* paths such as abuse.emails; ip is always returned. force_refresh bypasses cache only when the user asks. Call once per IP target and post-process locally.`,
+fields/excludes accept comma-separated abuse.* paths such as abuse.emails; ip is always returned. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
       inputSchema: {
         ip: z
           .string()
@@ -45,7 +46,7 @@ fields/excludes use comma-separated abuse.* paths such as abuse.emails; ip is al
           .boolean()
           .optional()
           .describe(
-            "Default false. Set true only when the user asks to refresh cached abuse contact data; a successful refresh makes a new upstream request and can consume credits."
+            "Default false. When true, bypasses cached abuse contact data; a successful refresh makes a new upstream request and can consume credits."
           ),
       },
     },

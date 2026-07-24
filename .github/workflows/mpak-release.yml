@@ -4,39 +4,78 @@ on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: Git ref to build the mpak bundle from
+        description: Git tag to build (must match release_tag)
         required: true
-        default: main
       release_tag:
         description: Existing GitHub release tag to upload assets to
         required: true
 
-permissions:
-  contents: write
-  id-token: write
-  attestations: write
-  artifact-metadata: write
+permissions: read-all
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
 
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           path: tooling
+          persist-credentials: false
 
       - name: Check out source ref
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           ref: ${{ inputs.source_ref }}
           path: source
+          persist-credentials: false
+
+      - name: Bind source ref to workflow provenance
+        working-directory: source
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+
+          if [ "$SOURCE_REF" != "$RELEASE_TAG" ]; then
+            echo "::error::source_ref ($SOURCE_REF) must match release_tag ($RELEASE_TAG)."
+            exit 1
+          fi
+
+          if [ "$GITHUB_REF" != "refs/tags/$RELEASE_TAG" ]; then
+            echo "::error::Dispatch this workflow from the $RELEASE_TAG tag."
+            exit 1
+          fi
+
+          SOURCE_SHA=$(git rev-parse HEAD)
+          if [ "$SOURCE_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::source_ref resolved to $SOURCE_SHA, but this workflow run is bound to $GITHUB_SHA."
+            echo "::error::Dispatch the workflow from the same tag supplied as source_ref."
+            exit 1
+          fi
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: source/package-lock.json
+
+      - name: Install CycloneDX 1.6 SBOM generator
+        run: |
+          set -euo pipefail
+
+          curl -fsSL \
+            https://github.com/anchore/syft/releases/download/v1.29.1/syft_1.29.1_linux_amd64.tar.gz \
+            -o /tmp/syft.tar.gz
+          echo "ca704907e5a7b697c6e683832ca128e2ae60de63d7d87f3e2e39672df9038fa4  /tmp/syft.tar.gz" \
+            | sha256sum -c -
+          tar -xzf /tmp/syft.tar.gz -C /tmp syft
+          sudo install -m 0755 /tmp/syft /usr/local/bin/syft
 
       - name: Verify release exists
         working-directory: tooling
@@ -48,19 +87,43 @@ jobs:
         working-directory: source
         run: npm ci --ignore-scripts
 
+      - name: Verify release version metadata
+        working-directory: source
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          VERSION=$(jq -r '.version' package.json)
+          EXPECTED_TAG="v$VERSION"
+
+          if [ "$RELEASE_TAG" != "$EXPECTED_TAG" ]; then
+            echo "::error::release_tag ($RELEASE_TAG) must match package version ($EXPECTED_TAG)."
+            exit 1
+          fi
+
+          jq -e --arg version "$VERSION" '.version == $version' manifest.json >/dev/null
+          jq -e --arg version "$VERSION" \
+            '.version == $version and .packages[0].version == $version' \
+            server.json >/dev/null
+
       - name: Audit root dependencies
         working-directory: source
         run: npm audit --audit-level=moderate
 
-      - name: Build root distribution
+      - name: Run root test suite
         working-directory: source
-        run: npm run build
+        run: npm test
 
       - name: Prepare isolated mpak package
         working-directory: tooling
         env:
           MPAK_SOURCE_DIR: ../source
         run: node scripts/prepare-mpak-package.mjs
+
+      - name: Generate bundled SBOM
+        working-directory: tooling
+        run: node scripts/generate-mpak-sbom.mjs
 
       - name: Build universal mpak bundle
         id: build_bundle
@@ -100,7 +163,7 @@ jobs:
 
       - name: Generate build provenance attestation
         id: attest_bundle
-        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
         with:
           subject-path: tooling/artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}
 
@@ -115,6 +178,32 @@ jobs:
 
           echo "attestation_asset=$ATTESTATION_ASSET" >> "$GITHUB_OUTPUT"
 
+      - name: Verify signature and provenance
+        working-directory: tooling
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE_PATH: artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}
+          SIGNATURE_PATH: artifacts/mpak-package/${{ steps.sign_bundle.outputs.signature_bundle }}
+          ATTESTATION_ASSET: ${{ steps.stage_attestation.outputs.attestation_asset }}
+        run: |
+          set -euo pipefail
+
+          cosign verify-blob \
+            --bundle "$SIGNATURE_PATH" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity \
+              "https://github.com/$GITHUB_REPOSITORY/.github/workflows/mpak-release.yml@$GITHUB_REF" \
+            "$BUNDLE_PATH"
+
+          gh attestation verify \
+            "$BUNDLE_PATH" \
+            --repo "$GITHUB_REPOSITORY" \
+            --bundle "$ATTESTATION_ASSET" \
+            --cert-identity \
+              "https://github.com/$GITHUB_REPOSITORY/.github/workflows/mpak-release.yml@$GITHUB_REF" \
+            --source-ref "$GITHUB_REF" \
+            --source-digest "$GITHUB_SHA"
+
       - name: Upload mpak assets to the tagged release
         working-directory: tooling
         env:
@@ -123,6 +212,7 @@ jobs:
           gh release upload "${{ inputs.release_tag }}" \
             "artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}" \
             artifacts/mpak-package/server.json \
+            artifacts/mpak-package/sbom.cdx.json \
             "artifacts/mpak-package/${{ steps.sign_bundle.outputs.signature_bundle }}" \
             "${{ steps.stage_attestation.outputs.attestation_asset }}" \
             --clobber

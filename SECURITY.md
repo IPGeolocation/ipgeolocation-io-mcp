@@ -22,7 +22,7 @@ If you discover a security vulnerability, please report it responsibly:
 
 - The API key is read from the `IPGEOLOCATION_API_KEY` environment variable or injected per-session via the MCP runtime config.
 - The key is never logged, cached to disk, or included in error messages.
-- The key is transmitted only to `https://api.ipgeolocation.io` over HTTPS.
+- The key is transmitted only to `https://api.ipgeolocation.io` over HTTPS in the `x-ipgeolocation-api-key` header. It is never added to request URLs.
 - In-memory response cache entries are scoped by an API-key hash so different runtime-config sessions do not share cached upstream data.
 
 ### Network Access
@@ -63,3 +63,7 @@ This package has two runtime dependencies:
 - `zod` — input schema validation
 
 Transitive dependency versions are pinned via `overrides` in `package.json` to address known vulnerabilities in upstream packages.
+
+### Release Integrity
+
+mpak release bundles include a CycloneDX SBOM. Each bundle is signed with Sigstore keyless signing and receives a GitHub OIDC build-provenance attestation. The release workflow verifies both artifacts before uploading them to GitHub Releases.

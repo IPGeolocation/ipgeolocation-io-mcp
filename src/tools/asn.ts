@@ -91,10 +91,11 @@ export function registerAsnTools(server: McpServer) {
       title: "ASN Details",
       annotations: {
         readOnlyHint: true,
+        openWorldHint: true,
       },
-      description: `Read-only ASN enrichment via GET /v3/asn. Paid only. Cost: 1 credit. Query by asn or ip; asn takes priority over ip. Use for ASN relationships, route prefixes, allocation details, or WHOIS; use lookup_ip for basic ASN with geolocation.
+      description: `Read-only ASN enrichment via GET /v3/asn. Paid only. Cost: 1 credit. Queries accept asn or ip, with asn taking priority. The response covers ASN relationships, route prefixes, allocation details, and WHOIS; lookup_ip provides basic ASN data together with geolocation.
 
-Returns { asn } core fields plus included peers, downstreams, upstreams, routes, or whois_response. include accepts those five values. fields/excludes accept full asn.* paths or root-relative paths such as upstreams.as_number. force_refresh bypasses cache only when the user asks.`,
+Returns { asn } core fields plus included peers, downstreams, upstreams, routes, or whois_response. include accepts those five values. fields/excludes accept full asn.* paths or root-relative paths such as upstreams.as_number. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
       inputSchema: {
         asn: z
           .string()
@@ -118,7 +119,7 @@ Returns { asn } core fields plus included peers, downstreams, upstreams, routes,
           .string()
           .optional()
           .describe(
-            "Comma-separated dot-path fields to return (e.g. asn.as_number,asn.organization or upstreams.as_number). Paths can be full (asn.upstreams.as_number) or relative to the asn root (upstreams.as_number). Use include for optional datasets (peers/downstreams/upstreams/routes/whois_response), then use fields to keep only required paths."
+            "Comma-separated dot-path fields to return (e.g. asn.as_number,asn.organization or upstreams.as_number). Paths can be full (asn.upstreams.as_number) or relative to the asn root (upstreams.as_number). Optional datasets (peers/downstreams/upstreams/routes/whois_response) are controlled by include; fields limits the returned paths."
           ),
         excludes: z
           .string()
@@ -130,7 +131,7 @@ Returns { asn } core fields plus included peers, downstreams, upstreams, routes,
           .boolean()
           .optional()
           .describe(
-            "Default false. Set true only when the user asks to refresh cached ASN data; a successful refresh makes a new upstream request and can consume credits."
+            "Default false. When true, bypasses cached ASN data; a successful refresh makes a new upstream request and can consume credits."
           ),
       },
     },

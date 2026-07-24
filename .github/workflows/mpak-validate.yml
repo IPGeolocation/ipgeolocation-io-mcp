@@ -18,11 +18,25 @@ jobs:
 
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: "22"
           cache: "npm"
+
+      - name: Install CycloneDX 1.6 SBOM generator
+        run: |
+          set -euo pipefail
+
+          curl -fsSL \
+            https://github.com/anchore/syft/releases/download/v1.29.1/syft_1.29.1_linux_amd64.tar.gz \
+            -o /tmp/syft.tar.gz
+          echo "ca704907e5a7b697c6e683832ca128e2ae60de63d7d87f3e2e39672df9038fa4  /tmp/syft.tar.gz" \
+            | sha256sum -c -
+          tar -xzf /tmp/syft.tar.gz -C /tmp syft
+          sudo install -m 0755 /tmp/syft /usr/local/bin/syft
 
       - name: Install root dependencies
         run: npm ci --ignore-scripts
@@ -30,11 +44,14 @@ jobs:
       - name: Audit root dependencies
         run: npm audit --audit-level=moderate
 
-      - name: Build root distribution
-        run: npm run build
+      - name: Run root test suite
+        run: npm test
 
       - name: Prepare isolated mpak package
         run: node scripts/prepare-mpak-package.mjs
+
+      - name: Generate bundled SBOM
+        run: node scripts/generate-mpak-sbom.mjs
 
       - name: Validate mpak bundle build
         id: build_bundle
