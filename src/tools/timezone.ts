@@ -16,8 +16,9 @@ export function registerTimezoneTools(server: McpServer) {
       title: "Timezone Lookup",
       annotations: {
         readOnlyHint: true,
+        openWorldHint: true,
       },
-      description: `Read-only timezone lookup via GET /v3/timezone. Works on free and paid plans. Cost: 1 credit. Use when the user asks for one place, IP, airport, UN/LOCODE, or IANA timezone current local time or metadata; use convert_timezone for source-to-destination conversion.
+      description: `Read-only timezone lookup via GET /v3/timezone. Works on free and paid plans. Cost: 1 credit. This endpoint provides current local time and metadata for one place, IP, airport, UN/LOCODE, or IANA timezone; convert_timezone provides source-to-destination conversion.
 
 Returns { time_zone } plus selector context such as location, airport, city, or ip. time_zone includes the zone name, current time, UTC offsets, date/time variants, abbreviations, and DST status/transition fields when available.
 
@@ -109,8 +110,9 @@ Selector priority is tz, lat/long, location, ip, iata_code, icao_code, then lo_c
       title: "Timezone Conversion",
       annotations: {
         readOnlyHint: true,
+        openWorldHint: true,
       },
-      description: `Read-only time conversion via GET /v3/timezone/convert. Works on free and paid plans. Cost: 1 credit. Use only when the user provides one source selector and one destination selector; use get_timezone for a single place's current time or metadata.
+      description: `Read-only time conversion via GET /v3/timezone/convert. Works on free and paid plans. Cost: 1 credit. The conversion requires one source selector and one destination selector; get_timezone provides a single place's current time and metadata.
 
 Source/destination selectors are tz_from/tz_to, location_from/location_to, iata_from/iata_to, icao_from/icao_to, locode_from/locode_to, or lat_from+long_from and lat_to+long_to. time is optional and must be yyyy-MM-dd HH:mm or yyyy-MM-dd HH:mm:ss. Returns original time, converted time, diff_hour, and diff_min.`,
       inputSchema: {

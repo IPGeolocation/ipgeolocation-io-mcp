@@ -16,7 +16,7 @@
   "homepage": "https://ipgeolocation.io",
   "documentation": "https://ipgeolocation.io/documentation.html",
   "support": "https://github.com/IPGeolocation/ipgeolocation-io-mcp/issues",
-  "icon": "https://static.ipgeolocation.io/web-assets/images/brand/ipgeolocation-logo-512-white-bg.png",
+  "icon": "icon.png",
   "license": "MIT",
   "privacy_policies": [
     "https://ipgeolocation.io/privacy.html"
@@ -30,7 +30,14 @@
         "${__dirname}/dist/cli.js"
       ],
       "env": {
-        "IPGEOLOCATION_API_KEY": "${user_config.api_key}"
+        "IPGEOLOCATION_API_KEY": "${user_config.api_key}",
+        "IPGEOLOCATION_REQUEST_TIMEOUT_MS": "${user_config.request_timeout_ms}",
+        "IPGEOLOCATION_MCP_CACHE_TTL_MS": "${user_config.cache_ttl_ms}",
+        "IPGEOLOCATION_MCP_CACHE_MAX_ENTRIES": "${user_config.cache_max_entries}",
+        "IPGEOLOCATION_MCP_MAX_BULK_ITEMS": "${user_config.max_bulk_items}",
+        "IPGEOLOCATION_MCP_MAX_RESULT_ITEMS": "${user_config.max_result_items}",
+        "IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS": "${user_config.max_response_chars}",
+        "IPGEOLOCATION_MCP_MAX_ERROR_CHARS": "${user_config.max_error_chars}"
       }
     }
   },
@@ -144,7 +151,7 @@
       "linux"
     ],
     "runtimes": {
-      "node": ">=18.0.0"
+      "node": ">=22.0.0"
     }
   },
   "_meta": {
@@ -157,7 +164,20 @@
         "environment": "read",
         "subprocess": "none",
         "native": "none"
-      }
+      },
+      "credentials": [
+        {
+          "provider": "ipgeolocation.io",
+          "scopes": [
+            "ipgeolocation-api:read"
+          ],
+          "justification": "Authenticate read-only IP intelligence, timezone, astronomy, ASN, abuse, and user-agent API requests. The user controls API-key lifetime; the server keeps the key only in process memory and never persists or refreshes it.",
+          "token_handling": {
+            "storage": "memory",
+            "refresh": false
+          }
+        }
+      ]
     }
   },
   "user_config": {
@@ -167,7 +187,63 @@
       "description": "Your ipgeolocation.io API key. Get one free at https://app.ipgeolocation.io/signup",
       "sensitive": true,
       "required": true
+    },
+    "request_timeout_ms": {
+      "type": "number",
+      "title": "Request timeout (ms)",
+      "description": "Maximum time allowed for an upstream API request.",
+      "default": 15000,
+      "min": 1000,
+      "max": 120000
+    },
+    "cache_ttl_ms": {
+      "type": "number",
+      "title": "Cache TTL (ms)",
+      "description": "Time-to-live for cached tool responses.",
+      "default": 300000,
+      "min": 1000,
+      "max": 3600000
+    },
+    "cache_max_entries": {
+      "type": "number",
+      "title": "Maximum cache entries",
+      "description": "Maximum number of responses retained in the in-memory cache.",
+      "default": 500,
+      "min": 10,
+      "max": 5000
+    },
+    "max_bulk_items": {
+      "type": "number",
+      "title": "Maximum bulk items",
+      "description": "Maximum number of items accepted by a bulk tool call.",
+      "default": 1000,
+      "min": 1,
+      "max": 50000
+    },
+    "max_result_items": {
+      "type": "number",
+      "title": "Maximum result items",
+      "description": "Maximum number of array items returned in a tool response.",
+      "default": 250,
+      "min": 1,
+      "max": 50000
+    },
+    "max_response_chars": {
+      "type": "number",
+      "title": "Maximum response characters",
+      "description": "Maximum serialized size of a successful tool response.",
+      "default": 200000,
+      "min": 10000,
+      "max": 2000000
+    },
+    "max_error_chars": {
+      "type": "number",
+      "title": "Maximum error characters",
+      "description": "Maximum serialized size of an error response.",
+      "default": 4000,
+      "min": 200,
+      "max": 50000
     }
   },
-  "version": "1.0.20"
+  "version": "2.0.0"
 }

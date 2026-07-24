@@ -46,8 +46,9 @@ export function registerAstronomyTools(server: McpServer) {
       title: "Astronomy Data",
       annotations: {
         readOnlyHint: true,
+        openWorldHint: true,
       },
-      description: `Read-only single-date astronomy lookup via GET /v3/astronomy. Works on free and paid plans. Cost: 1 credit. Use for one date or real-time sun/moon position; use get_astronomy_time_series for daily sunrise, moon, and twilight data across a date range.
+      description: `Read-only single-date astronomy lookup via GET /v3/astronomy. Works on free and paid plans. Cost: 1 credit. This endpoint covers one date or real-time sun/moon position; get_astronomy_time_series provides daily sunrise, moon, and twilight data across a date range.
 
 Returns { location, astronomy } plus ip for IP/caller lookups. astronomy includes date/current_time, sunrise/sunset, moonrise/moonset, twilight blocks, day_length, sun/moon position, distance, status, moon_phase, moon_illumination_percentage, and moon_angle.
 
@@ -146,12 +147,13 @@ Selector priority is lat/long, location, ip, then caller IP when no selector is 
       title: "Astronomy Time Series",
       annotations: {
         readOnlyHint: true,
+        openWorldHint: true,
       },
-      description: `Read-only daily astronomy series via GET /v3/astronomy/timeSeries. Works on free and paid plans. Cost: 1 credit per request. Use for date ranges up to 90 days; use get_astronomy for one date or real-time sun/moon position.
+      description: `Read-only daily astronomy series via GET /v3/astronomy/timeSeries. Works on free and paid plans. Cost: 1 credit per request. This endpoint covers date ranges up to 90 days; get_astronomy provides one-date and real-time sun/moon data.
 
 Returns { location, astronomy: [...] } with one daily item per date containing sunrise/sunset, moonrise/moonset, twilight blocks, day_length, sun/moon status, and moon_phase. Selector priority is lat/long, location, ip, then caller IP when no selector is provided.
 
-dateStart and dateEnd are required YYYY-MM-DD values with a maximum 90-day span. lat and long must be provided together; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include full dates. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans. force_refresh bypasses cache and makes a fresh upstream request only when the user asks.`,
+dateStart and dateEnd are required YYYY-MM-DD values with a maximum 90-day span. lat and long must be provided together; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include full dates. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
       inputSchema: {
         lat: z
           .string()
@@ -205,7 +207,7 @@ dateStart and dateEnd are required YYYY-MM-DD values with a maximum 90-day span.
           .boolean()
           .optional()
           .describe(
-            "Default false. Set true only when the user asks to refresh cached astronomy time-series data; a successful refresh makes a new upstream request and can consume credits."
+            "Default false. When true, bypasses cached astronomy time-series data; a successful refresh makes a new upstream request and can consume credits."
           ),
       },
     },

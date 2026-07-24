@@ -119,10 +119,11 @@ function createFetchStub() {
   async function fetchStub(input, init = {}) {
     const url = new URL(String(input));
     const method = (init.method || "GET").toUpperCase();
+    const headers = new Headers(init.headers);
     const rawBody = typeof init.body === "string" ? init.body : undefined;
     const body = rawBody ? JSON.parse(rawBody) : undefined;
 
-    calls.push({ url, method, body, rawBody });
+    calls.push({ url, method, headers, body, rawBody });
 
     switch (url.pathname) {
       case "/v3/getip":
@@ -336,8 +337,13 @@ test("registers all MCP tools with expected metadata", async (t) => {
 
   for (const { definition } of tools.values()) {
     assert.equal(definition.annotations?.readOnlyHint, true);
+    assert.equal(definition.annotations?.openWorldHint, true);
     assert.equal(typeof definition.description, "string");
     assert.equal(typeof definition.inputSchema, "object");
+    assert.doesNotMatch(
+      definition.description,
+      /\bUse (?:this|only|when|for)\b|only when the user asks|Call once|Never call|Do not/
+    );
   }
 
   for (const [name, { definition }] of tools.entries()) {
@@ -350,19 +356,19 @@ test("registers all MCP tools with expected metadata", async (t) => {
 
   assert.match(
     tools.get("check_security").definition.description,
-    /Use only for security\/threat data/i
+    /dedicated to security and threat data/i
   );
   assert.match(
     tools.get("get_abuse_contact").definition.description,
-    /Use only for abuse contact data/i
+    /dedicated to abuse contact data/i
   );
   assert.match(
     tools.get("lookup_company").definition.description,
-    /Use only for company\/ASN ownership/i
+    /limited to company and ASN ownership/i
   );
   assert.match(
     tools.get("lookup_asn").definition.description,
-    /Query by asn or ip; asn takes priority/i
+    /Queries accept asn or ip, with asn taking priority/i
   );
 
   const bulkLookupIpsSchema = tools.get("bulk_lookup_ip").definition.inputSchema.ips;
@@ -472,8 +478,16 @@ test("executes all 16 tools with mocked upstream responses", async (t) => {
   const apiCalls = calls.filter((call) => call.url.pathname !== "/v3/getip");
   assert.ok(apiCalls.length > 0, "expected API calls with authentication");
   for (const call of apiCalls) {
-    assert.equal(call.url.searchParams.get("apiKey"), "test_api_key_local");
+    assert.equal(call.url.searchParams.get("apiKey"), null);
+    assert.equal(
+      call.headers.get("x-ipgeolocation-api-key"),
+      "test_api_key_local"
+    );
   }
+
+  const getIpCall = calls.find((call) => call.url.pathname === "/v3/getip");
+  assert.ok(getIpCall);
+  assert.equal(getIpCall.headers.get("x-ipgeolocation-api-key"), null);
 });
 
 test("avoids repeat upstream calls when only fields/excludes change for same ASN, security, and abuse target", async (t) => {

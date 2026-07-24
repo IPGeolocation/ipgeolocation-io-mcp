@@ -3,10 +3,6 @@ import { getConfiguredApiKey } from "./config.js";
 const REDACTED_API_KEY = "[REDACTED_API_KEY]";
 const REDACTED_TOKEN = "[REDACTED_TOKEN]";
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function uniqueSecretVariants(secret: string): string[] {
   const variants = new Set<string>();
   const trimmed = secret.trim();
@@ -28,14 +24,15 @@ export function redactSensitiveText(text: string): string {
   const configuredApiKey = getConfiguredApiKey();
   if (configuredApiKey) {
     for (const variant of uniqueSecretVariants(configuredApiKey)) {
-      redacted = redacted.replace(
-        new RegExp(escapeRegExp(variant), "g"),
-        REDACTED_API_KEY
-      );
+      redacted = redacted.replaceAll(variant, REDACTED_API_KEY);
     }
   }
 
   redacted = redacted
+    .replace(
+      /((?:"x-ipgeolocation-api-key"|x-ipgeolocation-api-key)\s*[:=]\s*["']?)([^"',\s}]+)(["']?)/gi,
+      `$1${REDACTED_API_KEY}$3`
+    )
     .replace(
       /([?&](?:apiKey|apikey|api_key|api-key)=)[^&#\s"']+/gi,
       `$1${REDACTED_API_KEY}`

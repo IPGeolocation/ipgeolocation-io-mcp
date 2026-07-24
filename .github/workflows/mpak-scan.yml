@@ -27,12 +27,14 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           path: tooling
+          persist-credentials: false
 
       - name: Check out source ref
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           ref: ${{ env.SOURCE_REF }}
           path: source
+          persist-credentials: false
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -53,16 +55,51 @@ jobs:
         run: |
           set -euo pipefail
 
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
-            | sh -s -- -b /usr/local/bin v1.29.1
+          curl -fsSL \
+            https://github.com/anchore/syft/releases/download/v1.48.0/syft_1.48.0_linux_amd64.tar.gz \
+            -o /tmp/syft.tar.gz
+          echo "6cef9a7f37220d9067eaf9cfaaa2fce986e9f320a8d42cbc36658c99af78ea04  /tmp/syft.tar.gz" \
+            | sha256sum -c -
+          tar -xzf /tmp/syft.tar.gz -C /tmp syft
+          sudo install -m 0755 /tmp/syft /usr/local/bin/syft
 
-          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
-            | sh -s -- -b /usr/local/bin v0.104.1
+          curl -fsSL \
+            https://github.com/anchore/syft/releases/download/v1.29.1/syft_1.29.1_linux_amd64.tar.gz \
+            -o /tmp/syft-sbom.tar.gz
+          echo "ca704907e5a7b697c6e683832ca128e2ae60de63d7d87f3e2e39672df9038fa4  /tmp/syft-sbom.tar.gz" \
+            | sha256sum -c -
+          mkdir -p /tmp/syft-sbom
+          tar -xzf /tmp/syft-sbom.tar.gz -C /tmp/syft-sbom syft
+          sudo install -m 0755 /tmp/syft-sbom/syft /usr/local/bin/syft-sbom
 
-          curl -sSfL https://github.com/trufflesecurity/trufflehog/releases/download/v3.92.4/trufflehog_3.92.4_linux_amd64.tar.gz \
+          curl -fsSL \
+            https://github.com/anchore/grype/releases/download/v0.116.0/grype_0.116.0_linux_amd64.tar.gz \
+            -o /tmp/grype.tar.gz
+          echo "40aff724297312f91ea390d003bed8d8651c74cc7f5b26732db80b3a408d2fc5  /tmp/grype.tar.gz" \
+            | sha256sum -c -
+          tar -xzf /tmp/grype.tar.gz -C /tmp grype
+          sudo install -m 0755 /tmp/grype /usr/local/bin/grype
+
+          curl -fsSL \
+            https://github.com/trufflesecurity/trufflehog/releases/download/v3.95.9/trufflehog_3.95.9_linux_amd64.tar.gz \
             -o /tmp/trufflehog.tar.gz
+          echo "f6d1106b85107d79527ed7a5b98b592beadd8b770dc3c9e8c1ad99e1b2cf127e  /tmp/trufflehog.tar.gz" \
+            | sha256sum -c -
           tar -xzf /tmp/trufflehog.tar.gz -C /tmp trufflehog
-          install -m 0755 /tmp/trufflehog /usr/local/bin/trufflehog
+          sudo install -m 0755 /tmp/trufflehog /usr/local/bin/trufflehog
+
+          npm ci \
+            --prefix tooling/packaging/scanner-tools \
+            --ignore-scripts \
+            --no-fund \
+            --no-audit
+          echo "$GITHUB_WORKSPACE/tooling/packaging/scanner-tools/node_modules/.bin" \
+            >> "$GITHUB_PATH"
+          echo "NODE_PATH=$GITHUB_WORKSPACE/tooling/packaging/scanner-tools/node_modules" \
+            >> "$GITHUB_ENV"
+
+          mkdir -p "$RUNNER_TEMP/grype-db"
+          echo "GRYPE_DB_CACHE_DIR=$RUNNER_TEMP/grype-db" >> "$GITHUB_ENV"
 
       - name: Install root dependencies
         working-directory: source
@@ -72,15 +109,21 @@ jobs:
         working-directory: source
         run: npm audit --audit-level=moderate
 
-      - name: Build root distribution
+      - name: Run root test suite
         working-directory: source
-        run: npm run build
+        run: npm test
 
       - name: Prepare isolated mpak package
         working-directory: tooling
         env:
           MPAK_SOURCE_DIR: ../source
         run: node scripts/prepare-mpak-package.mjs
+
+      - name: Generate bundled SBOM
+        working-directory: tooling
+        env:
+          SYFT_BIN: syft-sbom
+        run: node scripts/generate-mpak-sbom.mjs
 
       - name: Build universal mpak bundle
         id: build_bundle
@@ -100,11 +143,22 @@ jobs:
           "artifacts/mpak-package"
 
       - name: Install mpak scanner
-        run: uv pip install --system mpak-scanner
+        run: >-
+          uv pip install --system
+          "mpak-scanner==0.2.9"
+          "bandit==1.9.4"
+          "guarddog==3.1.0"
 
       - name: Run mpak scanner
         working-directory: tooling/artifacts/mpak-package
-        run: mpak-scanner scan "${{ steps.build_bundle.outputs.bundle-path }}" --json > scan-results.json
+        run: |
+          # v0.2.9 cannot award L3 because required L3 controls are not implemented.
+          mpak-scanner scan \
+            "${{ steps.build_bundle.outputs.bundle-path }}" \
+            --json \
+            --level 2 \
+            --output scan-results.json
+          jq empty scan-results.json
 
       - name: Upload scanner results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

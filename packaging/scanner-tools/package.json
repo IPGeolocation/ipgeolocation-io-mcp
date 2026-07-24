@@ -1,0 +1,11 @@
+{
+  "name": "@ipgeolocation/mpak-scanner-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pinned JavaScript analysis tools used by the mpak scan workflow.",
+  "license": "MIT",
+  "devDependencies": {
+    "eslint": "10.7.0",
+    "eslint-plugin-security": "4.0.1"
+  }
+}

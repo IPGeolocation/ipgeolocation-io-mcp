@@ -28,6 +28,7 @@ const packagingDir = path.join(repoRoot, "packaging", "mpak");
 const distDir = path.join(sourceDir, "dist");
 const iconPath = path.join(sourceDir, "icon.png");
 const licensePath = path.join(sourceDir, "LICENSE");
+const readmePath = path.join(sourceDir, "README.md");
 const mcpbignoreTemplatePath = path.join(packagingDir, "mcpbignore.template");
 
 function readJson(filePath) {
@@ -113,7 +114,15 @@ function installBundledDependencies(outputDir) {
 
 function pruneBundledDependencyNoise(outputDir) {
   const nodeModulesDir = path.join(outputDir, "node_modules");
-  const ignoredDirectoryNames = new Set([".github", "docs", "doc", "test", "tests", "__tests__"]);
+  const ignoredDirectoryNames = new Set([
+    ".github",
+    "docs",
+    "doc",
+    "examples",
+    "test",
+    "tests",
+    "__tests__",
+  ]);
   const ignoredFilePattern = /^(readme|changelog|history)/i;
 
   if (!existsSync(nodeModulesDir)) {
@@ -192,6 +201,10 @@ installBundledDependencies(outputDir);
 pruneBundledDependencyNoise(outputDir);
 if (existsSync(licensePath)) {
   cpSync(licensePath, path.join(outputDir, "LICENSE"));
+}
+
+if (existsSync(readmePath)) {
+  cpSync(readmePath, path.join(outputDir, "README.md"));
 }
 
 if (existsSync(iconPath)) {

@@ -75,7 +75,7 @@ function parseUpstreamErrorMessage(text: string, fallback: string): string {
 
     if (typeof parsed === "object" && parsed !== null) {
       for (const key of UPSTREAM_ERROR_MESSAGE_KEYS) {
-        const value = (parsed as Record<string, unknown>)[key];
+        const value = Object.getOwnPropertyDescriptor(parsed, key)?.value;
         if (typeof value === "string" && value.trim()) {
           return value;
         }
@@ -119,28 +119,27 @@ async function request(
 ): Promise<unknown> {
   const url = new URL(path, API_BASE);
 
-  if (!options.skipAuth) {
-    url.searchParams.set("apiKey", getApiKey());
-  }
-
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== "") {
       url.searchParams.set(key, value);
     }
   }
 
+  const headers = new Headers({
+    Accept: "application/json",
+  });
+
+  if (!options.skipAuth) {
+    headers.set("x-ipgeolocation-api-key", getApiKey());
+  }
+
   const fetchOptions: RequestInit = {
     method: options.method || "GET",
-    headers: {
-      Accept: "application/json",
-    },
+    headers,
   };
 
   if (options.body) {
-    fetchOptions.headers = {
-      ...fetchOptions.headers,
-      "Content-Type": "application/json",
-    };
+    headers.set("Content-Type", "application/json");
     fetchOptions.body = JSON.stringify(options.body);
   }
 

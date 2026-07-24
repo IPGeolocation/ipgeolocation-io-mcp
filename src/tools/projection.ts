@@ -4,6 +4,19 @@ function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function getOwnValue(source: JsonObject, key: string): unknown {
+  return Object.getOwnPropertyDescriptor(source, key)?.value;
+}
+
+function setOwnValue(target: JsonObject, key: string, value: unknown): void {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+}
+
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -84,12 +97,12 @@ function projectPath(source: unknown, segments: string[]): unknown {
     return undefined;
   }
 
-  const child = projectPath(source[head], tail);
+  const child = projectPath(getOwnValue(source, head), tail);
   if (child === undefined) {
     return undefined;
   }
 
-  return { [head]: child };
+  return Object.fromEntries([[head, child]]);
 }
 
 function mergeProjected(target: unknown, source: unknown): unknown {
@@ -102,26 +115,24 @@ function mergeProjected(target: unknown, source: unknown): unknown {
 
   if (Array.isArray(target) && Array.isArray(source)) {
     const max = Math.max(target.length, source.length);
-    const merged: unknown[] = [];
-    for (let i = 0; i < max; i += 1) {
+    return Array.from({ length: max }, (_, i) => {
       if (i in target && i in source) {
-        merged[i] = mergeProjected(target[i], source[i]);
-      } else if (i in source) {
-        merged[i] = clone(source[i]);
-      } else {
-        merged[i] = clone(target[i]);
+        return mergeProjected(target.at(i), source.at(i));
       }
-    }
-    return merged;
+      if (i in source) {
+        return clone(source.at(i));
+      }
+      return clone(target.at(i));
+    });
   }
 
   if (isObject(target) && isObject(source)) {
-    const merged: JsonObject = { ...target };
+    const merged: JsonObject = Object.fromEntries(Object.entries(target));
     for (const [key, value] of Object.entries(source)) {
       if (Object.prototype.hasOwnProperty.call(merged, key)) {
-        merged[key] = mergeProjected(merged[key], value);
+        setOwnValue(merged, key, mergeProjected(getOwnValue(merged, key), value));
       } else {
-        merged[key] = clone(value);
+        setOwnValue(merged, key, clone(value));
       }
     }
     return merged;
@@ -152,11 +163,11 @@ function removePath(target: unknown, segments: string[]): void {
   }
 
   if (tail.length === 0) {
-    delete target[head];
+    Reflect.deleteProperty(target, head);
     return;
   }
 
-  removePath(target[head], tail);
+  removePath(getOwnValue(target, head), tail);
 }
 
 export function applyFieldsAndExcludes(

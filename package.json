@@ -15,11 +15,12 @@
     "server.json"
   ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   },
   "scripts": {
     "build": "tsc && printf '%s\\n' '#!/usr/bin/env node' | cat - dist/cli.js > dist/cli.js.tmp && mv dist/cli.js.tmp dist/cli.js && chmod +x dist/cli.js",
     "prepare:mpak": "node scripts/prepare-mpak-package.mjs",
+    "sbom:mpak": "node scripts/generate-mpak-sbom.mjs",
     "test": "npm run test:unit && npm run test:integration && npm run test:redteam",
     "test:unit": "npm run build && node --test --test-concurrency=1 tests/client.test.mjs tests/response.test.mjs tests/validation.test.mjs",
     "test:integration": "npm run build && node --test --test-concurrency=1 tests/tools.integration.test.mjs tests/mcp.protocol.test.mjs",
@@ -78,13 +79,15 @@
   "author": "ipgeolocation.io",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.27.1",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "zod": "3.25.76"
   },
   "overrides": {
-    "@hono/node-server": "1.19.14",
+    "@hono/node-server": "2.0.11",
+    "body-parser": "2.3.0",
     "express-rate-limit": "8.5.1",
-    "hono": "4.12.25",
+    "fast-uri": "3.1.4",
+    "hono": "4.12.31",
     "path-to-regexp": "8.4.2",
     "qs": "6.15.2"
   },
@@ -92,5 +95,5 @@
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0"
   },
-  "version": "1.0.20"
+  "version": "2.0.0"
 }
