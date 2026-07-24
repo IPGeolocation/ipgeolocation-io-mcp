@@ -4,17 +4,18 @@
 
 | Version | Supported |
 |---------|-----------|
-| 1.0.x   | Yes       |
-| < 1.0   | No        |
+| 2.x     | Yes       |
+| < 2.0   | No        |
 
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability, please report it responsibly:
 
 1. **Do not** open a public GitHub issue.
-2. Email **support@ipgeolocation.io** with a description of the vulnerability, steps to reproduce, and any relevant logs or screenshots.
-3. You will receive an acknowledgment within 48 hours.
-4. We aim to release a fix within 7 days of confirmation.
+2. Use [GitHub private vulnerability reporting](https://github.com/IPGeolocation/ipgeolocation-io-mcp/security/advisories/new). If that is not possible, email **support@ipgeolocation.io**.
+3. Include a description of the vulnerability, steps to reproduce, affected versions, impact, and any relevant logs or screenshots. Do not include active credentials.
+4. You will receive an acknowledgment within 48 hours.
+5. We aim to release a fix within 7 days of confirmation.
 
 ## Security Design
 
