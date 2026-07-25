@@ -25,7 +25,7 @@
     "test:unit": "npm run build && node --test --test-concurrency=1 tests/client.test.mjs tests/response.test.mjs tests/validation.test.mjs",
     "test:integration": "npm run build && node --test --test-concurrency=1 tests/tools.integration.test.mjs tests/mcp.protocol.test.mjs",
     "test:redteam": "npm run build && node --test --test-concurrency=1 tests/redteam.security.test.mjs",
-    "test:fuzz": "npm run build && node --test --test-concurrency=1 tests/fuzz.security.test.mjs",
+    "test:fuzz": "npm run build && node --test --test-concurrency=1 tests/fuzz.security.test.js",
     "test:live": "npm run test:live:free && npm run test:live:paid",
     "test:live:free": "npm run build && node tests/live.smoke.mjs free",
     "test:live:paid": "npm run build && node tests/live.smoke.mjs paid",
