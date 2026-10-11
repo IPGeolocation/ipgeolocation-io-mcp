@@ -53,3 +53,16 @@ export function redactSensitiveText(text: string): string {
 
   return redacted;
 }
+
+export function redactSensitiveValue(value: unknown): unknown {
+  if (typeof value === "string") return redactSensitiveText(value);
+  if (Array.isArray(value)) return value.map(redactSensitiveValue);
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+      redactSensitiveText(key),
+      /^(?:api[-_]?key|x-ipgeolocation-api-key)$/i.test(key)
+        ? REDACTED_API_KEY : redactSensitiveValue(child),
+    ]));
+  }
+  return value;
+}

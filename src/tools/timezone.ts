@@ -66,7 +66,7 @@ Selector priority is tz, lat/long, location, ip, iata_code, icao_code, then lo_c
           .string()
           .optional()
           .describe(
-            "Response language for location fields in IP-based lookups (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt). Paid plans only. Free plan returns 401 for non-English language values."
+            "Response language for location fields in IP-based lookups (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt, ar). Paid plans only. Free plan returns 401 for non-English language values."
           ),
       },
     },

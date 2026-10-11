@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Security vulnerability
+    url: https://github.com/IPGeolocation/ipgeolocation-io-mcp/security/advisories/new
+    about: Report vulnerabilities privately. Remove credentials from reproduction details.
   - name: Documentation
     url: https://github.com/IPGeolocation/ipgeolocation-io-mcp#readme
     about: Review installation, configuration, and usage guidance before opening an issue.

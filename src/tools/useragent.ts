@@ -4,9 +4,10 @@ import { parseUserAgent, parseUserAgentBulk } from "../client.js";
 import {
   MAX_BULK_ITEMS,
   errorToolResponse,
+  formatBulkToolResult,
   formatToolResult,
 } from "./response.js";
-import { getCachedValue, setCachedValue } from "./cache.js";
+import { getCachedOrFetchValue } from "./cache.js";
 
 function buildUserAgentCacheKey(uaString: string): string {
   return `user-agent|payload=${JSON.stringify({ uaString })}`;
@@ -27,7 +28,7 @@ export function registerUserAgentTools(server: McpServer) {
       },
       description: `Read-only custom user-agent parsing via POST /v3/user-agent. Paid only for POST payload parsing. Cost: 1 credit per successful string. Parses only the explicit uaString value; it cannot read caller headers or transport metadata.
 
-Returns { user_agent_string, name, type, version, version_major, device, engine, operating_system }. Type fields can identify desktop/mobile clients, robots, malformed or scripted strings, anonymized strings, or unknown values. uaString must be the exact non-empty user-agent string; empty/null strings return upstream 400. force_refresh bypasses cached data, makes a new upstream request, and can consume credits. bulk_parse_user_agent handles multiple strings.`,
+Returns { user_agent_string, name, type, version, version_major, device, engine, operating_system }. Type fields can identify desktop/mobile clients, robots, malformed or scripted strings, anonymized strings, or unknown values. uaString must be the exact non-empty user-agent string; empty/null strings are rejected locally before any API call. force_refresh bypasses cached data, makes a new upstream request, and can consume credits. bulk_parse_user_agent handles multiple strings.`,
       inputSchema: {
         uaString: z
           .string()
@@ -46,15 +47,11 @@ Returns { user_agent_string, name, type, version, version_major, device, engine,
     async (params) => {
       try {
         const cacheKey = buildUserAgentCacheKey(params.uaString);
-        const cached = params.force_refresh ? undefined : getCachedValue(cacheKey);
-        const result =
-          cached ??
-          (await parseUserAgent({
-            uaString: params.uaString,
-          }));
-        if (cached === undefined) {
-          setCachedValue(cacheKey, result);
-        }
+        const result = await getCachedOrFetchValue(
+          cacheKey,
+          () => parseUserAgent({ uaString: params.uaString }),
+          params.force_refresh
+        );
         return {
           content: [
             { type: "text" as const, text: formatToolResult(result) },
@@ -74,9 +71,9 @@ Returns { user_agent_string, name, type, version, version_major, device, engine,
         readOnlyHint: true,
         openWorldHint: true,
       },
-      description: `Read-only bulk user-agent parsing via POST /v3/user-agent-bulk. Paid only. Cost: 1 credit per successful string. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} explicit user-agent strings.
+      description: `Read-only bulk user-agent parsing via POST /v3/user-agent-bulk. Paid only. Cost: 1 credit per successful string. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} explicit user-agent strings. Larger batches are rejected before any API call. Complete results are returned directly or as cached pages. Oversized results contain page.next_cursor for complete retrieval through get_cached_result without another API call or additional credits.
 
-Returns one parsed object per string with user_agent_string, name, type, version, version_major, device, engine, and operating_system. uaStrings must be a non-empty array of exact user-agent strings; empty/null strings return upstream 400. parse_user_agent handles a single string. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
+Returns one parsed object per string with user_agent_string, name, type, version, version_major, device, engine, and operating_system. uaStrings must be a non-empty array of exact user-agent strings; empty/null strings are rejected locally before any API call. parse_user_agent handles a single string. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
       inputSchema: {
         uaStrings: z
           .array(z.string().min(1))
@@ -96,18 +93,14 @@ Returns one parsed object per string with user_agent_string, name, type, version
     async (params) => {
       try {
         const cacheKey = buildUserAgentBulkCacheKey(params.uaStrings);
-        const cached = params.force_refresh ? undefined : getCachedValue(cacheKey);
-        const result =
-          cached ??
-          (await parseUserAgentBulk({
-            uaStrings: params.uaStrings,
-          }));
-        if (cached === undefined) {
-          setCachedValue(cacheKey, result);
-        }
+        const result = await getCachedOrFetchValue(
+          cacheKey,
+          () => parseUserAgentBulk({ uaStrings: params.uaStrings }),
+          params.force_refresh
+        );
         return {
           content: [
-            { type: "text" as const, text: formatToolResult(result) },
+            { type: "text" as const, text: formatBulkToolResult(result) },
           ],
         };
       } catch (error) {

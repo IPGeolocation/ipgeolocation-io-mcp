@@ -2,8 +2,8 @@
   "manifest_version": "0.3",
   "name": "ipgeolocation-io-mcp",
   "display_name": "IPGeolocation.io MCP Server",
-  "description": "Official MCP server for IP geolocation, IP security, abuse contacts, ASN, timezone, astronomy, and user-agent parsing.",
-  "long_description": "Official MCP server from ipgeolocation.io. Provides 16 tools for IP geolocation, IP security, abuse contact lookup, ASN data, timezone lookups and conversions, astronomy data, and user-agent parsing. Supports free and paid API plans. Bulk operations use a default cap of 1,000 items per request in this MCP server.",
+  "description": "Official MCP server for IP geolocation, security indicators, abuse contacts, ASN, time zones, astronomy, and user-agent parsing.",
+  "long_description": "Use IPGeolocation.io APIs from an MCP client or host that can launch a local stdio command. Provides 16 API tools and a zero-credit cached-result reader; endpoint and module access depends on the API plan. Bulk tools accept 250 inputs by default, set by the lower of the input and result item limits. Oversized successful results use cached JSON pages, preserving nested arrays and individual records. Read pages with the same process and API key before idle expiry or eviction; unavailable cursors fail locally without another API call.",
   "author": {
     "name": "ipgeolocation.io",
     "email": "support@ipgeolocation.io",
@@ -13,8 +13,8 @@
     "type": "git",
     "url": "https://github.com/IPGeolocation/ipgeolocation-io-mcp.git"
   },
-  "homepage": "https://ipgeolocation.io",
-  "documentation": "https://ipgeolocation.io/documentation.html",
+  "homepage": "https://ipgeolocation.io/integrations/ipgeolocation-io-mcp",
+  "documentation": "https://ipgeolocation.io/integrations/ipgeolocation-io-mcp",
   "support": "https://github.com/IPGeolocation/ipgeolocation-io-mcp/issues",
   "icon": "icon.png",
   "license": "MIT",
@@ -44,35 +44,35 @@
   "tools": [
     {
       "name": "lookup_ip",
-      "description": "IP geolocation lookup for any IPv4/IPv6 address or domain"
+      "description": "Geolocation for a public IPv4/IPv6 address; domain lookup requires a paid plan"
     },
     {
       "name": "bulk_lookup_ip",
-      "description": "Bulk IP geolocation for up to 1,000 IPs per MCP request"
+      "description": "Bulk IP geolocation, up to 250 inputs per MCP request by default"
     },
     {
       "name": "get_my_ip",
-      "description": "Returns the caller's public IP address"
+      "description": "Returns the public egress IP of the machine running this server"
     },
     {
       "name": "lookup_company",
-      "description": "Organization using an IP vs. ASN holder comparison"
+      "description": "Company details and ASN ownership for an IP; free plans return basic ASN only"
     },
     {
       "name": "lookup_currency",
-      "description": "Currency and country metadata for any IP"
+      "description": "Currency and country metadata for a public IP address"
     },
     {
       "name": "lookup_network",
-      "description": "BGP route prefix, connection type, and anycast detection"
+      "description": "BGP route prefix, connection type, and anycast indicator"
     },
     {
       "name": "check_security",
-      "description": "VPN, proxy, Tor, and bot detection with threat scores"
+      "description": "IP security indicators, including VPN, proxy, Tor, bot flags, and threat scores"
     },
     {
       "name": "bulk_security_check",
-      "description": "Bulk security check for up to 1,000 IPs per MCP request"
+      "description": "Bulk security check, up to 250 inputs per MCP request by default"
     },
     {
       "name": "get_timezone",
@@ -96,15 +96,19 @@
     },
     {
       "name": "bulk_parse_user_agent",
-      "description": "Bulk parse up to 1,000 user-agent strings per MCP request"
+      "description": "Bulk parse up to 250 user-agent strings per MCP request by default"
     },
     {
       "name": "lookup_asn",
-      "description": "ASN details with peers, upstreams, downstreams, and WHOIS"
+      "description": "ASN details with optional peers, upstreams, downstreams, routes, and WHOIS"
     },
     {
       "name": "get_abuse_contact",
-      "description": "Abuse contact email, phone, and address for any IP"
+      "description": "Abuse contact email, phone, and address for a public IP"
+    },
+    {
+      "name": "get_cached_result",
+      "description": "Read or replay a cached JSON page with the same process and API key; no API call or credits"
     }
   ],
   "keywords": [
@@ -171,7 +175,7 @@
           "scopes": [
             "ipgeolocation-api:read"
           ],
-          "justification": "Authenticate read-only IP intelligence, timezone, astronomy, ASN, abuse, and user-agent API requests. The user controls API-key lifetime; the server keeps the key only in process memory and never persists or refreshes it.",
+          "justification": "Authenticate IP intelligence, time zone, astronomy, ASN, abuse, and user-agent lookups, which can consume API credits. The server keeps the key in process memory without writing it to disk or refreshing it. The client or host controls its own credential storage.",
           "token_handling": {
             "storage": "memory",
             "refresh": false
@@ -199,7 +203,7 @@
     "cache_ttl_ms": {
       "type": "number",
       "title": "Cache TTL (ms)",
-      "description": "Time-to-live for cached tool responses.",
+      "description": "Time-to-live for cached tool responses; successful cached-page reads extend their idle expiry.",
       "default": 300000,
       "min": 1000,
       "max": 3600000
@@ -207,7 +211,7 @@
     "cache_max_entries": {
       "type": "number",
       "title": "Maximum cache entries",
-      "description": "Maximum number of responses retained in the in-memory cache.",
+      "description": "Maximum cached responses and page snapshots. This limits entry count, not total bytes or memory.",
       "default": 500,
       "min": 10,
       "max": 5000
@@ -215,7 +219,7 @@
     "max_bulk_items": {
       "type": "number",
       "title": "Maximum bulk items",
-      "description": "Maximum number of items accepted by a bulk tool call.",
+      "description": "Bulk input ceiling. The actual batch limit is the lower of this setting and Maximum result items.",
       "default": 1000,
       "min": 1,
       "max": 50000
@@ -223,15 +227,15 @@
     "max_result_items": {
       "type": "number",
       "title": "Maximum result items",
-      "description": "Maximum number of array items returned in a tool response.",
+      "description": "Bulk input/result item ceiling. Complete nested arrays are retained; large successful results use cached pagination.",
       "default": 250,
       "min": 1,
       "max": 50000
     },
     "max_response_chars": {
       "type": "number",
-      "title": "Maximum response characters",
-      "description": "Maximum serialized size of a successful tool response.",
+      "title": "Maximum response bytes",
+      "description": "Maximum UTF-8 size of a complete serialized tool result, including text and structured content. Larger successful results use cached pagination without additional API calls; error messages are shortened while retaining status and guidance.",
       "default": 200000,
       "min": 10000,
       "max": 2000000
@@ -239,11 +243,11 @@
     "max_error_chars": {
       "type": "number",
       "title": "Maximum error characters",
-      "description": "Maximum serialized size of an error response.",
+      "description": "Upper character limit for the error message, excluding truncation markers and guidance. The complete response byte limit can shorten the message further.",
       "default": 4000,
       "min": 200,
       "max": 50000
     }
   },
-  "version": "2.0.0"
+  "version": "2.0.1"
 }

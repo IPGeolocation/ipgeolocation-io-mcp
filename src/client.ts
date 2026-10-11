@@ -3,6 +3,7 @@ import {
   getRequestTimeoutMs,
 } from "./config.js";
 import { redactSensitiveText } from "./redaction.js";
+import { isIP } from "node:net";
 
 const API_BASE = "https://api.ipgeolocation.io";
 const MAX_UPSTREAM_ERROR_CHARS = 4000;
@@ -26,36 +27,61 @@ export function getApiKey(): string {
 export class ApiError extends Error {
   constructor(
     public status: number,
-    message: string
+    message: string,
+    public source: "ipgeolocation_api" | "mcp_server" = "ipgeolocation_api",
+    public code?: "redirect_blocked"
   ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
-async function fetchWithTimeout(
+async function fetchJsonWithTimeout(
   url: string,
-  options: RequestInit = {}
-): Promise<Response> {
+  options: RequestInit = {},
+  errorFallback?: string
+): Promise<unknown> {
   const timeoutMs = getRequestTimeoutMs();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    const response = await fetch(url, { ...options, redirect: "manual", signal: controller.signal });
+    if (response.status >= 300 && response.status < 400) {
+      await response.body?.cancel();
+      throw new ApiError(502, "502: Upstream API returned an unexpected redirect. Redirects are blocked to protect credentials and request data.", "mcp_server", "redirect_blocked");
+    }
+    if (!response.ok) {
+      await throwUpstreamResponseError(response, errorFallback);
+    }
+
+    try {
+      return await response.json();
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw error;
+      }
+      throw new ApiError(502, "502: Upstream API returned invalid JSON", "mcp_server");
+    }
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
+    if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
       throw new ApiError(
         504,
-        `504: Upstream request timed out after ${timeoutMs}ms`
+        `504: Upstream request timed out after ${timeoutMs}ms`,
+        "mcp_server"
       );
+    }
+
+    if (error instanceof ApiError) {
+      throw error;
     }
 
     throw new ApiError(
       502,
       `502: Failed to reach upstream API (${redactSensitiveText(
         error instanceof Error ? error.message : String(error)
-      )})`
+      )})`,
+      "mcp_server"
     );
   } finally {
     clearTimeout(timeout);
@@ -143,17 +169,7 @@ async function request(
     fetchOptions.body = JSON.stringify(options.body);
   }
 
-  const response = await fetchWithTimeout(url.toString(), fetchOptions);
-
-  if (!response.ok) {
-    await throwUpstreamResponseError(response);
-  }
-
-  try {
-    return await response.json();
-  } catch {
-    throw new ApiError(502, "502: Upstream API returned invalid JSON");
-  }
+  return fetchJsonWithTimeout(url.toString(), fetchOptions);
 }
 
 export async function getIpGeolocation(params: {
@@ -173,18 +189,13 @@ export async function getIpGeolocation(params: {
 }
 
 export async function getMyIp(): Promise<string> {
-  const response = await fetchWithTimeout(`${API_BASE}/v3/getip`);
-  if (!response.ok) {
-    await throwUpstreamResponseError(
-      response,
-      "Failed to retrieve IP address"
-    );
-  }
-  let data: { ip: string };
-  try {
-    data = (await response.json()) as { ip: string };
-  } catch {
-    throw new ApiError(502, "502: Upstream API returned invalid JSON");
+  const data = await fetchJsonWithTimeout(
+    `${API_BASE}/v3/getip`,
+    {},
+    "Failed to retrieve IP address"
+  );
+  if (typeof data !== "object" || data === null || !("ip" in data) || typeof data.ip !== "string" || isIP(data.ip) === 0) {
+    throw new ApiError(502, "502: Upstream API returned an invalid getip response: expected an IPv4 or IPv6 address.", "mcp_server");
   }
   return data.ip;
 }

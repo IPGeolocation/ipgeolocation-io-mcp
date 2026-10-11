@@ -5,9 +5,11 @@ title: "[Feature] "
 labels: enhancement
 ---
 
+Keep API keys and private lookup data out of examples.
+
 **What do you need?**
 
-**Which ipgeolocation.io API endpoint does this relate to? (if any)**
+**Relevant IPGeolocation.io API endpoint, if any:**
 
 **How are you working around it today?**
 

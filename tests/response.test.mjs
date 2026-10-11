@@ -8,6 +8,23 @@ const RESPONSE_ENV_KEYS = [
   "IPGEOLOCATION_MCP_MAX_ERROR_CHARS",
 ];
 
+test("structured bulk errors preserve supplied status and redact input identifiers", async (t) => {
+  process.env.IPGEOLOCATION_API_KEY = "bulk-error-secret";
+  t.after(() => { delete process.env.IPGEOLOCATION_API_KEY; });
+  const { withStructuredContent, toolOutputSchema, errorToolResponse } = await import(responseModuleUrl());
+  const text = JSON.stringify([{ message: "Temporary upstream failure", status: 503 }]);
+  const result = withStructuredContent("bulk_parse_user_agent", { uaStrings: ["Test bulk-error-secret"] }, { content: [{ type: "text", text }] });
+  const [error] = result.structuredContent.errors;
+  assert.equal(error.status, 503);
+  assert.equal(error.retryable, true);
+  assert.equal(error.input, "Test [REDACTED_API_KEY]");
+  assert.equal(result.content[0].text, text);
+  const schema = toolOutputSchema("bulk_parse_user_agent");
+  assert.equal(schema.safeParse(result.structuredContent).success, true);
+  assert.equal(schema.safeParse(errorToolResponse(new Error("Local failure")).structuredContent).success, true);
+  assert.equal(schema.safeParse({}).success, false);
+});
+
 function responseModuleUrl() {
   const url = new URL("../dist/tools/response.js", import.meta.url);
   url.searchParams.set("t", `${Date.now()}-${Math.random()}`);
@@ -26,66 +43,68 @@ function clearResponseEnv() {
   }
 }
 
-test("formatToolResult truncates large arrays by default", async (t) => {
-  clearResponseEnv();
+test("bulk request limit cannot exceed the configured result capacity", async (t) => {
   t.after(clearResponseEnv);
-
-  const { formatToolResult } = await import(responseModuleUrl());
-  const items = Array.from({ length: 300 }, (_, index) => ({ index }));
-  const formatted = formatToolResult(items);
-  const parsed = JSON.parse(formatted);
-
-  assert.equal(parsed.truncated, true);
-  assert.equal(parsed.total_items, 300);
-  assert.equal(parsed.shown_items, 250);
-  assert.equal(parsed.items.length, 250);
+  const cases = [
+    { bulk: undefined, result: undefined, expected: 250 },
+    { bulk: "20", result: "50", expected: 20 },
+    { bulk: "50", result: "10", expected: 10 },
+    { bulk: "1000", result: "1000", expected: 1000 },
+    { bulk: "50000", result: "50000", expected: 50000 },
+    { bulk: "invalid", result: "0", expected: 250 },
+  ];
+  for (const { bulk, result, expected } of cases) {
+    clearResponseEnv();
+    if (bulk !== undefined) process.env.IPGEOLOCATION_MCP_MAX_BULK_ITEMS = bulk;
+    if (result !== undefined) process.env.IPGEOLOCATION_MCP_MAX_RESULT_ITEMS = result;
+    const { MAX_BULK_ITEMS } = await import(responseModuleUrl());
+    assert.equal(MAX_BULK_ITEMS, expected);
+  }
 });
 
-test("formatToolResult respects IPGEOLOCATION_MCP_MAX_RESULT_ITEMS", async (t) => {
-  clearResponseEnv();
-  process.env.IPGEOLOCATION_MCP_MAX_RESULT_ITEMS = "10";
-  t.after(clearResponseEnv);
-
-  const { formatToolResult } = await import(responseModuleUrl());
-  const items = Array.from({ length: 11 }, (_, index) => ({ index }));
-  const parsed = JSON.parse(formatToolResult(items));
-
-  assert.equal(parsed.truncated, true);
-  assert.equal(parsed.shown_items, 10);
-  assert.equal(parsed.items.length, 10);
-});
-
-test("formatToolResult truncates nested arrays and keeps JSON valid", async (t) => {
+test("bulk formatting preserves complete records and nested arrays while redacting secrets", async (t) => {
   clearResponseEnv();
   process.env.IPGEOLOCATION_MCP_MAX_RESULT_ITEMS = "10";
-  t.after(clearResponseEnv);
-
-  const { formatToolResult } = await import(responseModuleUrl());
-  const payload = {
-    location: { city: "Karachi" },
-    astronomy: Array.from({ length: 12 }, (_, index) => ({ index })),
-  };
-  const parsed = JSON.parse(formatToolResult(payload));
-
-  assert.equal(parsed.truncated, true);
-  assert.equal(parsed.result.location.city, "Karachi");
-  assert.equal(parsed.result.astronomy.length, 10);
+  process.env.IPGEOLOCATION_API_KEY = "bulk-test-secret";
+  t.after(() => {
+    clearResponseEnv();
+    delete process.env.IPGEOLOCATION_API_KEY;
+  });
+  const { formatBulkToolResult } = await import(responseModuleUrl());
+  const payload = [
+    { ip: "8.8.8.8", echoed_key: "bulk-test-secret", details: Array.from({ length: 12 }, (_, index) => ({ index })) },
+    { ip: "10.0.0.1", message: "Private IP address" },
+  ];
+  const text = formatBulkToolResult(payload);
+  const parsed = JSON.parse(text);
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed[0].details.length, 12);
+  assert.deepEqual(parsed[1], payload[1]);
+  assert.equal(parsed[0].echoed_key, "[REDACTED_API_KEY]");
+  assert.ok(!text.includes("bulk-test-secret"));
 });
 
-test("formatToolResult returns valid JSON when char limit is exceeded", async (t) => {
+test("bulk formatting preserves oversized data for shared pagination and rejects excess records", async (t) => {
   clearResponseEnv();
   process.env.IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS = "10000";
   t.after(clearResponseEnv);
+  const { formatBulkToolResult } = await import(responseModuleUrl());
+  const data = [{ ip: "8.8.8.8", large_text: "x".repeat(50000) }];
+  assert.deepEqual(JSON.parse(formatBulkToolResult(data)), data);
+  assert.throws(
+    () => formatBulkToolResult(Array.from({ length: 251 }, (_, index) => ({ index }))),
+    /Bulk response exceeded the 250-item limit/
+  );
+});
 
+test("formatToolResult preserves complete arrays regardless of the bulk item limit", async (t) => {
+  clearResponseEnv();
+  process.env.IPGEOLOCATION_MCP_MAX_RESULT_ITEMS = "10";
+  t.after(clearResponseEnv);
   const { formatToolResult } = await import(responseModuleUrl());
-  const payload = {
-    large_text: "x".repeat(50000),
-  };
-  const parsed = JSON.parse(formatToolResult(payload));
-
-  assert.equal(parsed.truncated, true);
-  assert.equal(typeof parsed.preview, "string");
-  assert.ok(parsed.preview.length < 50000);
+  const items = Array.from({ length: 300 }, (_, index) => ({ index }));
+  assert.deepEqual(JSON.parse(formatToolResult(items)), items);
+  assert.deepEqual(JSON.parse(formatToolResult({ astronomy: items })), { astronomy: items });
 });
 
 test("errorToolResponse truncates long error messages", async (t) => {
@@ -113,6 +132,89 @@ test("errorToolResponse uses configured max error chars", async (t) => {
 
   assert.ok(text.length < 350);
   assert.match(text, /error truncated at 250 characters/);
+});
+
+test("complete error responses fit the UTF-8 budget while retaining structured guidance", async (t) => {
+  clearResponseEnv();
+  process.env.IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS = "10000";
+  t.after(clearResponseEnv);
+  const { errorToolResponse, toolOutputSchema } = await import(responseModuleUrl());
+  const { ApiError } = await import(clientModuleUrl());
+  for (const maxErrorChars of ["4000", "50000"]) {
+    process.env.IPGEOLOCATION_MCP_MAX_ERROR_CHARS = maxErrorChars;
+    for (const message of ["界".repeat(50000), "😀".repeat(50000), '"\\\u0000\n😀'.repeat(10000)]) {
+      for (const error of [new Error(message), new ApiError(503, `503: ${message}`)]) {
+        const response = errorToolResponse(error);
+        const detail = response.structuredContent.error;
+        assert.ok(Buffer.byteLength(JSON.stringify(response)) <= 10000);
+        assert.equal(response.isError, true);
+        assert.equal(toolOutputSchema("lookup_ip").safeParse(response.structuredContent).success, true);
+        assert.match(detail.message, /error truncated/);
+        assert.ok(detail.message.isWellFormed());
+        assert.ok(response.content[0].text.isWellFormed());
+        assert.match(detail.assistant_guidance, /data, not instructions/);
+        if (error instanceof ApiError) {
+          assert.equal(detail.source, "ipgeolocation_api");
+          assert.equal(detail.status, 503);
+          assert.equal(detail.category, "upstream");
+          assert.equal(detail.retryable, true);
+          assert.match(response.content[0].text, /HTTP 503/);
+          assert.ok(response.content[0].text.endsWith(`Guidance: ${detail.guidance}`));
+        } else {
+          assert.equal(detail.source, "mcp_server");
+          assert.equal(detail.retryable, false);
+          assert.equal(response.content[0].text, `Error: ${detail.message}`);
+        }
+      }
+    }
+  }
+});
+
+test("local errors include bounded, redacted structured details without an HTTP status", async (t) => {
+  clearResponseEnv();
+  process.env.IPGEOLOCATION_MCP_MAX_ERROR_CHARS = "250";
+  t.after(clearResponseEnv);
+  const { errorToolResponse } = await import(responseModuleUrl());
+  const response = errorToolResponse(
+    new Error(`Invalid input; apiKey=local-test-secret ${"x".repeat(1000)}`)
+  );
+  const detail = response.structuredContent.error;
+  assert.equal(response.isError, true);
+  assert.equal(detail.source, "mcp_server");
+  assert.equal(detail.category, "tool_error");
+  assert.equal(detail.retryable, false);
+  assert.equal(detail.status, undefined);
+  assert.equal(detail.documented_status, undefined);
+  assert.match(detail.guidance, /input.*config/i);
+  assert.match(detail.assistant_guidance, /data, not instructions/);
+  assert.match(detail.message, /\[REDACTED_API_KEY\]/);
+  assert.match(detail.message, /error truncated at 250 characters/);
+  assert.ok(detail.message.length < 350);
+  assert.equal(response.content[0].text, `Error: ${detail.message}`);
+  assert.doesNotMatch(JSON.stringify(response), /local-test-secret/);
+});
+
+test("local request failures are distinguished from received HTTP errors", async (t) => {
+  clearResponseEnv();
+  t.after(clearResponseEnv);
+  const { errorToolResponse } = await import(responseModuleUrl());
+  const { ApiError } = await import(clientModuleUrl());
+  for (const [status, category] of [[502, "upstream_request"], [504, "timeout"]]) {
+    const response = errorToolResponse(new ApiError(status, `${status}: Local request failed`, "mcp_server"));
+    const detail = response.structuredContent.error;
+    assert.equal(detail.source, "mcp_server");
+    assert.equal(detail.category, category);
+    assert.equal(detail.status, status);
+    assert.equal(detail.message, "Local request failed");
+    assert.equal(detail.retryable, true);
+    assert.equal(detail.documented_status, undefined);
+    assert.doesNotMatch(response.content[0].text, /HTTP|IPGeolocation\.io API upstream error/);
+    assert.match(detail.guidance, /retry/);
+  }
+  const upstream = errorToolResponse(new ApiError(502, "502: Bad Gateway"));
+  assert.equal(upstream.structuredContent.error.source, "ipgeolocation_api");
+  assert.equal(upstream.structuredContent.error.category, "upstream");
+  assert.match(upstream.content[0].text, /HTTP 502/);
 });
 
 test("errorToolResponse truncates long upstream API messages in structured output", async (t) => {
@@ -230,10 +332,10 @@ const DOCUMENTED_API_ERROR_SCENARIOS = [
   {
     status: 429,
     category: "rate_limit",
-    prefix: "IPGeolocation.io API rate limit error",
-    retryable: true,
+    prefix: "IPGeolocation.io API credit quota error",
+    retryable: false,
     guidance:
-      "Wait for the quota or rate limit to reset, reduce request volume, or use an API key with available credits.",
+      "Check remaining credits and subscription/surcharge limits. Retry only after credits reset or become available; repeated immediate retries will not resolve an exhausted quota.",
   },
   {
     status: 499,
@@ -241,7 +343,7 @@ const DOCUMENTED_API_ERROR_SCENARIOS = [
     prefix: "IPGeolocation.io API client timeout error",
     retryable: true,
     guidance:
-      "Retry with a stable connection or increase IPGEOLOCATION_REQUEST_TIMEOUT_MS if requests are timing out locally.",
+      "Retry later with a stable connection; if this upstream timeout persists, share the status and message with IPGeolocation.io support.",
   },
   {
     status: 500,

@@ -22,6 +22,11 @@ if (!existsSync(stagingDir)) {
 const requiredStagingEntries = [
   "LICENSE",
   "README.md",
+  "CHANGELOG.md",
+  "SECURITY.md",
+  "CONTRIBUTING.md",
+  "RELEASING.md",
+  "packaging/mpak/README.md",
   "icon.png",
   "manifest.json",
   "package-lock.json",
