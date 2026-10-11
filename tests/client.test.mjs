@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 
 const CLIENT_ENV_KEYS = [
   "IPGEOLOCATION_API_KEY",
@@ -120,10 +121,36 @@ test("getMyIp preserves upstream non-ok error messages", async (t) => {
     (error) => {
       assert.equal(error.name, "ApiError");
       assert.equal(error.status, 429);
+      assert.equal(error.source, "ipgeolocation_api");
       assert.equal(error.message, "429: Too many requests for this API key.");
       return true;
     }
   );
+});
+
+test("getMyIp validates provider responses without echoing arbitrary data", async (t) => {
+  clearClientEnv();
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    clearClientEnv();
+    globalThis.fetch = originalFetch;
+  });
+  const client = await import(clientModuleUrl());
+  for (const payload of [null, [], {}, { ip: null }, { ip: 123 }, { ip: "" }, { ip: "unexpected-provider-data" }]) {
+    globalThis.fetch = async () => jsonResponse(payload);
+    await assert.rejects(() => client.getMyIp(), error => {
+      assert.equal(error.name, "ApiError");
+      assert.equal(error.status, 502);
+      assert.equal(error.source, "mcp_server");
+      assert.match(error.message, /invalid getip response.*IPv4 or IPv6/);
+      assert.doesNotMatch(error.message, /unexpected-provider-data/);
+      return true;
+    });
+  }
+  for (const ip of ["8.8.8.8", "2001:4860:4860::8888"]) {
+    globalThis.fetch = async () => jsonResponse({ ip });
+    assert.equal(await client.getMyIp(), ip);
+  }
 });
 
 test("maps AbortError to ApiError 504 timeout", async (t) => {
@@ -148,11 +175,52 @@ test("maps AbortError to ApiError 504 timeout", async (t) => {
     (error) => {
       assert.equal(error.name, "ApiError");
       assert.equal(error.status, 504);
+      assert.equal(error.source, "mcp_server");
       assert.match(error.message, /timed out/);
       return true;
     }
   );
 });
+
+for (const method of ["getIpGeolocation", "getMyIp"]) {
+  for (const status of [200, 401]) {
+    test(`${method} times out while reading an HTTP ${status} body`, async (t) => {
+      clearClientEnv();
+      process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
+      process.env.IPGEOLOCATION_REQUEST_TIMEOUT_MS = "1000";
+      const originalFetch = globalThis.fetch;
+      const server = createServer((_request, response) => {
+        response.writeHead(status, { "content-type": "application/json" });
+        response.flushHeaders();
+        const bodyTimer = setTimeout(() => {
+          response.end(JSON.stringify({ ip: "8.8.8.8", message: "Unauthorized" }));
+        }, 1500);
+        response.on("close", () => clearTimeout(bodyTimer));
+      });
+      t.after(async () => {
+        clearClientEnv();
+        globalThis.fetch = originalFetch;
+        server.closeAllConnections();
+        await new Promise((resolve) => server.close(resolve));
+      });
+      await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+      globalThis.fetch = (_url, options) =>
+        originalFetch(`http://127.0.0.1:${server.address().port}/slow-body`, options);
+
+      const client = await import(clientModuleUrl());
+      await assert.rejects(
+        () => client[method]({ ip: "8.8.8.8" }),
+        (error) => {
+          assert.equal(error.name, "ApiError");
+          assert.equal(error.status, 504);
+          assert.equal(error.source, "mcp_server");
+          assert.match(error.message, /timed out after 1000ms/);
+          return true;
+        }
+      );
+    });
+  }
+}
 
 test("maps generic fetch failures to ApiError 502", async (t) => {
   clearClientEnv();
@@ -173,6 +241,7 @@ test("maps generic fetch failures to ApiError 502", async (t) => {
     (error) => {
       assert.equal(error.name, "ApiError");
       assert.equal(error.status, 502);
+      assert.equal(error.source, "mcp_server");
       assert.match(error.message, /Failed to reach upstream API/);
       return true;
     }
@@ -200,6 +269,7 @@ test("returns truncated upstream error body for non-ok responses", async (t) => 
     (error) => {
       assert.equal(error.name, "ApiError");
       assert.equal(error.status, 500);
+      assert.equal(error.source, "ipgeolocation_api");
       assert.match(error.message, /truncated upstream error body/);
       assert.ok(error.message.length < 4300);
       return true;
@@ -231,6 +301,7 @@ test("returns upstream JSON error message for auth failures", async (t) => {
     (error) => {
       assert.equal(error.name, "ApiError");
       assert.equal(error.status, 401);
+      assert.equal(error.source, "ipgeolocation_api");
       assert.equal(
         error.message,
         "401: Provided API key is not valid. Contact technical support for assistance at support@ipgeolocation.io"
@@ -297,6 +368,7 @@ test("redacts API keys from transport failures", async (t) => {
     (error) => {
       assert.equal(error.name, "ApiError");
       assert.equal(error.status, 502);
+      assert.equal(error.source, "mcp_server");
       assert.doesNotMatch(error.message, /sensitive_test_key_456/);
       assert.match(error.message, /\[REDACTED_API_KEY\]/);
       return true;
@@ -325,6 +397,7 @@ test("maps invalid JSON response bodies to ApiError 502", async (t) => {
     (error) => {
       assert.equal(error.name, "ApiError");
       assert.equal(error.status, 502);
+      assert.equal(error.source, "mcp_server");
       assert.match(error.message, /invalid JSON/);
       return true;
     }

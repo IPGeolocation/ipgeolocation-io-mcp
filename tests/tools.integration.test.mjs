@@ -289,6 +289,7 @@ function createFetchStub() {
         }
       case "/v3/abuse":
         return jsonResponse({
+          ip: url.searchParams.get("ip") || "self",
           abuse: {
             emails: ["abuse@example.com"],
             organization: "Example ISP",
@@ -378,7 +379,7 @@ test("registers all MCP tools with expected metadata", async (t) => {
     tools.get("bulk_parse_user_agent").definition.inputSchema.uaStrings;
 
   const validIps = Array.from(
-    { length: 1000 },
+    { length: 250 },
     (_, index) => `203.0.113.${(index % 254) + 1}`
   );
   const invalidIps = [...validIps, "203.0.113.9"];
@@ -388,7 +389,7 @@ test("registers all MCP tools with expected metadata", async (t) => {
   assert.equal(bulkSecurityIpsSchema.safeParse(validIps).success, true);
   assert.equal(bulkSecurityIpsSchema.safeParse(invalidIps).success, false);
 
-  const validUa = Array.from({ length: 1000 }, (_, index) => `UA-${index}`);
+  const validUa = Array.from({ length: 250 }, (_, index) => `UA-${index}`);
   const invalidUa = [...validUa, "UA-over-limit"];
   assert.equal(bulkUaSchema.safeParse(validUa).success, true);
   assert.equal(bulkUaSchema.safeParse(invalidUa).success, false);
@@ -488,6 +489,30 @@ test("executes all 16 tools with mocked upstream responses", async (t) => {
   const getIpCall = calls.find((call) => call.url.pathname === "/v3/getip");
   assert.ok(getIpCall);
   assert.equal(getIpCall.headers.get("x-ipgeolocation-api-key"), null);
+});
+
+test("IP projections preserve API IP identifiers even when fields omit or excludes name ip", async (t) => {
+  clearToolEnv();
+  process.env.IPGEOLOCATION_API_KEY = "projection-test-key";
+  await clearRuntimeCaches();
+  const originalFetch = globalThis.fetch;
+  const { calls, fetchStub } = createFetchStub();
+  globalThis.fetch = fetchStub;
+  t.after(() => { clearToolEnv(); globalThis.fetch = originalFetch; });
+  const tools = await loadToolRegistry();
+  for (const [name, fields] of [
+    ["lookup_ip", "location.city"], ["check_security", "security.is_vpn"], ["get_abuse_contact", "abuse.emails"],
+  ]) {
+    const result = await invoke(tools, name, { ip: "8.8.8.8", fields, excludes: "ip" });
+    const data = JSON.parse(parseTextResult(result));
+    assert.equal(data.ip, "8.8.8.8", name);
+    assert.equal(data.endpoint, undefined, name);
+  }
+  await invoke(tools, "lookup_ip", { ip: "1.1.1.1", include: "security" });
+  const before = calls.length;
+  const projected = await invoke(tools, "lookup_ip", { ip: "1.1.1.1", include: "security", fields: "security.is_vpn", excludes: "ip" });
+  assert.equal(JSON.parse(parseTextResult(projected)).ip, "1.1.1.1");
+  assert.equal(calls.length, before, "cached include projection must retain the IP without another paid request");
 });
 
 test("avoids repeat upstream calls when only fields/excludes change for same ASN, security, and abuse target", async (t) => {
@@ -771,6 +796,177 @@ test("force_refresh bypasses cache for cached tools", async (t) => {
   assert.equal(bulkUserAgentCalls.length, 2);
 });
 
+test("cacheable tools share identical concurrent upstream requests", async (t) => {
+  clearToolEnv();
+  process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    clearToolEnv();
+    globalThis.fetch = originalFetch;
+  });
+  const tools = await loadToolRegistry();
+  const cases = {
+    lookup_ip: { ip: "8.8.8.8" },
+    bulk_lookup_ip: { ips: ["8.8.8.8", "1.1.1.1"] },
+    lookup_company: { ip: "8.8.8.8" },
+    lookup_currency: { ip: "8.8.8.8" },
+    lookup_network: { ip: "8.8.8.8" },
+    check_security: { ip: "8.8.8.8" },
+    bulk_security_check: { ips: ["8.8.8.8", "1.1.1.1"] },
+    get_astronomy_time_series: {
+      location: "Karachi, PK", dateStart: "2026-03-01", dateEnd: "2026-03-05",
+    },
+    lookup_asn: { asn: "AS13335" },
+    get_abuse_contact: { ip: "8.8.8.8" },
+    parse_user_agent: { uaString: "Mozilla/5.0 Test" },
+    bulk_parse_user_agent: { uaStrings: ["UA-1", "UA-2"] },
+  };
+
+  for (const [name, args] of Object.entries(cases)) {
+    await t.test(name, async () => {
+      await clearRuntimeCaches();
+      const { calls, fetchStub } = createFetchStub();
+      const { promise, resolve } = Promise.withResolvers();
+      globalThis.fetch = async (...args) => {
+        const response = await fetchStub(...args);
+        await promise;
+        return response;
+      };
+      const results = Promise.all([invoke(tools, name, args), invoke(tools, name, args)]);
+      resolve();
+      const [first, second] = await results;
+      assert.equal(first.isError, undefined);
+      assert.deepEqual(second, first);
+      assert.equal(calls.length, 1);
+      await invoke(tools, name, args);
+      assert.equal(calls.length, 1);
+    });
+  }
+
+  await t.test("normalized include and field selectors", async () => {
+    await clearRuntimeCaches();
+    const { calls, fetchStub } = createFetchStub();
+    const { promise, resolve } = Promise.withResolvers();
+    globalThis.fetch = async (...args) => {
+      const response = await fetchStub(...args);
+      await promise;
+      return response;
+    };
+    const results = Promise.all([
+      invoke(tools, "lookup_ip", { ip: "8.8.8.8", include: "abuse,security", fields: "ip,security" }),
+      invoke(tools, "lookup_ip", { ip: "8.8.8.8", include: "security,abuse", fields: "security,ip" }),
+    ]);
+    resolve();
+    for (const result of await results) assert.equal(result.isError, undefined);
+    assert.equal(calls.length, 1);
+  });
+});
+
+test("a shared failed request is removed so the next call can retry", async (t) => {
+  clearToolEnv();
+  process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
+  await clearRuntimeCaches();
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    clearToolEnv();
+    globalThis.fetch = originalFetch;
+  });
+  const tools = await loadToolRegistry();
+  const { promise, resolve } = Promise.withResolvers();
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    await promise;
+    throw new Error("Temporary connection failure");
+  };
+  const results = Promise.all([
+    invoke(tools, "lookup_ip", { ip: "8.8.8.8" }),
+    invoke(tools, "lookup_ip", { ip: "8.8.8.8" }),
+  ]);
+  resolve();
+  for (const result of await results) {
+    assert.equal(result.isError, true);
+    assert.equal(result.structuredContent.error.status, 502);
+    assert.equal(result.structuredContent.error.source, "mcp_server");
+  }
+  assert.equal(calls, 1);
+  globalThis.fetch = async () => {
+    calls++;
+    return jsonResponse({ ip: "8.8.8.8" });
+  };
+  assert.equal((await invoke(tools, "lookup_ip", { ip: "8.8.8.8" })).isError, undefined);
+  await invoke(tools, "lookup_ip", { ip: "8.8.8.8" });
+  assert.equal(calls, 2);
+});
+
+test("concurrent requests and completed results stay isolated by runtime API key", async (t) => {
+  clearToolEnv();
+  await clearRuntimeCaches();
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    clearToolEnv();
+    globalThis.fetch = originalFetch;
+  });
+  const { withRuntimeConfig } = await import("../dist/config.js");
+  const tools = await loadToolRegistry();
+  const { promise, resolve } = Promise.withResolvers();
+  const keys = [];
+  globalThis.fetch = async (url, options) => {
+    const key = new Headers(options.headers).get("x-ipgeolocation-api-key");
+    keys.push(key);
+    await promise;
+    return jsonResponse({ ip: new URL(url).searchParams.get("ip"), tenant: key === "tenant_a_key" ? "a" : "b" });
+  };
+  const lookup = (apiKey, ip = "8.8.8.8") => withRuntimeConfig({ apiKey }, () =>
+    invoke(tools, "lookup_ip", { ip }));
+  const results = Promise.all([
+    lookup("tenant_a_key"), lookup("tenant_a_key"), lookup("tenant_b_key"), lookup("tenant_b_key"),
+    lookup("tenant_a_key", "1.1.1.1"),
+  ]);
+  resolve();
+  const data = (await results).map((result) => JSON.parse(parseTextResult(result)));
+  assert.deepEqual(data.map((result) => result.tenant), ["a", "a", "b", "b", "a"]);
+  assert.equal(data[4].ip, "1.1.1.1");
+  assert.deepEqual(keys.sort(), ["tenant_a_key", "tenant_a_key", "tenant_b_key"]);
+  assert.equal(JSON.parse(parseTextResult(await lookup("tenant_a_key"))).tenant, "a");
+  assert.equal(JSON.parse(parseTextResult(await lookup("tenant_b_key"))).tenant, "b");
+  assert.equal(keys.length, 3);
+});
+
+test("force_refresh bypasses pending work and an older completion cannot overwrite it", async (t) => {
+  clearToolEnv();
+  process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
+  await clearRuntimeCaches();
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    clearToolEnv();
+    globalThis.fetch = originalFetch;
+  });
+  const tools = await loadToolRegistry();
+  const older = Promise.withResolvers();
+  const fresh = Promise.withResolvers();
+  let calls = 0;
+  globalThis.fetch = async () => {
+    const first = ++calls === 1;
+    await (first ? older.promise : fresh.promise);
+    return jsonResponse({ ip: "8.8.8.8", generation: first ? "older" : "fresh" });
+  };
+  const oldCall = invoke(tools, "lookup_ip", { ip: "8.8.8.8" });
+  const refreshedCall = invoke(tools, "lookup_ip", { ip: "8.8.8.8", force_refresh: true });
+  const joiningCall = invoke(tools, "lookup_ip", { ip: "8.8.8.8" });
+  fresh.resolve();
+  const results = await Promise.all([refreshedCall, joiningCall]);
+  older.resolve();
+  await oldCall;
+  assert.equal(calls, 2);
+  for (const result of results) {
+    assert.equal(JSON.parse(parseTextResult(result)).generation, "fresh");
+  }
+  const cached = await invoke(tools, "lookup_ip", { ip: "8.8.8.8" });
+  assert.equal(JSON.parse(parseTextResult(cached)).generation, "fresh");
+  assert.equal(calls, 2);
+});
+
 test("time-sensitive tools do not cache repeated calls", async (t) => {
   clearToolEnv();
   process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
@@ -852,6 +1048,35 @@ test("reuses base ipgeo result across convenience tools and lookup_ip field proj
   assert.equal(projectedData.currency, undefined);
 });
 
+test("free-plan ownership keeps basic ASN and missing network data returns a local error", async (t) => {
+  clearToolEnv();
+  process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
+  await clearRuntimeCaches();
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return jsonResponse({ ip: "8.8.8.8", asn: { as_number: "AS15169" } });
+  };
+  t.after(() => {
+    clearToolEnv();
+    globalThis.fetch = originalFetch;
+  });
+  const tools = await loadToolRegistry();
+  const company = await invoke(tools, "lookup_company", { ip: "8.8.8.8" });
+  assert.equal(company.isError, undefined);
+  const companyData = JSON.parse(parseTextResult(company));
+  assert.equal(companyData.asn.as_number, "AS15169");
+  assert.equal(companyData.company, undefined);
+  const network = await invoke(tools, "lookup_network", { ip: "8.8.8.8" });
+  assert.equal(network.isError, true);
+  assert.match(network.structuredContent.error.message, /Network data is unavailable.*paid plan/);
+  assert.equal(network.structuredContent.error.source, "mcp_server");
+  assert.equal(network.structuredContent.error.status, undefined);
+  assert.equal(network.structuredContent.error.retryable, false);
+  assert.equal(calls, 1);
+});
+
 test("validates timezone and astronomy inputs before network calls", async (t) => {
   clearToolEnv();
   process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
@@ -920,9 +1145,78 @@ test("validates timezone and astronomy inputs before network calls", async (t) =
   assert.equal(elevationError.isError, true);
   assert.match(parseTextResult(elevationError), /between 0 and 10000/);
   assert.equal(calls.length, beforeCalls);
+
+  for (const result of [timezoneError, conversionError, astronomyDateError, astronomyRangeError, timezoneValueError, conversionTimeError, elevationError]) {
+    assert.equal(result.structuredContent.error.source, "mcp_server");
+    assert.equal(result.structuredContent.error.category, "tool_error");
+    assert.equal(result.structuredContent.error.status, undefined);
+    assert.equal(result.structuredContent.error.retryable, false);
+  }
 });
 
-test("truncates oversized bulk results and oversized errors", async (t) => {
+test("missing API keys return a local structured error without using the network", async (t) => {
+  clearToolEnv();
+  await clearRuntimeCaches();
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; return jsonResponse({}); };
+  t.after(() => {
+    clearToolEnv();
+    globalThis.fetch = originalFetch;
+  });
+  const tools = await loadToolRegistry();
+  const result = await invoke(tools, "lookup_ip", { ip: "8.8.8.8" });
+  assert.equal(result.isError, true);
+  assert.match(parseTextResult(result), /API key not configured/);
+  assert.equal(result.structuredContent.error.source, "mcp_server");
+  assert.equal(result.structuredContent.error.status, undefined);
+  assert.equal(result.structuredContent.error.retryable, false);
+  assert.equal(calls, 0);
+});
+
+test("oversized bulk output is paginated and repeated calls reuse the paid result", async (t) => {
+  clearToolEnv();
+  process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
+  process.env.IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS = "10000";
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    clearToolEnv();
+    globalThis.fetch = originalFetch;
+  });
+  const tools = await loadToolRegistry();
+  for (const [name, args] of [
+    ["bulk_lookup_ip", { ips: ["8.8.8.8"] }],
+    ["bulk_security_check", { ips: ["8.8.8.8"] }],
+    ["bulk_parse_user_agent", { uaStrings: ["Test-UA"] }],
+  ]) {
+    await t.test(name, async () => {
+      await clearRuntimeCaches();
+      let calls = 0;
+      globalThis.fetch = async () => {
+        calls++;
+        return jsonResponse([{ input: "test", details: "x".repeat(20000) }]);
+      };
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = await invoke(tools, name, args);
+        const { withStructuredContent } = await import("../dist/tools/response.js");
+        const { readCachedResultPage } = await import("../dist/tools/pagination.js");
+        let pageResult = withStructuredContent(name, args, result);
+        let json = "";
+        do {
+          assert.equal(pageResult.isError, undefined);
+          assert.ok(Buffer.byteLength(JSON.stringify(pageResult)) <= 10000);
+          const page = pageResult.structuredContent.page;
+          json += page.json_fragment;
+          pageResult = page.next_cursor ? readCachedResultPage(page.next_cursor) : undefined;
+        } while (pageResult);
+        assert.deepEqual(JSON.parse(json).items, [{ input: "test", details: "x".repeat(20000) }]);
+      }
+      assert.equal(calls, 1);
+    });
+  }
+});
+
+test("truncates oversized errors", async (t) => {
   clearToolEnv();
   process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
   await clearRuntimeCaches();
@@ -935,15 +1229,6 @@ test("truncates oversized bulk results and oversized errors", async (t) => {
   });
 
   const tools = await loadToolRegistry();
-
-  const bulkIps = Array.from({ length: 300 }, (_, i) => `203.0.113.${(i % 254) + 1}`);
-  const bulkResponse = await invoke(tools, "bulk_security_check", { ips: bulkIps });
-  assert.equal(bulkResponse.isError, undefined);
-  const parsedBulk = JSON.parse(parseTextResult(bulkResponse));
-  assert.equal(parsedBulk.truncated, true);
-  assert.equal(parsedBulk.total_items, 300);
-  assert.equal(parsedBulk.shown_items, 250);
-  assert.equal(parsedBulk.items.length, 250);
 
   const errorResponse = await invoke(tools, "lookup_asn", { asn: "AS_ERROR" });
   assert.equal(errorResponse.isError, true);

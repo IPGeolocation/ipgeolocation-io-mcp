@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.IPGeolocation/ipgeolocation-io-mcp",
   "title": "IPGeolocation.io MCP Server",
-  "description": "Official MCP server for IP geolocation, security, ASN, abuse, timezone, astronomy, and user-agent.",
-  "websiteUrl": "https://github.com/IPGeolocation/ipgeolocation-io-mcp#readme",
+  "description": "IP geolocation, security, ASN, abuse, time zones, astronomy, and user-agent parsing over stdio.",
+  "websiteUrl": "https://ipgeolocation.io/integrations/ipgeolocation-io-mcp",
   "icons": [
     {
       "src": "https://static.ipgeolocation.io/web-assets/images/brand/ipgeolocation-logo-512-white-bg.png",
@@ -29,7 +29,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "ipgeolocation-io-mcp",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "transport": {
         "type": "stdio"
       },
@@ -45,5 +45,5 @@
       ]
     }
   ],
-  "version": "2.0.0"
+  "version": "2.0.1"
 }

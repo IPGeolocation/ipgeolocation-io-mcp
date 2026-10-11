@@ -76,69 +76,28 @@ function normalizePath(
   return path;
 }
 
-function projectPath(source: unknown, segments: string[]): unknown {
-  if (segments.length === 0) {
+function projectPaths(source: unknown, paths: string[][]): unknown {
+  if (paths.some(segments => segments.length === 0)) {
     return clone(source);
   }
 
   if (Array.isArray(source)) {
-    const items = source
-      .map((item) => projectPath(item, segments))
-      .filter((item) => item !== undefined);
-    return items.length > 0 ? items : undefined;
+    // Project each row once so missing fields cannot shift values onto another row.
+    return source.map(item => projectPaths(item, paths) ?? (isObject(item) ? {} : null));
   }
 
   if (!isObject(source)) {
     return undefined;
   }
 
-  const [head, ...tail] = segments;
-  if (!Object.prototype.hasOwnProperty.call(source, head)) {
-    return undefined;
+  const projected: JsonObject = {};
+  for (const [key, value] of Object.entries(source)) {
+    const matchingPaths = paths.filter(segments => segments[0] === key);
+    if (matchingPaths.length === 0) continue;
+    const child = projectPaths(value, matchingPaths.map(segments => segments.slice(1)));
+    if (child !== undefined) setOwnValue(projected, key, child);
   }
-
-  const child = projectPath(getOwnValue(source, head), tail);
-  if (child === undefined) {
-    return undefined;
-  }
-
-  return Object.fromEntries([[head, child]]);
-}
-
-function mergeProjected(target: unknown, source: unknown): unknown {
-  if (source === undefined) {
-    return target;
-  }
-  if (target === undefined) {
-    return clone(source);
-  }
-
-  if (Array.isArray(target) && Array.isArray(source)) {
-    const max = Math.max(target.length, source.length);
-    return Array.from({ length: max }, (_, i) => {
-      if (i in target && i in source) {
-        return mergeProjected(target.at(i), source.at(i));
-      }
-      if (i in source) {
-        return clone(source.at(i));
-      }
-      return clone(target.at(i));
-    });
-  }
-
-  if (isObject(target) && isObject(source)) {
-    const merged: JsonObject = Object.fromEntries(Object.entries(target));
-    for (const [key, value] of Object.entries(source)) {
-      if (Object.prototype.hasOwnProperty.call(merged, key)) {
-        setOwnValue(merged, key, mergeProjected(getOwnValue(merged, key), value));
-      } else {
-        setOwnValue(merged, key, clone(value));
-      }
-    }
-    return merged;
-  }
-
-  return clone(source);
+  return Object.keys(projected).length > 0 ? projected : undefined;
 }
 
 function removePath(target: unknown, segments: string[]): void {
@@ -176,24 +135,18 @@ export function applyFieldsAndExcludes(
     fields?: string;
     excludes?: string;
     rootKey?: string;
+    preserveIp?: boolean;
   } = {}
 ): unknown {
-  const { fields, excludes, rootKey } = options;
+  const { fields, excludes, rootKey, preserveIp } = options;
 
   let result: unknown;
   const fieldPaths = splitCsv(fields);
 
   if (fieldPaths.length > 0) {
-    let projected: unknown = undefined;
-    for (const path of fieldPaths) {
-      const normalized = normalizePath(path, source, rootKey);
-      if (!normalized) {
-        continue;
-      }
-      const candidate = projectPath(source, normalized.split("."));
-      projected = mergeProjected(projected, candidate);
-    }
-    result = projected === undefined ? {} : projected;
+    const paths = fieldPaths.map(path => normalizePath(path, source, rootKey))
+      .filter((path): path is string => path !== null).map(path => path.split("."));
+    result = projectPaths(source, paths) ?? {};
   } else {
     result = clone(source);
   }
@@ -206,5 +159,9 @@ export function applyFieldsAndExcludes(
     removePath(result, normalized.split("."));
   }
 
+  const ip = isObject(source) ? getOwnValue(source, "ip") : undefined;
+  if (preserveIp && typeof ip === "string" && isObject(result)) {
+    setOwnValue(result, "ip", ip);
+  }
   return result;
 }

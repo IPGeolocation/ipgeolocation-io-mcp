@@ -2,7 +2,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getAsn } from "../client.js";
 import { errorToolResponse, formatToolResult } from "./response.js";
-import { getCachedValue, setCachedValue } from "./cache.js";
+import { getCachedOrFetchValue } from "./cache.js";
 import { applyFieldsAndExcludes } from "./projection.js";
 
 function normalizeInclude(include: string | undefined): string {
@@ -34,13 +34,10 @@ const ASN_INCLUDE_SET = new Set([
   "whois_response",
 ]);
 
-function inferAsnIncludeFromProjection(
-  fields: string | undefined,
-  excludes: string | undefined
-): string {
+function inferAsnIncludeFromFields(fields: string | undefined): string {
   const inferred = new Set<string>();
 
-  for (const path of [...splitCsv(fields), ...splitCsv(excludes)]) {
+  for (const path of splitCsv(fields)) {
     const normalized = path.trim().toLowerCase();
     const withoutPrefix = normalized.startsWith("asn.")
       ? normalized.slice(4)
@@ -61,7 +58,7 @@ function buildEffectiveAsnInclude(params: {
   excludes?: string;
 }): string {
   const explicit = normalizeInclude(params.include);
-  const inferred = inferAsnIncludeFromProjection(params.fields, params.excludes);
+  const inferred = inferAsnIncludeFromFields(params.fields);
 
   if (!explicit) {
     return inferred;
@@ -81,7 +78,7 @@ function buildAsnCacheKey(params: {
   const asn = params.asn?.trim().toUpperCase() ?? "";
   const ip = params.ip?.trim().toLowerCase() ?? "";
   const include = normalizeInclude(params.include);
-  return `asn|asn=${asn}|ip=${ip}|include=${include}`;
+  return `asn|${JSON.stringify({ asn, ip, include })}`;
 }
 
 export function registerAsnTools(server: McpServer) {
@@ -95,7 +92,7 @@ export function registerAsnTools(server: McpServer) {
       },
       description: `Read-only ASN enrichment via GET /v3/asn. Paid only. Cost: 1 credit. Queries accept asn or ip, with asn taking priority. The response covers ASN relationships, route prefixes, allocation details, and WHOIS; lookup_ip provides basic ASN data together with geolocation.
 
-Returns { asn } core fields plus included peers, downstreams, upstreams, routes, or whois_response. include accepts those five values. fields/excludes accept full asn.* paths or root-relative paths such as upstreams.as_number. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
+Returns { asn } core fields plus included peers, downstreams, upstreams, routes, or whois_response. include accepts those five values. fields/excludes accept full asn.* paths or root-relative paths such as upstreams.as_number. fields automatically enables required optional datasets; excludes alone never requests extra datasets. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
       inputSchema: {
         asn: z
           .string()
@@ -119,7 +116,7 @@ Returns { asn } core fields plus included peers, downstreams, upstreams, routes,
           .string()
           .optional()
           .describe(
-            "Comma-separated dot-path fields to return (e.g. asn.as_number,asn.organization or upstreams.as_number). Paths can be full (asn.upstreams.as_number) or relative to the asn root (upstreams.as_number). Optional datasets (peers/downstreams/upstreams/routes/whois_response) are controlled by include; fields limits the returned paths."
+            "Comma-separated dot-path fields to return (e.g. asn.as_number,asn.organization or upstreams.as_number). Paths can be full (asn.upstreams.as_number) or relative to the asn root (upstreams.as_number). This server auto-adds optional datasets referenced by fields; excludes alone does not enable them."
           ),
         excludes: z
           .string()
@@ -142,19 +139,15 @@ Returns { asn } core fields plus included peers, downstreams, upstreams, routes,
           ...params,
           include: effectiveInclude,
         });
-        const cached = params.force_refresh ? undefined : getCachedValue(cacheKey);
-
-        const baseResult =
-          cached ??
-          (await getAsn({
+        const baseResult = await getCachedOrFetchValue(
+          cacheKey,
+          () => getAsn({
             asn: params.asn,
             ip: params.ip,
             include: effectiveInclude || undefined,
-          }));
-
-        if (cached === undefined) {
-          setCachedValue(cacheKey, baseResult);
-        }
+          }),
+          params.force_refresh
+        );
 
         const result = applyFieldsAndExcludes(baseResult, {
           fields: params.fields,

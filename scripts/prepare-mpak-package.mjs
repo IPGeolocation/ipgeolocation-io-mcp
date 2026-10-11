@@ -28,7 +28,6 @@ const packagingDir = path.join(repoRoot, "packaging", "mpak");
 const distDir = path.join(sourceDir, "dist");
 const iconPath = path.join(sourceDir, "icon.png");
 const licensePath = path.join(sourceDir, "LICENSE");
-const readmePath = path.join(sourceDir, "README.md");
 const mcpbignoreTemplatePath = path.join(packagingDir, "mcpbignore.template");
 
 function readJson(filePath) {
@@ -203,8 +202,10 @@ if (existsSync(licensePath)) {
   cpSync(licensePath, path.join(outputDir, "LICENSE"));
 }
 
-if (existsSync(readmePath)) {
-  cpSync(readmePath, path.join(outputDir, "README.md"));
+for (const name of ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md"]) {
+  const destination = path.join(outputDir, name);
+  mkdirSync(path.dirname(destination), { recursive: true });
+  cpSync(path.join(sourceDir, name), destination);
 }
 
 if (existsSync(iconPath)) {

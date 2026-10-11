@@ -10,26 +10,24 @@
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-5FA04E?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-16A34A)](https://github.com/IPGeolocation/ipgeolocation-io-mcp/blob/main/LICENSE)
 
-Official MCP server for [IPGeolocation.io](https://ipgeolocation.io). Includes 16 MCP tools: IP geolocation, threat/VPN/proxy detection, timezone lookups and conversions, sunrise/sunset/moon data, ASN details, abuse contacts, and user-agent parsing. Seven tools work on the free plan (1,000 credits/day). Paid plans unlock all 16 plus bulk endpoints (up to 50,000 items per call; default 1,000, configurable via `IPGEOLOCATION_MCP_MAX_BULK_ITEMS`).
+Use the official [IPGeolocation.io](https://ipgeolocation.io) MCP server for IP geolocation, security indicators, ASN data, and abuse contacts. It also provides time zone conversions, sun and moon data, and user-agent parsing.
 
-Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and any other MCP client.
+MCP (Model Context Protocol) connects your client to these tools. Your client or host must support launching a local command over `stdio`. See [Install by Client](#install-by-client) for configuration examples.
+
+**This README describes [2.0.1](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.1).** The `npx` commands and Cursor install link below install the latest published npm package. See the [changelog](CHANGELOG.md) for changes to pagination, limits, and error handling.
 
 | Item | Value |
 |------|-------|
 | Package | `ipgeolocation-io-mcp` |
-| Version | `2.0.0` |
+| Version | `2.0.1` |
+| Release date | 2026-10-11 |
 | Transport | `stdio` |
 | Node.js | `>=22` |
 
 ## Quick Start
 
-1. [Create a free IPGeolocation API key](https://app.ipgeolocation.io/signup)
-
-2. Cursor users can install in one click:
-
-   [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=ipgeolocation&config=eyJjb21tYW5kIjoibnB4IC15IGlwZ2VvbG9jYXRpb24taW8tbWNwIiwiZW52Ijp7IklQR0VPTE9DQVRJT05fQVBJX0tFWSI6IiJ9fQ%3D%3D)
-
-3. Add this to your MCP client config (see [Install by Client](#install-by-client) below for the exact config file path for your client):
+1. [Create a free IPGeolocation API key](https://app.ipgeolocation.io/signup).
+2. Merge this entry into your client's private configuration, keeping any existing servers. See [Install by Client](#install-by-client) for the configuration location. Cursor also has a [one-click installer](#cursor).
 
 ```json
 {
@@ -45,9 +43,8 @@ Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and a
 }
 ```
 
-4. Restart your client.
-
-5. Test it: ask **"Where is 8.8.8.8 located?"**
+3. Reload the server or restart your client.
+4. Ask **"Where is 8.8.8.8 located?"**
 
 ## Table of Contents
 
@@ -61,6 +58,7 @@ Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and a
 - [Error Codes](#error-codes)
 - [How It Works](#how-it-works)
 - [Caching](#caching)
+- [Cached Result Pagination](#cached-result-pagination)
 - [Environment Variables](#environment-variables)
 - [Building from Source](#building-from-source)
 - [Docker](#docker)
@@ -75,18 +73,24 @@ Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex, Cline, Glama, and a
 
 ### Requirements
 
-- Node.js 22 or later
-- `npx` available in your terminal
-- An IPGeolocation.io API key for most tools
+- Node.js 22 or later for npm/source installs, or a bundle host with a compatible Node.js runtime
+- `npx` available for the npm configuration examples
+- An IPGeolocation.io API key for most API tools
 
-`get_my_ip` works without an API key. Everything else requires one.
+Use a supported Node.js release with its latest security updates.
+
+`get_my_ip` requires no API key. The other 15 API tools require one. `get_cached_result` reads results already held in memory; use the same API key as the original lookup.
 
 [Sign up for a free IPGeolocation API key](https://app.ipgeolocation.io/signup)
 
+Use a private user configuration or your client's secret/environment settings for the real key. Keep keys out of committed project configuration. Each client below uses the [Quick Start server entry](#quick-start) unless its format differs.
+
 ### Codex CLI
 
+Set `IPGEOLOCATION_API_KEY` in your private shell environment before running these commands. The variable reference keeps the key value out of the command you type and its shell history.
+
 ```bash
-codex mcp add ipgeolocation --env IPGEOLOCATION_API_KEY=<YOUR_API_KEY> -- npx -y ipgeolocation-io-mcp
+codex mcp add ipgeolocation --env "IPGEOLOCATION_API_KEY=$IPGEOLOCATION_API_KEY" -- npx -y ipgeolocation-io-mcp
 codex mcp list
 ```
 
@@ -94,41 +98,22 @@ Start a new Codex session after adding the server.
 
 ### Claude Desktop
 
-Add to `claude_desktop_config.json`:
+Install the published server from its [Claude Marketplace listing](https://claude.com/marketplace/connectors/ipgeolocation-io-mcp-server). In Claude Desktop, open **Settings > Extensions > Browse extensions**, find **IPGeolocation.io MCP Server**, and configure your API key during installation. See [Anthropic's desktop extension guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop). The directory distributes the approved published bundle; its refresh can lag GitHub Releases. Check the installed version, or download the versioned bundle below.
 
-```json
-{
-  "mcpServers": {
-    "ipgeolocation": {
-      "command": "npx",
-      "args": ["-y", "ipgeolocation-io-mcp"],
-      "env": {
-        "IPGEOLOCATION_API_KEY": "<YOUR_API_KEY>"
-      }
-    }
-  }
-}
-```
+For manual npm configuration, open **Settings > Developer > Edit Config** in Claude Desktop. This opens `claude_desktop_config.json`:
 
-Restart Claude Desktop after saving. We also ship `manifest.json` for clients that support MCP Bundles.
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+Merge the [Quick Start entry](#quick-start) into `mcpServers`.
+
+Fully quit and reopen Claude Desktop after saving. See the [official local-server setup guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
+
+For clients that install MCP Bundles, download the published [v2.0.1 `.mcpb` bundle](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/download/v2.0.1/ipgeolocation-ipgeolocation-io-mcp-2.0.1.mcpb) from [GitHub Releases](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases). The bundle contains the server and its dependencies; its host still needs a Node.js 22+ runtime. Enter your API key when the host prompts for bundle configuration.
 
 ### Cline
 
-Open MCP Servers panel > **Configure** > **Advanced MCP Settings**. Add to `cline_mcp_settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "ipgeolocation": {
-      "command": "npx",
-      "args": ["-y", "ipgeolocation-io-mcp"],
-      "env": {
-        "IPGEOLOCATION_API_KEY": "<YOUR_API_KEY>"
-      }
-    }
-  }
-}
-```
+In Cline, open **MCP Servers > Configure > Configure MCP Servers**. Add the [Quick Start entry](#quick-start) under `mcpServers` in the settings JSON. Cline CLI uses `~/.cline/data/settings/cline_mcp_settings.json` by default. See [Cline's MCP guide](https://docs.cline.bot/mcp/mcp-overview).
 
 Restart Cline after saving.
 
@@ -136,14 +121,15 @@ Restart Cline after saving.
 
 One-click install:
 
-[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=ipgeolocation&config=eyJjb21tYW5kIjoibnB4IC15IGlwZ2VvbG9jYXRpb24taW8tbWNwIiwiZW52Ijp7IklQR0VPTE9DQVRJT05fQVBJX0tFWSI6IiJ9fQ%3D%3D)
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=ipgeolocation&config=eyJ0eXBlIjoic3RkaW8iLCJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImlwZ2VvbG9jYXRpb24taW8tbWNwIl0sImVudiI6eyJJUEdFT0xPQ0FUSU9OX0FQSV9LRVkiOiIifX0%3D)
 
-Or add to `.cursor/mcp.json` manually:
+Or add to `.cursor/mcp.json` for this project, or `~/.cursor/mcp.json` for all projects. See [Cursor's MCP guide](https://cursor.com/docs/mcp).
 
 ```json
 {
   "mcpServers": {
     "ipgeolocation": {
+      "type": "stdio",
       "command": "npx",
       "args": ["-y", "ipgeolocation-io-mcp"],
       "env": {
@@ -156,47 +142,19 @@ Or add to `.cursor/mcp.json` manually:
 
 Restart Cursor after saving.
 
-### Windsurf
+### Windsurf / Cascade
 
-Add to `~/.codeium/windsurf/mcp_config.json`:
+In Cascade's **... (Actions)** menu, choose **Open MCP config file** in the MCPs section. Merge the [Quick Start entry](#quick-start) into the file opened by your installed version; configuration paths vary by release. See the [vendor's Cascade MCP guide](https://docs.devin.ai/desktop/cascade/mcp) for the active agent and configuration location in newer releases.
 
-```json
-{
-  "mcpServers": {
-    "ipgeolocation": {
-      "command": "npx",
-      "args": ["-y", "ipgeolocation-io-mcp"],
-      "env": {
-        "IPGEOLOCATION_API_KEY": "<YOUR_API_KEY>"
-      }
-    }
-  }
-}
-```
-
-Restart Windsurf after saving.
+Save the file and reload the server in the client.
 
 ### VS Code / GitHub Copilot
 
-Add to your VS Code `settings.json`:
+Run **MCP: Add Server** from the Command Palette, choose a local command, and use `npx -y ipgeolocation-io-mcp`. Choose **Copilot Global** for private user settings or **.mcp.json** for a portable workspace configuration. Add `IPGEOLOCATION_API_KEY` to the server's environment.
 
-```json
-{
-  "mcp": {
-    "servers": {
-      "ipgeolocation": {
-        "command": "npx",
-        "args": ["-y", "ipgeolocation-io-mcp"],
-        "env": {
-          "IPGEOLOCATION_API_KEY": "<YOUR_API_KEY>"
-        }
-      }
-    }
-  }
-}
-```
+The portable `.mcp.json` format uses the top-level `mcpServers` object shown in [Quick Start](#quick-start).
 
-Restart VS Code after saving.
+Use the server's **Start** action and approve its configuration when prompted. Existing `.vscode/mcp.json` files use a top-level `servers` object instead. See [VS Code's MCP setup guide](https://code.visualstudio.com/docs/agent-customization/mcp-servers).
 
 ### Glama
 
@@ -206,17 +164,7 @@ If you don't have a key yet, [create a free IPGeolocation API key](https://app.i
 
 ### Any Other MCP Client
 
-Use this config:
-
-```json
-{
-  "command": "npx",
-  "args": ["-y", "ipgeolocation-io-mcp"],
-  "env": {
-    "IPGEOLOCATION_API_KEY": "<YOUR_API_KEY>"
-  }
-}
-```
+Use the `ipgeolocation` server entry from [Quick Start](#quick-start) in your client's configuration format. The client must support launching a local `stdio` process. A client that accepts only a remote MCP URL needs a hosted endpoint; this package supplies the server command.
 
 ## Verify It Works
 
@@ -225,8 +173,8 @@ Try these after setup:
 | Prompt | Expected tool |
 |--------|---------------|
 | Where is 8.8.8.8 located? | `lookup_ip` |
-| For IP 49.12.212.42, give me security verdict, company, ASN, and city. | `lookup_ip` with `fields` and `include=security` |
-| Is 2.56.12.11 safe to allow and what is the abuse contact email? | `lookup_ip` with `include=security,abuse` |
+| For IP 49.12.212.42, give me threat indicators, company, ASN, and city. | `lookup_ip` with `fields` and `include=security` |
+| Show threat indicators and the abuse contact email for 2.56.12.11. | `lookup_ip` with `include=security,abuse` |
 | For AS1, list upstream ASN numbers only. | `lookup_asn` with `include=upstreams` |
 | Convert 2026-03-07 09:30 from New York to Tokyo time. | `convert_timezone` |
 | Give sunrise times for Karachi from 2026-03-10 to 2026-03-15. | `get_astronomy_time_series` |
@@ -234,9 +182,13 @@ Try these after setup:
 
 ## Tools by Plan
 
+Version 2.0.1 exposes 16 API tools and `get_cached_result`, a zero-credit page reader. Bulk tools accept 250 inputs by default; the effective ceiling is the lower of the two [item-limit settings](#environment-variables).
+
+Listed costs apply to successful upstream requests. Cache hits and cached-page reads use no additional credits. The API's `X-Credits-Charged` response header establishes actual billing; see the [credit rules](https://ipgeolocation.io/documentation/credits-usage.html).
+
 ### Free Plan
 
-1,000 credits per day. These 7 tools are available:
+1,000 credits per day. These 7 API tools provide their documented core data; `get_cached_result` also reads previously returned pages for 0 credits:
 
 | Tool | Credits | What it does |
 |------|---------|--------------|
@@ -248,19 +200,21 @@ Try these after setup:
 | `get_astronomy` | 1 | Sunrise, sunset, moonrise, moonset, twilight, moon phase for one date |
 | `get_astronomy_time_series` | 1 | Daily astronomy data for a date range (up to 90 days) |
 
+`lookup_company` also returns basic ASN ownership on free plans, without company details. `lookup_network` returns a local error if the API omits the paid network data. The API documentation describes bulk geolocation as paid-only; live checks with a free-plan key also returned basic bulk results. Plan access is determined upstream, so free bulk support should not be assumed from this observation.
+
 ### Paid Plans
 
-All 16 tools. Paid plans also add `network`, `company`, and extended `asn` fields to `lookup_ip`, plus the `include` parameter for `security`, `abuse`, `hostname`, `liveHostname`, `hostnameFallbackLive`, `user_agent`, `geo_accuracy`, `dma_code`, or `*`.
+All 17 tools, including the zero-credit cached result reader. Paid plans also add `network`, `company`, and extended `asn` fields to `lookup_ip`, plus the `include` parameter for `security`, `abuse`, `hostname`, `liveHostname`, `hostnameFallbackLive`, `user_agent`, `geo_accuracy`, `dma_code`, or `*`.
 
 | Tool | Credits | What it does |
 |------|---------|--------------|
-| `bulk_lookup_ip` | 1 per IP | Batch geolocation, up to 50,000 IPs (default 1,000) |
+| `bulk_lookup_ip` | 1 per IP | Batch geolocation, 250 inputs by default |
 | `check_security` | 2 | VPN, proxy, Tor, bot, spam, and threat flags |
 | `bulk_security_check` | 2 per IP | Batch threat checks |
 | `lookup_company` | 1 | Company name and ASN holder for one IP |
 | `lookup_network` | 1 | Route prefix, connection type, anycast status |
 | `parse_user_agent` | 1 | Parse one UA string into browser, device, OS, engine |
-| `bulk_parse_user_agent` | 1 per UA | Batch UA parsing, up to 50,000 strings (default 1,000) |
+| `bulk_parse_user_agent` | 1 per UA | Batch UA parsing, 250 strings by default |
 | `lookup_asn` | 1 | ASN details, peers, upstreams, downstreams, routes, WHOIS |
 | `get_abuse_contact` | 1 | Abuse contact emails, phone, address, route |
 
@@ -279,9 +233,13 @@ For current plan details and pricing, see the [IPGeolocation pricing page](https
 
 ## Tool Reference
 
+Tool arguments must match the advertised schema. Unknown parameters are rejected locally before any API request, so a misspelled selector cannot silently look up the server's IP.
+
+Coordinates, including conversion selectors, and `elevation` take string values, such as `"24.86"` and `"10"`. `force_refresh` takes a boolean.
+
 ### lookup_ip
 
-Single IP or domain lookup. **Free and paid. 1 credit.**
+Single IP or domain lookup through the [IP Geolocation API](https://ipgeolocation.io/documentation/ip-location-api.html). **Free and paid. 1 credit for base IP data.**
 
 Use this when you need location, timezone, currency, or ASN for one IP address. On paid plans you can add `include` modules to pull security, abuse, or hostname data in the same call, which avoids extra requests.
 
@@ -298,11 +256,21 @@ Free plan returns base location, country metadata, currency, timezone, and basic
 
 Tip: combining `include` with `fields` can cut your credit cost. For example, `include=security&fields=security` costs 2 credits instead of 3 because you skip the base geolocation response. Similarly, `include=abuse&fields=abuse` costs 1 credit instead of 2.
 
+Fields enable the optional modules they need. These modules require a paid plan:
+
+| Selected field | Enabled module |
+|----------------|----------------|
+| `security.is_vpn` | `security` |
+| `location.accuracy_radius`, `location.confidence`, or `location.locality` | `geo_accuracy` |
+| `location.dma_code` | `dma_code` |
+
+Accuracy and DMA values appear inside `location`. An explicit include keeps its module present even if `fields` omits it. You can exclude nested fields, but a root named by `fields` or an explicit include stays present. `include=*` follows field selection and exclusions without protecting those roots. Cached results follow the same rules as fresh responses.
+
 ### bulk_lookup_ip
 
 Batch IP lookup. **Paid. 1 credit per IP.**
 
-Takes an array of IPs or domains (up to 1,000 by default, configurable with `IPGEOLOCATION_MCP_MAX_BULK_ITEMS`). Supports the same `include`, `fields`, and `excludes` options as `lookup_ip`.
+Takes an array of IPs or domains (up to 250 by default). The batch limit is the lower of `IPGEOLOCATION_MCP_MAX_BULK_ITEMS` and `IPGEOLOCATION_MCP_MAX_RESULT_ITEMS`. Supports the same `include`, `fields`, and `excludes` options as `lookup_ip`.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -321,11 +289,11 @@ Takes no parameters. Always hits the network (not cached). Useful as a quick che
 
 ### check_security
 
-Threat and anonymity data for one IP. **Paid. 2 credits.**
+Threat and anonymity data for one IP through the [IP Security API](https://ipgeolocation.io/documentation/ip-security-api.html). **Paid. 2 credits.**
 
 Returns threat score, VPN/proxy/Tor flags, provider names, confidence scores, bot/spam indicators, anonymity flags, and cloud-provider status.
 
-If the same prompt also asks for location, ASN, or abuse data, you're better off using `lookup_ip` with `include=security` because it bundles everything in one call (3 credits total instead of 2 + 1 separately).
+If the same prompt also asks for location or ASN, use `lookup_ip` with `include=security` to get them in one request. It costs 3 credits, the same as a separate security check and base lookup. Add `abuse` to `include` when abuse contacts are also needed.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -336,7 +304,7 @@ If the same prompt also asks for location, ASN, or abuse data, you're better off
 
 ### bulk_security_check
 
-Batch version of `check_security`. **Paid. 2 credits per IP.**
+Batch version of `check_security`. **Paid. 2 credits per IP.** Accepts up to 250 inputs by default, subject to the same bulk limits as `bulk_lookup_ip`.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -347,9 +315,11 @@ Batch version of `check_security`. **Paid. 2 credits per IP.**
 
 ### get_timezone
 
-Current time and timezone details for a location. **Free and paid. 1 credit.**
+Current time and timezone details for a location through the [Time Zone API](https://ipgeolocation.io/documentation/timezone-api.html). **Free and paid. 1 credit.**
 
 Accepts IANA timezone names, coordinates, IP addresses, airport codes (IATA/ICAO), or UN/LOCODEs. The response includes timezone offsets, date/datetime variants, `current_time`, `current_time_unix`, `time_24`, `time_12`, `week`, `month`, `year`, timezone abbreviations, and DST transition details.
+
+With no selector, the API uses the server machine's public egress IP, which can differ from your IP.
 
 Always hits the network (not cached) because it returns the current time.
 
@@ -368,7 +338,7 @@ Always hits the network (not cached) because it returns the current time.
 
 Converts a time between two locations. **Free and paid. 1 credit.**
 
-Takes the same location input types as `get_timezone` for both source and destination. If you leave out the `time` parameter, it converts the current time. Always hits the network (not cached).
+Provide one source selector and one destination selector using an IANA time zone, coordinates, a city/address, an airport code, or a UN/LOCODE. If you omit `time`, the API converts the current time. This tool does not accept IP selectors or `lang` and always calls the API (not cached).
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -383,11 +353,11 @@ Takes the same location input types as `get_timezone` for both source and destin
 
 ### get_astronomy
 
-Sun and moon data for one location on one date. **Free and paid. 1 credit.**
+Sun and moon data for one location on one date through the [Astronomy API](https://ipgeolocation.io/documentation/astronomy-api.html). **Free and paid. 1 credit.**
 
 Returns sunrise, sunset, moonrise, moonset, morning and evening twilight, solar noon, day length, moon phase, sun/moon status flags, and live sun/moon position (altitude, azimuth).
 
-Always hits the network (not cached) because skipping `date` defaults to today.
+This tool always calls the API, including when `date` is set; it does not use the response cache.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -419,7 +389,7 @@ Each daily entry includes `mid_night`, `night_end`, `morning`, `sunrise`, `sunse
 
 ### parse_user_agent
 
-Parses one UA string into browser, device, OS, and engine data. **Paid. 1 credit.**
+Parses one UA string into browser, device, OS, and engine data through the [User-Agent API](https://ipgeolocation.io/documentation/user-agent-api.html). **Paid. 1 credit.**
 
 Also classifies bots and crawlers. Note: this parses the `uaString` you pass in. It does not infer a caller UA from the MCP connection itself.
 
@@ -434,7 +404,7 @@ Returns `name`, `type`, `version`, `device`, `engine`, and `operating_system`.
 
 Batch version of `parse_user_agent`. **Paid. 1 credit per string.**
 
-Takes up to 1,000 strings per request by default (configurable with `IPGEOLOCATION_MCP_MAX_BULK_ITEMS`).
+Takes up to 250 strings per request by default. The batch limit is the lower of `IPGEOLOCATION_MCP_MAX_BULK_ITEMS` and `IPGEOLOCATION_MCP_MAX_RESULT_ITEMS`.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -443,7 +413,7 @@ Takes up to 1,000 strings per request by default (configurable with `IPGEOLOCATI
 
 ### lookup_company
 
-Returns just the company name and ASN holder for one IP. **Paid. 1 credit.**
+Company details and ASN ownership for one IP. **Company details require paid; free plans return basic ASN only. 1 credit.**
 
 Returns `company` and `asn` objects. `lookup_ip` returns the same data plus location, timezone, and more. Use this when the company/ASN pair is all you need and you want a smaller response.
 
@@ -467,7 +437,7 @@ Returns `currency` and `country_metadata` objects.
 
 Route prefix, connection type, and anycast status for one IP. **Paid. 1 credit.**
 
-Returns a `network` object with `connection_type`, `route`, and `is_anycast`.
+Returns a `network` object with `connection_type`, `route`, and `is_anycast`. If the API omits network data, the tool returns a local error instead of an empty success. This does not invent an upstream HTTP status, and the API call may already have consumed credits.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -476,9 +446,11 @@ Returns a `network` object with `connection_type`, `route`, and `is_anycast`.
 
 ### lookup_asn
 
-Full ASN lookup. **Paid. 1 credit.**
+Network allocation and relationship data through the [ASN API](https://ipgeolocation.io/documentation/asn-api.html). **Paid. 1 credit.**
 
-`lookup_ip` also returns an `asn` object, but only with basic metadata. This tool returns the full ASN record, including peers, upstreams, downstreams, routes, and WHOIS. Call it once with the `include` fields you need, then filter locally instead of making multiple calls for different slices.
+Use this tool for ASN details and optional peers, upstreams, downstreams, routes, and WHOIS datasets. Request the datasets you need with `include`, then filter the cached result to retrieve different slices. `lookup_ip` also provides ASN metadata as part of an IP lookup.
+
+`fields` automatically enables optional datasets it references, such as `upstreams.as_number`. `excludes` alone does not request extra datasets.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -491,7 +463,7 @@ Full ASN lookup. **Paid. 1 credit.**
 
 ### get_abuse_contact
 
-Abuse contact details for one IP. **Paid. 1 credit.**
+Abuse contact details for one IP through the [IP Abuse Contact API](https://ipgeolocation.io/documentation/ip-abuse-contact-api.html). **Paid. 1 credit.**
 
 Returns the abuse route, country, contact name, organization, address, email addresses, and phone numbers. If you also need geolocation or security data for the same IP, use `lookup_ip` with `include=abuse` (or `include=security,abuse`) to get everything in one call.
 
@@ -502,13 +474,31 @@ Returns the abuse route, country, contact name, organization, address, email add
 | `excludes` | No | Comma-separated fields to exclude |
 | `force_refresh` | No | Skip the cache |
 
+### get_cached_result
+
+Read a page from a previous oversized result. **Free and paid. 0 credits. Added in 2.0.1.**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `cursor` | Yes | The previous response's `page.cursor` to replay it, or `page.next_cursor` to continue |
+
+Use the same server process and API key. Page reads extend the snapshot's idle expiry and never call the API, including on failure. See [Cached Result Pagination](#cached-result-pagination) for the response fields and a complete recovery example.
+
 ## Prompt Examples
 
-### Check if an IP is safe
+For a paid IP investigation, call `lookup_ip` once with `ip: "49.12.212.42"`, `include: "security,abuse"`, and `fields: "location,company,asn,security,abuse"`. This combines location, ownership, threat indicators, and abuse contacts for an estimated 4 credits. Describe the evidence and any unknown fields; apply the user's policy before recommending an allow/block decision.
 
-- Is 49.12.212.42 safe to trust in our network? Give me the threat summary and city.
+For a mixed batch, call `bulk_lookup_ip` with `ips: ["8.8.8.8", "10.0.0.1", "1.1.1.1"]` and `fields: "location.country_name"`. Inspect `structuredContent.errors` to identify the private input and use the successful records directly. The two valid IP lookups cost an estimated 2 credits; the private IP is not billed. Split larger batches at the advertised input limit.
+
+An **ASN** identifies a network that announces IP routes. **Anycast** lets one IP be served from multiple locations, so its location need not identify the server that handled a particular request. A **bogon** address is reserved or otherwise not publicly routable. **Upstream** in an error means the IPGeolocation.io API contacted by this server.
+
+IP location is an estimate. Use `include=geo_accuracy` where available to assess uncertainty. Threat scores and VPN/proxy flags are signals for investigation, not guarantees of harmless or malicious traffic. Treat missing, null, or unknown indicators as unavailable, not as `false`. Combine location, ownership, security signals, and abuse contacts with your own allow/block policy.
+
+### Inspect IP threat indicators
+
+- Show the threat indicators and city for 49.12.212.42 so I can assess it against our network policy.
 - Check these IPs for VPN, proxy, Tor, bot, and spam indicators: 49.12.212.42, 2.56.12.11, 8.8.8.8
-- For 203.0.113.42, tell me the threat score, whether it is a cloud provider, and whether it looks like a relay.
+- For 49.12.212.42, tell me the threat score, whether it is a cloud provider, and whether it looks like a relay.
 
 ### Find who owns an IP
 
@@ -520,7 +510,7 @@ Returns the abuse route, country, contact name, organization, address, email add
 
 - For IP 2.56.12.11, give me the abuse contact email, phone number, and organization.
 - I need the abuse contact for 1.0.0.0 and the network route involved.
-- For this IP, show me the abuse contact details only: 198.51.100.27
+- For this IP, show me the abuse contact details only: 1.1.1.1
 
 ### Timezone lookups and conversions
 
@@ -542,7 +532,7 @@ Returns the abuse route, country, contact name, organization, address, email add
 
 ## Example Answers and Tool Output
 
-The text answers below show what a client might say. Exact wording depends on the model. The JSON blocks show raw tool output, trimmed for readability.
+The text answers below are illustrative; exact wording depends on the model. JSON blocks are shortened examples, not current measurements. Location, ownership, contacts, and current-time fields can change.
 
 ### Single IP lookup
 
@@ -606,50 +596,79 @@ The text answers below show what a client might say. Exact wording depends on th
 
 ## Error Codes
 
-All tools return structured errors instead of crashing the server. API errors include the upstream status/message plus a `guidance` field so MCP clients can tell the user what to check next instead of only repeating the upstream response.
+Tool failures return `isError: true`, readable text, and `structuredContent.error` with a redacted, length-limited message, category, retryability, and guidance:
+
+| Failure origin | Structured details |
+|----------------|--------------------|
+| HTTP error response received from the API | `source: "ipgeolocation_api"`; `status` is the received HTTP status |
+| Registered-schema rejection: wrong field type, missing required field, unknown parameter, or oversized batch | `source: "mcp_server"`, `category: "validation"`, `retryable: false`; rejected before an API call |
+| Handler validation (such as dates or coordinate pairs), missing API key, or unavailable cached result | `source: "mcp_server"`, `category: "tool_error"`, `retryable: false`; no HTTP status is invented |
+| Local request timeout | `source: "mcp_server"`, `category: "timeout"`, local `status: 504`, `retryable: true` |
+| Connection failure, invalid JSON, or invalid `get_my_ip` provider payload | `source: "mcp_server"`, `category: "upstream_request"`, local `status: 502`, `retryable: true` |
+| API returned an HTTP redirect | `source: "mcp_server"`, `category: "redirect_blocked"`, local `status: 502`, `retryable: false`; investigate the redirect or contact support |
+
+Input validation uses the registered Zod schemas and the same structured error envelope as execution failures. Unknown tools and malformed MCP requests produce protocol errors. Retry guidance does not guarantee that a retry will succeed or be free: a local timeout can happen after the API processed a paid request. HTTP 429 is a credit/subscription limit, so immediate automatic retries are disabled; retry after credits become available.
+
+The following table applies to HTTP errors actually received from the API:
 
 | Code | Meaning |
 |------|---------|
-| `400` | Bad parameters, invalid date/time format, missing coordinate pair, or unsupported input |
-| `401` | Missing/invalid API key, free plan calling a paid tool, or non-English `lang` on free plan |
+| `400` | Upstream API rejected the request parameters or input format |
+| `401` | API key rejected, free plan calling a paid tool, or non-English `lang` on free plan |
 | `404` | Resource not found (e.g., ASN does not exist) |
 | `405` | Method or subscription restriction from the upstream API |
 | `413` | POST body is larger than the upstream API allows |
 | `415` | POST request is missing the required `application/json` content type |
-| `423` | Bogon or private IP (`10.x.x.x`, `192.168.x.x`, etc.) |
-| `429` | Daily request limit (free plan) or subscription/surcharge quota exceeded |
-| `499` | Client-side request or connection timeout was too short |
-| `5xx` | Upstream API server-side error |
-| `502` | Server could not reach the upstream API |
-| `504` | Upstream API timed out |
+| `423` | Private, reserved, or bogon IP, including documentation addresses such as `203.0.113.42` and `198.51.100.27` |
+| `429` | Daily credit limit (free plan) or subscription/surcharge quota exceeded |
+| `499` | Upstream API reports a client request or connection timeout |
+| `500`, `502`, `503`, `504`, `505` | Upstream API server-side error |
 
 Exact status codes can vary by endpoint and request mode. If an upstream endpoint returns a status outside this table, the server does not guess the cause. It passes the upstream status and message through with `category: "undocumented_api_error"` and adds guidance for the MCP client to explain the response as an undocumented upstream status without inventing a cause.
 
+Bulk text preserves the API's per-item format. Structured results contain `items` in input order plus an `errors` list. Each failed item includes its zero-based `input_index`, original `input`, source, category, message, retryability, and guidance. An item `status` is present only if supplied by the API; message-only errors do not acquire an invented HTTP status. A mismatched result count returns a whole-call error rather than assigning unreliable input identifiers. Inspect every record; overall request success does not establish that every item succeeded, and successful items should not be retried.
+
 ## How It Works
 
-This is a stdio MCP server that wraps the ipgeolocation.io v3 APIs.
+Your MCP client uses this server to call the IPGeolocation.io v3 APIs.
 
 At runtime:
 
 1. Your MCP client starts the server process.
 2. The client reads the tool list.
 3. When a prompt matches a tool, the client calls it.
-4. The server validates inputs, calls our API, and returns structured JSON.
-5. Cacheable responses are stored in process memory so repeated identical requests skip the API call.
+4. The server validates arguments and returns a cached result or calls the API. It returns text content plus `structuredContent`; all 17 tools advertise an output schema.
+
+| Result | `structuredContent` |
+|--------|---------------------|
+| Single JSON lookup | `{ "data": ... }` |
+| Public egress IP | `{ "ip": "..." }` |
+| Bulk lookup | `{ "items": [...], "errors": [...] }` |
+| Oversized success | `{ "page": ... }` |
+| Whole-call failure | `{ "error": ... }` with `isError: true` |
+
+Normal text responses keep the API's JSON format, or a plain IP string for `get_my_ip`. Oversized successful responses contain a page in both text and structured content.
 
 Authenticated upstream requests send the API key in the `x-ipgeolocation-api-key` header. The key is not added to request URLs.
+
+Server instructions and tool descriptions explain selection, costs, limits, and interpretation to the MCP client. Clients decide how to expose this guidance to their assistant. Returned WHOIS text, user agents, hostnames, and error messages are untrusted data and must not override those instructions. An omitted IP selector refers to the server machine's public egress IP, which can differ from the end user's IP. Security tools query IP intelligence; they do not invoke the separate browser-based live VPN/proxy detection API.
 
 `lookup_company`, `lookup_currency`, and `lookup_network` are wrappers around parts of the full IP lookup response. They exist as separate tools so MCP clients can discover them when a user only needs one piece of data.
 
 ## Caching
 
-Tools that return stable data (not current-time lookups) cache their responses in process memory. Repeated lookups are faster and don't use additional credits. Client retries don't generate duplicate API calls.
+The server stores cached responses in process memory and shares identical requests already running for the same API key. Sessions using the same key share the cache namespace; different keys use separate namespaces.
 
-- Process-level cache, not client or model memory
-- Cache entries are scoped by API key, so separate MCP sessions do not share cached upstream data
-- Default TTL: 5 minutes (`300000` ms)
-- Cache resets when the server process stops
-- Cache misses on TTL expiry, changed parameters, or `force_refresh: true`
+| Cached data | Default expiry | Reads extend expiry? |
+|-------------|----------------|----------------------|
+| Normal tool response | 5 minutes after storage | No |
+| Complete pagination snapshot | 5 minutes of idle time | Yes, after each successful `get_cached_result` read |
+
+Both use `IPGEOLOCATION_MCP_CACHE_TTL_MS` (`300000` ms by default). The cache holds up to 500 entries by default, shared by normal responses and page snapshots. This limits entry count, not total bytes or memory. A complete snapshot can be much larger than an individual page.
+
+Expiry, eviction, or process restart can make cached data unavailable. `get_cached_result` then fails locally without refetching. Repeating the original lookup after a cache miss can consume credits again.
+
+`force_refresh: true` starts a new upstream request, even if an identical request is running. Older requests cannot overwrite its cached result.
 
 **Cached:** `lookup_ip`, `bulk_lookup_ip`, `check_security`, `bulk_security_check`, `lookup_company`, `lookup_currency`, `lookup_network`, `parse_user_agent`, `bulk_parse_user_agent`, `lookup_asn`, `get_abuse_contact`, `get_astronomy_time_series`
 
@@ -660,43 +679,110 @@ Tools that return stable data (not current-time lookups) cache their responses i
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `IPGEOLOCATION_API_KEY` | Yes (most tools) | | Your ipgeolocation.io API key |
-| `IPGEOLOCATION_REQUEST_TIMEOUT_MS` | No | `15000` | Upstream timeout in ms. Range: 1000-120000 |
-| `IPGEOLOCATION_MCP_CACHE_TTL_MS` | No | `300000` | Cache TTL in ms. Range: 1000-3600000 |
-| `IPGEOLOCATION_MCP_CACHE_MAX_ENTRIES` | No | `500` | Max entries before eviction. Range: 10-5000 |
-| `IPGEOLOCATION_MCP_MAX_BULK_ITEMS` | No | `1000` | Max items per bulk request. Max: 50000 |
-| `IPGEOLOCATION_MCP_MAX_RESULT_ITEMS` | No | `250` | Max array items before truncation |
-| `IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS` | No | `200000` | Max response text length |
-| `IPGEOLOCATION_MCP_MAX_ERROR_CHARS` | No | `4000` | Max error text length |
+| `IPGEOLOCATION_REQUEST_TIMEOUT_MS` | No | `15000` | Upstream deadline in ms, including response-body reading. Range: 1000-120000 |
+| `IPGEOLOCATION_MCP_CACHE_TTL_MS` | No | `300000` | Normal-response TTL and page-snapshot idle TTL in ms. Range: 1000-3600000 |
+| `IPGEOLOCATION_MCP_CACHE_MAX_ENTRIES` | No | `500` | Maximum cached responses and page snapshots; not a memory-byte limit. Range: 10-5000 |
+| `IPGEOLOCATION_MCP_MAX_BULK_ITEMS` | No | `1000` | Bulk input ceiling, also capped by `IPGEOLOCATION_MCP_MAX_RESULT_ITEMS`. Max: 50000 |
+| `IPGEOLOCATION_MCP_MAX_RESULT_ITEMS` | No | `250` | Bulk input/result item ceiling; nested arrays remain complete. Max: 50000 |
+| `IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS` | No | `200000` | Maximum UTF-8 bytes of a complete serialized tool result, including text and structured content. Oversized successes use cached pages; oversized errors shorten messages. Range: 10000-2000000 |
+| `IPGEOLOCATION_MCP_MAX_ERROR_CHARS` | No | `4000` | Upper limit on error-message characters before truncation markers. The complete response byte budget can shorten messages further. Range: 200-50000 |
+
+Bulk batches above the effective item limit are rejected before an upstream request, without using API credits. Raising only `IPGEOLOCATION_MCP_MAX_BULK_ITEMS` does not raise the effective limit; raise both item settings if larger batches are needed.
+
+The response limit includes both text and structured content, JSON escaping, and UTF-8 encoding. Successful results retain every record and nested array through cached pages when needed. Oversized errors shorten only their messages, preserving their category, retryability, guidance, and any status.
+
+## Cached Result Pagination
+
+`get_cached_result` costs **0 credits** and never calls the API, including when its cursor is invalid, expired, evicted, or unavailable after a server restart. It accepts one required `cursor`, returned in `page.cursor` or `page.next_cursor`. Use the same server process and API key.
+
+A large original lookup returns `{ "page": ... }` instead of its normal `data` or `items`/`errors`. Each page contains:
+
+| Field | Meaning |
+|-------|---------|
+| `source_tool` | Original lookup tool |
+| `format` | `structuredContent_json` |
+| `json_fragment` | Part of the complete original structured JSON result |
+| `offset`, `total_chars` | Fragment position and full JSON length, in UTF-16 code units |
+| `cursor` | Replay this page without repeating the lookup |
+| `next_cursor` | Read the next page; absent on the final page |
+| `expires_at` | Idle expiry timestamp; successful reads extend the TTL, five minutes by default |
+
+Read each `next_cursor` with `get_cached_result`, concatenate the `json_fragment` strings in offset order, and parse the joined JSON once. A fragment is not necessarily valid JSON on its own. This also handles a single record or string larger than one page. Bulk results reconstruct the complete `{ "items": [...], "errors": [...] }`, preserving input identifiers and statuses. Single lookups reconstruct `{ "data": ... }`.
+
+```javascript
+let response = await client.callTool({ name: "bulk_lookup_ip", arguments: { ips } });
+if (response.isError) throw new Error(response.content[0].text);
+let complete = response.structuredContent;
+if (complete.page) {
+  let json = "";
+  for (;;) {
+    const page = response.structuredContent.page;
+    json += page.json_fragment;
+    if (!page.next_cursor) break;
+    response = await client.callTool({
+      name: "get_cached_result", arguments: { cursor: page.next_cursor }
+    });
+    if (response.isError) throw new Error(response.content[0].text);
+  }
+  complete = JSON.parse(json);
+}
+```
+
+Use cursors to retrieve remaining data. The [cache rules](#caching) explain snapshot expiry, eviction, API-key isolation, and when a new lookup can consume credits.
 
 ## Building from Source
 
 ```bash
 git clone https://github.com/IPGeolocation/ipgeolocation-io-mcp.git
 cd ipgeolocation-io-mcp
-npm install
+npm ci --ignore-scripts
 npm run build
 ```
 
 Run it directly:
 
 ```bash
-IPGEOLOCATION_API_KEY=<YOUR_KEY> node dist/cli.js
+node dist/cli.js
 ```
+
+Set `IPGEOLOCATION_API_KEY` through your shell's private environment settings before running the command. The process waits for MCP messages on stdin; it does not display an interactive prompt.
 
 Inspect with MCP Inspector:
 
 ```bash
-IPGEOLOCATION_API_KEY=<YOUR_KEY> npx @modelcontextprotocol/inspector node dist/cli.js
+npx @modelcontextprotocol/inspector node dist/cli.js
 ```
 
 ## Docker
 
 ```bash
 docker build -t ipgeolocation-mcp .
-docker run -e IPGEOLOCATION_API_KEY=<YOUR_KEY> ipgeolocation-mcp
+docker run --rm -i -e IPGEOLOCATION_API_KEY ipgeolocation-mcp
+```
+
+Set `IPGEOLOCATION_API_KEY` in your private shell environment first. The image includes Node.js and runs as the unprivileged `node` user. [Docker's `-i` flag](https://docs.docker.com/reference/cli/docker/container/run/#interactive) keeps stdin open for MCP messages. Omit `-t` so the protocol uses ordinary stdin/stdout.
+
+The final image runs the compiled server directly. npm and Yarn are available in the build stage; the runtime image contains Node.js and the installed production dependencies.
+
+After building the image, configure a local-command MCP client with:
+
+```json
+{
+  "mcpServers": {
+    "ipgeolocation": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "-e", "IPGEOLOCATION_API_KEY", "ipgeolocation-mcp"],
+      "env": {
+        "IPGEOLOCATION_API_KEY": "<YOUR_API_KEY>"
+      }
+    }
+  }
+}
 ```
 
 ## Testing
+
+Client setup examples document configuration formats. Record GUI and operating-system installation checks separately from protocol, package, and Docker tests; see the [release checklist](RELEASING.md).
 
 ```bash
 npm test               # full suite
@@ -704,15 +790,42 @@ npm run test:unit      # unit tests only
 npm run test:integration  # integration tests only
 ```
 
+Live smoke tests use a real stdio MCP client and spend API credits. `IPGEOLOCATION_FREE_KEY` with `npm run test:live:free` checks the seven core tools, paid-feature restrictions, ownership/network fallbacks, and the observed bulk entitlement. It reports when bulk access differs from the documented paid-only policy. `IPGEOLOCATION_PAID_KEY` with `npm run test:live:paid` checks all 16 API tools, paid modules, structured validation errors, mixed valid/private bulk inputs, and the local cached-result reader. Testing a paid key does not verify free-plan entitlement restrictions.
+
+After building, verify complete cached pagination with either key:
+
+```bash
+node tests/pagination.stdio.mjs free  # uses IPGEOLOCATION_FREE_KEY
+node tests/pagination.stdio.mjs paid  # uses IPGEOLOCATION_PAID_KEY
+```
+
+Each run makes one six-IP API request and checks the reported six credits. It compares the recovered records against a hash of the complete upstream response and verifies that page reads, replay, expiry, and process restart make no additional API calls. The test temporarily lowers the child server's response budget and cache TTL; your server configuration stays unchanged.
+
+To check the same behavior in the image built above:
+
+```bash
+node tests/pagination.stdio.mjs free docker run --rm -i \
+  -e IPGEOLOCATION_API_KEY -e IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS \
+  -e IPGEOLOCATION_MCP_CACHE_TTL_MS -e NODE_OPTIONS ipgeolocation-mcp
+```
+
 ## Troubleshooting
 
-**Client uses an old tool after updating:** Restart the client and confirm it loaded the latest npm version.
+**Client uses an old tool after updating:** Restart the server process and check its version in your client's MCP connection details. Compare it with the [latest npm version](https://www.npmjs.com/package/ipgeolocation-io-mcp). Rebuild source and Docker installations before restarting them.
 
-**401 errors:** Check that `IPGEOLOCATION_API_KEY` is set in your config. Some tools are paid-only and return 401 on the free plan. Domain lookups in `lookup_ip` also require a paid plan.
+**API key not configured:** Set `IPGEOLOCATION_API_KEY` in your client's server configuration. This local error has no HTTP status and makes no upstream request.
 
-**423 errors:** You passed a private/bogon IP like `10.0.0.1` or `192.168.1.1`. These have no geolocation data.
+**401 errors:** The API rejected the key or requested capability. Check that the key is active and the plan supports the tool. Domain lookups in `lookup_ip` also require a paid plan.
 
-**504 timeouts:** The upstream API did not respond in time. Increase the timeout with `IPGEOLOCATION_REQUEST_TIMEOUT_MS` (default: 15000 ms, max: 120000 ms).
+**423 errors:** Use a public routable IP. Private/bogon addresses such as `10.0.0.1` and reserved documentation addresses such as `203.0.113.42` cannot be used as successful geolocation examples.
+
+**Local 504 timeouts:** With `source: "mcp_server"`, the request or response-body read exceeded the deadline. Check the connection or increase `IPGEOLOCATION_REQUEST_TIMEOUT_MS` (default: 15000 ms, max: 120000 ms). With `source: "ipgeolocation_api"`, 504 is an HTTP response from the API.
+
+**Redirect blocked:** The server received an unexpected HTTP redirect and stopped before forwarding credentials or request data. Do not retry automatically. Investigate the API endpoint or contact support with the sanitized error.
+
+**Cached result unavailable:** The cursor belongs to another key or process, or the snapshot expired or was evicted. The failed page read made no API call. A new lookup can consume credits.
+
+**Client asks for an MCP URL:** This package supplies a local `stdio` command. Use a client or host that can launch it; a remote-only connector needs a hosted MCP endpoint.
 
 ## Pricing
 
@@ -725,6 +838,9 @@ For current plan details, credits, and pricing, see the [IPGeolocation pricing p
 - [IPGeolocation Pricing](https://ipgeolocation.io/pricing.html)
 - [Create a Free IPGeolocation API Key](https://app.ipgeolocation.io/signup)
 - [Changelog](CHANGELOG.md)
+- [Security Policy](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
+- [Release Checklist](RELEASING.md)
 
 ## License
 
@@ -732,4 +848,4 @@ For current plan details, credits, and pricing, see the [IPGeolocation pricing p
 
 ## Privacy Policy
 
-Read the [IPGeolocation Privacy Policy](https://ipgeolocation.io/privacy.html).
+API lookups send the requested inputs to IPGeolocation.io, which also receives the server machine's public egress IP. The server caches results in process memory. Your MCP client or hosting provider controls its own configuration and log storage. See the [Security Policy](SECURITY.md#lookup-data-and-caching) for retention details and the [IPGeolocation Privacy Policy](https://ipgeolocation.io/privacy.html) for provider handling.

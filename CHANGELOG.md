@@ -1,6 +1,20 @@
 # Changelog
 
-Notable changes for each published release are listed below. Full release details are available on [GitHub Releases](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases).
+Changes in development appear under Unreleased. Published release details are available on [GitHub Releases](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases).
+
+## [2.0.1](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.1) - 2026-10-11
+
+- Retrieve complete oversized results with the new zero-credit `get_cached_result` tool. Page reads support replay and sliding idle expiry; unavailable cursors fail locally without another API call.
+- Reject batches above the effective input limit before spending credits. The default is 250 inputs, set by the lower of the bulk and result item limits.
+- Keep request deadlines active through body reads and share identical in-flight cached requests within the same API key.
+- Fix cache-key collisions, preserve array row positions and IP identifiers during field selection, and match API include rules when filtering cached results.
+- Infer geo accuracy and DMA modules from nested location fields. ASN exclusions no longer fetch optional datasets.
+- Preserve valid JSON while redacting credentials. Reject unknown tool arguments and block redirects before forwarding credentials or request bodies.
+- Bound complete error responses by the serialized UTF-8 byte limit and reject malformed public-IP responses without echoing their contents.
+- Return structured output and error details alongside existing text, identify failed bulk inputs, and report missing network data without inventing upstream statuses.
+- Upgrade MCP SDK to 1.32.1 and proxy-addr to 2.0.8. Refresh Docker's Node 24 base, apply the available Perl security update, verify compiler installation, and remove unused package installers from the runtime image. Run as the unprivileged Node user and make source builds portable across npm shells.
+- Clarify client setup, plan access, billing estimates, cache behavior, response limits, security boundaries, and release verification in public documentation.
+- Include linked public documentation in npm packages and MCP Bundles so their local links resolve.
 
 ## [2.0.0](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.0) - 2026-07-24
 

@@ -11,6 +11,7 @@ type CacheEntry = {
 };
 
 const cache = new Map<string, CacheEntry>();
+const pending = new Map<string, Promise<unknown>>();
 
 function cacheNamespace(): string {
   const apiKey = getConfiguredApiKey();
@@ -58,9 +59,9 @@ export function getCachedValue(key: string): unknown | undefined {
   return entry.value;
 }
 
-export function setCachedValue(key: string, value: unknown): void {
+function setCacheEntry(namespacedKey: string, value: unknown): void {
   const now = Date.now();
-  cache.set(scopedKey(key), {
+  cache.set(namespacedKey, {
     value,
     expiresAt: now + getCacheTtlMs(),
   });
@@ -68,6 +69,44 @@ export function setCachedValue(key: string, value: unknown): void {
   evictOverflow();
 }
 
+export function setCachedValue(key: string, value: unknown): void {
+  setCacheEntry(scopedKey(key), value);
+}
+
+export async function getCachedOrFetchValue(
+  key: string,
+  fetchValue: () => Promise<unknown>,
+  forceRefresh = false
+): Promise<unknown> {
+  const namespacedKey = scopedKey(key);
+  if (!forceRefresh) {
+    const cached = getCachedValue(key);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const existing = pending.get(namespacedKey);
+    if (existing) {
+      return existing;
+    }
+  }
+
+  const request = fetchValue();
+  pending.set(namespacedKey, request);
+  try {
+    const value = await request;
+    // Only the latest request may update the cache after a forced refresh.
+    if (pending.get(namespacedKey) === request) {
+      setCacheEntry(namespacedKey, value);
+    }
+    return value;
+  } finally {
+    if (pending.get(namespacedKey) === request) {
+      pending.delete(namespacedKey);
+    }
+  }
+}
+
 export function clearToolCacheForTests(): void {
   cache.clear();
+  pending.clear();
 }

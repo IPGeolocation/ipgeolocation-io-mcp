@@ -4,9 +4,10 @@ import { getIpGeolocation, getIpGeolocationBulk, getMyIp } from "../client.js";
 import {
   MAX_BULK_ITEMS,
   errorToolResponse,
+  formatBulkToolResult,
   formatToolResult,
 } from "./response.js";
-import { getCachedValue, setCachedValue } from "./cache.js";
+import { getCachedOrFetchValue, getCachedValue } from "./cache.js";
 import { applyFieldsAndExcludes } from "./projection.js";
 
 function splitCsv(value: string | undefined): string[] {
@@ -49,6 +50,8 @@ function inferLookupIpIncludeFromFields(fields: string | undefined): string[] {
     if (mapped) {
       inferred.add(mapped);
     }
+    if (["location.accuracy_radius", "location.confidence", "location.locality"].includes(path)) inferred.add("geo_accuracy");
+    if (path === "location.dma_code") inferred.add("dma_code");
   }
 
   return [...inferred];
@@ -78,9 +81,9 @@ function mergeLookupIpInclude(
 }
 
 function buildIpGeoBaseCacheKey(ip: string | undefined, lang: string | undefined): string {
-  const normalizedIp = ip?.trim().toLowerCase() ?? "self";
+  const normalizedIp = ip?.trim().toLowerCase() ?? null;
   const normalizedLang = lang?.trim().toLowerCase() ?? "";
-  return `ipgeo|ip=${normalizedIp}|lang=${normalizedLang}|include=`;
+  return `ipgeo|${JSON.stringify([normalizedIp, normalizedLang])}`;
 }
 
 function buildIpGeoIncludeCacheKey(params: {
@@ -90,12 +93,12 @@ function buildIpGeoIncludeCacheKey(params: {
   fields?: string;
   excludes?: string;
 }): string {
-  const normalizedIp = params.ip?.trim().toLowerCase() ?? "self";
+  const normalizedIp = params.ip?.trim().toLowerCase() ?? null;
   const normalizedLang = params.lang?.trim().toLowerCase() ?? "";
   const normalizedInclude = normalizeLookupIpInclude(params.include) ?? "";
   const normalizedFields = normalizeCsvForCacheKey(params.fields);
   const normalizedExcludes = normalizeCsvForCacheKey(params.excludes);
-  return `ipgeo|ip=${normalizedIp}|lang=${normalizedLang}|include=${normalizedInclude}|fields=${normalizedFields}|excludes=${normalizedExcludes}`;
+  return `ipgeo-include|${JSON.stringify([normalizedIp, normalizedLang, normalizedInclude, normalizedFields, normalizedExcludes])}`;
 }
 
 function buildBulkIpGeoCacheKey(params: {
@@ -105,14 +108,33 @@ function buildBulkIpGeoCacheKey(params: {
   fields?: string;
   excludes?: string;
 }): string {
-  const normalizedIps = params.ips
-    .map((ip) => ip.trim().toLowerCase())
-    .join(",");
+  const normalizedIps = params.ips.map((ip) => ip.trim().toLowerCase());
   const normalizedLang = params.lang?.trim().toLowerCase() ?? "";
   const normalizedInclude = normalizeLookupIpInclude(params.include) ?? "";
   const normalizedFields = normalizeCsvForCacheKey(params.fields);
   const normalizedExcludes = normalizeCsvForCacheKey(params.excludes);
-  return `ipgeo-bulk|ips=${normalizedIps}|lang=${normalizedLang}|include=${normalizedInclude}|fields=${normalizedFields}|excludes=${normalizedExcludes}`;
+  return `ipgeo-bulk|${JSON.stringify([normalizedIps, normalizedLang, normalizedInclude, normalizedFields, normalizedExcludes])}`;
+}
+
+const INCLUDE_RESPONSE_PATHS: Record<string, string[]> = {
+  security: ["security"], abuse: ["abuse"], user_agent: ["user_agent"],
+  hostname: ["hostname"], liveHostname: ["hostname"], hostnameFallbackLive: ["hostname"],
+  geo_accuracy: ["location.accuracy_radius", "location.confidence", "location.locality"],
+  dma_code: ["location.dma_code"],
+};
+
+function projectIncludedIpGeo(source: unknown, params: { include: string; fields?: string; excludes?: string }): unknown {
+  const tokens = splitCsv(params.include);
+  const groups = tokens.flatMap(token => Object.hasOwn(INCLUDE_RESPONSE_PATHS, token) ? [INCLUDE_RESPONSE_PATHS[token]] : []);
+  const fields = splitCsv(params.fields);
+  const extraFields = groups.flatMap(paths => fields.some(field => paths.some(path =>
+    field === path || field.startsWith(`${path}.`) || path.startsWith(`${field}.`))) ? [] : paths);
+  const protectedRoots = new Set([...groups.flat(), ...fields].map(path => path.split(".")[0]));
+  return applyFieldsAndExcludes(source, {
+    fields: fields.length > 0 ? [...fields, ...extraFields].join(",") : undefined,
+    excludes: splitCsv(params.excludes).filter(path => !protectedRoots.has(path)).join(","),
+    preserveIp: true,
+  });
 }
 
 function hasProjection(fields: string | undefined, excludes: string | undefined): boolean {
@@ -125,19 +147,11 @@ async function getCachedOrFetchIpGeoBase(params: {
   forceRefresh?: boolean;
 }): Promise<unknown> {
   const cacheKey = buildIpGeoBaseCacheKey(params.ip, params.lang);
-  if (!params.forceRefresh) {
-    const cached = getCachedValue(cacheKey);
-    if (cached !== undefined) {
-      return cached;
-    }
-  }
-
-  const baseResult = await getIpGeolocation({
-    ip: params.ip,
-    lang: params.lang,
-  });
-  setCachedValue(cacheKey, baseResult);
-  return baseResult;
+  return getCachedOrFetchValue(
+    cacheKey,
+    () => getIpGeolocation({ ip: params.ip, lang: params.lang }),
+    params.forceRefresh
+  );
 }
 
 async function getCachedOrFetchIpGeoInclude(params: {
@@ -171,39 +185,26 @@ async function getCachedOrFetchIpGeoInclude(params: {
   });
   const projectionRequested = hasProjection(params.fields, params.excludes);
 
-  if (!params.forceRefresh) {
-    const cached = getCachedValue(requestKey);
-    if (cached !== undefined) {
-      return cached;
-    }
-
-    if (projectionRequested) {
-      const includeBaseCached = getCachedValue(includeBaseKey);
-      if (includeBaseCached !== undefined) {
-        const projected = applyFieldsAndExcludes(includeBaseCached, {
-          fields: params.fields,
-          excludes: params.excludes,
-        });
-        setCachedValue(requestKey, projected);
-        return projected;
+  return getCachedOrFetchValue(
+    requestKey,
+    async () => {
+      if (!params.forceRefresh && projectionRequested) {
+        const includeBaseCached = getCachedValue(includeBaseKey);
+        if (includeBaseCached !== undefined) {
+          return projectIncludedIpGeo(includeBaseCached, { ...params, include: normalizedInclude });
+        }
       }
-    }
-  }
 
-  const result = await getIpGeolocation({
-    ip: params.ip,
-    lang: params.lang,
-    include: normalizedInclude,
-    fields: params.fields,
-    excludes: params.excludes,
-  });
-  setCachedValue(requestKey, result);
-
-  if (!projectionRequested) {
-    setCachedValue(includeBaseKey, result);
-  }
-
-  return result;
+      return getIpGeolocation({
+        ip: params.ip,
+        lang: params.lang,
+        include: normalizedInclude,
+        fields: params.fields,
+        excludes: params.excludes,
+      });
+    },
+    params.forceRefresh
+  );
 }
 
 export function registerGeolocationTools(server: McpServer) {
@@ -215,17 +216,17 @@ export function registerGeolocationTools(server: McpServer) {
         readOnlyHint: true,
         openWorldHint: true,
       },
-      description: `Read-only unified IP lookup via GET /v3/ipgeo. Base lookup costs 1 credit; include=security adds 2 credits and include=abuse adds 1 credit. The unified response can cover multiple data domains for one IP or domain: location, company/ASN, network, timezone, currency, security, abuse, user_agent, hostname, geo_accuracy, and dma_code.
+      description: `Read-only unified IP lookup via GET /v3/ipgeo. Base IP data costs 1 credit; security adds 2 and abuse adds 1. Selecting only security costs 2, only abuse costs 1, and security plus abuse without base data costs 3 credits. The unified response can cover multiple data domains for one IP or domain: location, company/ASN, network, timezone, currency, security, abuse, user_agent, hostname, geo_accuracy, and dma_code.
 
-Returns root IP/domain data plus selected objects such as location, country_metadata, currency, asn, network, company, time_zone, security, abuse, user_agent, hostname, geo_accuracy, or dma_code. Free plans support core location, country_metadata, currency, time_zone, basic ASN, fields, and excludes; paid plans add domain lookup, company, network, extended ASN, non-English lang, and include modules.
+Returns root IP/domain data plus selected objects such as location, country_metadata, currency, asn, network, company, time_zone, security, abuse, user_agent, or hostname. geo_accuracy adds location.accuracy_radius, location.confidence, and location.locality; dma_code adds location.dma_code. Free plans support core location, country_metadata, currency, time_zone, basic ASN, fields, and excludes; paid plans add domain lookup, company, network, extended ASN, non-English lang, and include modules.
 
-ip omitted means caller IP. fields/excludes accept comma-separated dot paths; ip is always returned, unknown excludes do not error, and include wins over fields/excludes. This server auto-adds include modules referenced by fields. lookup_asn provides ASN relationships, routes, and WHOIS; check_security and get_abuse_contact provide dedicated security and abuse responses.`,
+ip omitted means the server's public egress IP. IP location is an estimate, not a precise device position. fields/excludes accept comma-separated dot paths; ip is always returned and unknown excludes do not error. Explicit include tokens keep their modules even when fields omits them; fields can select their nested paths and excludes can remove nested paths. A root named by fields or an explicit include cannot be excluded as a whole. include=* follows fields/excludes without this explicit-token protection. This server auto-adds include modules referenced by fields, including optional location fields. lookup_asn provides ASN relationships, routes, and WHOIS; check_security and get_abuse_contact provide dedicated security and abuse responses.`,
       inputSchema: {
         ip: z
           .string()
           .optional()
           .describe(
-            "IPv4 address, IPv6 address, or domain name to look up. Domain lookups require a paid plan. Omit to use the caller's IP."
+            "IPv4 address, IPv6 address, or domain name to look up. Domain lookups require a paid plan. Omit to use the server's public egress IP."
           ),
         lang: z
           .string()
@@ -243,7 +244,7 @@ ip omitted means caller IP. fields/excludes accept comma-separated dot paths; ip
           .string()
           .optional()
           .describe(
-            "Comma-separated dot-path fields to return (e.g. location.city,asn.organization). Works on all plans including free. Reduces response size and can reduce credit cost when combined with include. If a field references an include-only module (for example security.* or abuse.*), this server auto-adds the required include module."
+            "Comma-separated dot-path fields to return (e.g. location.city,asn.organization). Works on all plans including free. Reduces response size and can reduce credit cost when combined with include. Fields under security or abuse auto-add that include module. location.accuracy_radius/confidence/locality auto-add geo_accuracy; location.dma_code auto-adds dma_code. Those optional modules require a paid plan."
           ),
         excludes: z
           .string()
@@ -282,10 +283,7 @@ ip omitted means caller IP. fields/excludes accept comma-separated dot paths; ip
             lang: params.lang,
             forceRefresh: params.force_refresh,
           });
-          result = applyFieldsAndExcludes(baseResult, {
-            fields: params.fields,
-            excludes: params.excludes,
-          });
+          result = projectIncludedIpGeo(baseResult, { ...params, include: "" });
         }
 
         return {
@@ -307,7 +305,7 @@ ip omitted means caller IP. fields/excludes accept comma-separated dot paths; ip
         readOnlyHint: true,
         openWorldHint: true,
       },
-      description: `Read-only bulk IP lookup via POST /v3/ipgeo-bulk. Paid only. Base geolocation costs 1 credit per valid IP; security adds 2 and abuse adds 1 per valid IP. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs per request.
+      description: `Read-only bulk IP lookup via POST /v3/ipgeo-bulk. Documented as paid-only; the upstream API determines plan access. Base IP data costs 1 credit per valid IP; security adds 2 and abuse adds 1. Selecting only security costs 2, only abuse costs 1, and security plus abuse without base data costs 3 per valid IP. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs per request. Larger batches are rejected before any API call. Complete results are returned directly or as cached pages. Oversized results contain page.next_cursor for complete retrieval through get_cached_result without another API call or additional credits.
 
 The response covers location data or mixed IP data domains for multiple IPs or domains. Private, bogon, and malformed IPs are not billed. fields, excludes, lang, and include behave like lookup_ip for each item; this server also infers include modules from fields. bulk_security_check provides dedicated security-only batch responses.`,
       inputSchema: {
@@ -334,7 +332,7 @@ The response covers location data or mixed IP data domains for multiple IPs or d
           .string()
           .optional()
           .describe(
-            "Comma-separated dot-path fields to return per IP (e.g. location.city,asn.organization). Reduces response size and can reduce credit cost when combined with include. If fields reference include-only modules (for example security.* or abuse.*), this server auto-adds required include modules."
+            "Comma-separated dot-path fields to return per IP (e.g. location.city,asn.organization). Reduces response size and can reduce credit cost when combined with include. Fields under security or abuse auto-add that module. location.accuracy_radius/confidence/locality auto-add geo_accuracy; location.dma_code auto-adds dma_code. Optional modules require a paid plan."
           ),
         excludes: z
           .string()
@@ -363,21 +361,17 @@ The response covers location data or mixed IP data domains for multiple IPs or d
           fields: params.fields,
           excludes: params.excludes,
         });
-        const cached = params.force_refresh ? undefined : getCachedValue(cacheKey);
-
-        const result =
-          cached ??
-          (await getIpGeolocationBulk({
+        const result = await getCachedOrFetchValue(
+          cacheKey,
+          () => getIpGeolocationBulk({
             ...params,
             include: effectiveInclude,
-          }));
-
-        if (cached === undefined) {
-          setCachedValue(cacheKey, result);
-        }
+          }),
+          params.force_refresh
+        );
         return {
           content: [
-            { type: "text" as const, text: formatToolResult(result) },
+            { type: "text" as const, text: formatBulkToolResult(result) },
           ],
         };
       } catch (error) {
@@ -418,15 +412,15 @@ The response covers location data or mixed IP data domains for multiple IPs or d
         readOnlyHint: true,
         openWorldHint: true,
       },
-      description: `Read-only ownership lookup via GET /v3/ipgeo. Paid only. Cost: 1 credit. This response is limited to company and ASN ownership; lookup_ip can return ownership together with location, security, abuse, network, timezone, or currency.
+      description: `Read-only ownership lookup via GET /v3/ipgeo. Company details require a paid plan; free plans return basic ASN ownership only. Cost: 1 credit. This response is limited to company and ASN ownership; lookup_ip can return ownership together with location, security, abuse, network, timezone, or currency.
 
-Returns { company, asn }: company name/type/domain plus ASN allocation fields when available. ip omitted means caller IP. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
+Returns { company, asn }: company name/type/domain plus ASN allocation fields when available. ip omitted means the server's public egress IP. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
       inputSchema: {
         ip: z
           .string()
           .optional()
           .describe(
-            "IPv4 or IPv6 address to look up. Omit to check the caller's IP."
+            "IPv4 or IPv6 address to look up. Omit to check the server's public egress IP."
           ),
         force_refresh: z
           .boolean()
@@ -468,7 +462,7 @@ Returns { company, asn }: company name/type/domain plus ASN allocation fields wh
       },
       description: `Read-only currency and country metadata lookup via GET /v3/ipgeo. Works on free and paid plans. Cost: 1 credit per successful lookup.
 
-Returns { currency, country_metadata }: currency code/name/symbol plus country calling_code, tld, and languages. ip selects the IP used to derive country and currency; omit it for caller IP. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.
+Returns { currency, country_metadata }: currency code/name/symbol plus country calling_code, tld, and languages. ip selects the IP used to derive country and currency; omit it for the server machine's public egress IP. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.
 
 This response is limited to currency and country metadata. lookup_ip can return these fields together with other IP data.`,
       inputSchema: {
@@ -476,7 +470,7 @@ This response is limited to currency and country metadata. lookup_ip can return 
           .string()
           .optional()
           .describe(
-            "IPv4 or IPv6 address whose country determines the returned currency and country metadata. Omit to use the caller's IP."
+            "IPv4 or IPv6 address whose country determines the returned currency and country metadata. Omit to use the server's public egress IP."
           ),
         force_refresh: z
           .boolean()
@@ -516,15 +510,15 @@ This response is limited to currency and country metadata. lookup_ip can return 
         readOnlyHint: true,
         openWorldHint: true,
       },
-      description: `Read-only network lookup via GET /v3/ipgeo. Paid only. Cost: 1 credit. Returns { network } with route CIDR prefix, connection_type, and is_anycast.
+      description: `Read-only network lookup via GET /v3/ipgeo. Network details require a paid plan. Cost: 1 credit. Returns { network } with route CIDR prefix, connection_type, and is_anycast. If the API omits network data, returns a local error without inventing an HTTP status; credits may already have been used.
 
-ip omitted means caller IP. force_refresh bypasses cached data, makes a new upstream request, and can consume credits. This response is limited to network data; lookup_ip can return network data together with location, ASN/company, timezone, currency, security, or abuse.`,
+ip omitted means the server's public egress IP. force_refresh bypasses cached data, makes a new upstream request, and can consume credits. This response is limited to network data; lookup_ip can return network data together with location, ASN/company, timezone, currency, security, or abuse.`,
       inputSchema: {
         ip: z
           .string()
           .optional()
           .describe(
-            "IPv4 or IPv6 address to look up. Omit to check the caller's IP."
+            "IPv4 or IPv6 address to look up. Omit to check the server's public egress IP."
           ),
         force_refresh: z
           .boolean()
@@ -541,9 +535,10 @@ ip omitted means caller IP. force_refresh bypasses cached data, makes a new upst
           forceRefresh: params.force_refresh,
         });
 
-        const result = applyFieldsAndExcludes(baseResult, {
-          fields: "network",
-        });
+        if (!baseResult || typeof baseResult !== "object" || !("network" in baseResult) || baseResult.network == null) {
+          throw new Error("Network data is unavailable in the API response. Network details require a paid plan; verify plan access and this IP before retrying. API credits may already have been used.");
+        }
+        const result = applyFieldsAndExcludes(baseResult, { fields: "network" });
 
         return {
           content: [

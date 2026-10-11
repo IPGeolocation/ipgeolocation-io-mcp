@@ -1,60 +1,15 @@
 import assert from "node:assert/strict";
 
-class ToolRegistryServer {
-  constructor() {
-    this.tools = new Map();
-  }
-
-  registerTool(name, definition, handler) {
-    this.tools.set(name, { definition, handler });
-  }
-}
-
-function distModuleUrl(relativePath) {
-  return new URL(`../dist/${relativePath}`, import.meta.url).href;
-}
-
-async function loadToolRegistry() {
-  const [
-    geolocation,
-    security,
-    timezone,
-    astronomy,
-    asn,
-    abuse,
-    userAgent,
-    cache,
-  ] = await Promise.all([
-    import(distModuleUrl("tools/geolocation.js")),
-    import(distModuleUrl("tools/security.js")),
-    import(distModuleUrl("tools/timezone.js")),
-    import(distModuleUrl("tools/astronomy.js")),
-    import(distModuleUrl("tools/asn.js")),
-    import(distModuleUrl("tools/abuse.js")),
-    import(distModuleUrl("tools/useragent.js")),
-    import(distModuleUrl("tools/cache.js")),
-  ]);
-
-  cache.clearToolCacheForTests();
-
-  const server = new ToolRegistryServer();
-  geolocation.registerGeolocationTools(server);
-  security.registerSecurityTools(server);
-  timezone.registerTimezoneTools(server);
-  astronomy.registerAstronomyTools(server);
-  asn.registerAsnTools(server);
-  abuse.registerAbuseTools(server);
-  userAgent.registerUserAgentTools(server);
-  return server.tools;
-}
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { fileURLToPath } from "node:url";
 
 async function invoke(tools, name, args = {}) {
-  const tool = tools.get(name);
-  assert.ok(tool, `tool '${name}' should be registered`);
-  const result = await tool.handler(args);
+  const result = await tools.callTool({ name, arguments: args });
   assert.equal(result.isError, undefined, `${name} should not return an error`);
   assert.ok(result.content?.length, `${name} should return content`);
   assert.equal(result.content[0].type, "text");
+  assert.ok(result.structuredContent, `${name} should return structured content`);
   return result.content[0].text;
 }
 
@@ -176,6 +131,76 @@ async function runPaidChecks(tools) {
 
   const results = [];
 
+  results.push(await runCheck("cached projections match fresh paid API responses", async () => {
+    for (const [include, cases] of [
+      ["security", [
+        { fields: "location.city" },
+        { fields: "security", excludes: "security" },
+        { fields: "security.is_vpn", excludes: "security" },
+        { fields: "security.is_vpn,security.threat_score", excludes: "security.threat_score" },
+        { fields: "location.city", excludes: "location.city" },
+      ]],
+      ["geo_accuracy,dma_code", [
+        { fields: "location.city", excludes: "location" },
+        { fields: "location.accuracy_radius,location.dma_code", excludes: "location.accuracy_radius,location.dma_code" },
+      ]],
+      ["*", [{ fields: "location.city" }, { fields: "security.is_vpn,location.city" }]],
+    ]) {
+      await invokeJson(tools, "lookup_ip", { ip: "8.8.8.8", include, force_refresh: true });
+      for (const projection of cases) {
+        const args = { ip: "8.8.8.8", include, ...projection };
+        const cached = await invokeJson(tools, "lookup_ip", args);
+        const fresh = await invokeJson(tools, "lookup_ip", { ...args, force_refresh: true });
+        assert.deepEqual(cached, fresh, `Projection differs for ${JSON.stringify(args)}`);
+      }
+    }
+  }));
+
+  results.push(await runCheck("optional location fields infer includes in single and bulk calls", async () => {
+    for (const name of ["lookup_ip", "bulk_lookup_ip"]) {
+      const result = await invokeJson(tools, name, {
+        ...(name.startsWith("bulk_") ? { ips: ["8.8.8.8"] } : { ip: "8.8.8.8" }),
+        fields: "location.accuracy_radius,location.confidence,location.locality,location.dma_code", force_refresh: true,
+      });
+      const item = Array.isArray(result) ? result[0] : result;
+      for (const key of ["accuracy_radius", "confidence", "locality", "dma_code"]) assert.ok(Object.hasOwn(item.location, key), key);
+    }
+  }));
+
+  results.push(await runCheck("quoted user-agent echoes remain valid redacted JSON", async () => {
+    const data = await invokeJson(tools, "parse_user_agent", { uaString: 'Mozilla/5.0 (apiKey="live-qa-placeholder")', force_refresh: true });
+    assert.ok(!JSON.stringify(data).includes("live-qa-placeholder"));
+    assert.equal(typeof data.user_agent_string, "string");
+  }));
+
+  results.push(await runCheck("structured validation before a paid call", async () => {
+    const result = await tools.callTool({ name: "check_security", arguments: { ip: false } });
+    assert.equal(result.isError, true);
+    assert.equal(result.structuredContent.error.category, "validation");
+    assert.equal(result.structuredContent.error.status, undefined);
+  }));
+
+  results.push(await runCheck("structured upstream private-IP error", async () => {
+    const result = await tools.callTool({ name: "lookup_ip", arguments: { ip: "10.0.0.1" } });
+    assert.equal(result.isError, true);
+    assert.equal(result.structuredContent.error.source, "ipgeolocation_api");
+    assert.equal(result.structuredContent.error.status, 423);
+    assert.equal(result.structuredContent.error.retryable, false);
+  }));
+
+  for (const name of ["bulk_lookup_ip", "bulk_security_check"]) {
+    results.push(await runCheck(`${name} mixed valid/private inputs`, async () => {
+      const result = await tools.callTool({ name, arguments: { ips: ["8.8.8.8", "10.0.0.1"], fields: name === "bulk_lookup_ip" ? "location.country_name" : "security.is_vpn" } });
+      assert.equal(result.isError, undefined);
+      assert.equal(result.structuredContent.items.length, 2);
+      const [error] = result.structuredContent.errors;
+      assert.equal(error.input, "10.0.0.1");
+      assert.equal(error.input_index, 1);
+      assert.equal(error.status, undefined);
+      assert.equal(error.retryable, false);
+    }));
+  }
+
   results.push(
     await runCheck("lookup_ip with include", async () => {
       const data = await invokeJson(tools, "lookup_ip", {
@@ -294,6 +319,59 @@ async function runPaidChecks(tools) {
   return results.every(Boolean);
 }
 
+async function runFreePlanChecks(tools) {
+  const results = [];
+  const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36";
+  for (const [name, args] of [
+    ["check_security", { ip: "8.8.8.8" }],
+    ["bulk_security_check", { ips: ["8.8.8.8"] }],
+    ["lookup_asn", { asn: "AS15169" }],
+    ["get_abuse_contact", { ip: "8.8.8.8" }],
+    ["parse_user_agent", { uaString: userAgent }],
+    ["bulk_parse_user_agent", { uaStrings: [userAgent] }],
+    ["lookup_ip", { ip: "8.8.8.8", include: "security" }],
+    ["lookup_ip", { ip: "8.8.8.8", include: "abuse" }],
+    ["lookup_ip", { ip: "8.8.8.8", lang: "fr" }],
+    ["lookup_ip", { ip: "google.com" }],
+  ]) {
+    results.push(await runCheck(`free-plan restriction: ${name} ${JSON.stringify(args)}`, async () => {
+      const result = await tools.callTool({ name, arguments: args });
+      assert.equal(result.isError, true);
+      assert.equal(result.structuredContent.error.source, "ipgeolocation_api");
+      assert.equal(result.structuredContent.error.status, 401);
+      assert.equal(result.structuredContent.error.retryable, false);
+    }));
+  }
+  results.push(await runCheck("free-plan ownership returns basic ASN only", async () => {
+    const data = await invokeJson(tools, "lookup_company", { ip: "8.8.8.8" });
+    assert.equal(data.asn.as_number, "AS15169");
+    assert.equal(data.company, undefined);
+  }));
+  results.push(await runCheck("free-plan missing network data returns a local error", async () => {
+    const result = await tools.callTool({ name: "lookup_network", arguments: { ip: "8.8.8.8" } });
+    assert.equal(result.isError, true);
+    assert.equal(result.structuredContent.error.source, "mcp_server");
+    assert.equal(result.structuredContent.error.status, undefined);
+    assert.equal(result.structuredContent.error.retryable, false);
+    assert.match(result.structuredContent.error.message, /Network data is unavailable/);
+  }));
+  results.push(await runCheck("free-plan bulk entitlement is represented accurately", async () => {
+    const ips = ["8.8.8.8", "1.1.1.1"];
+    const result = await tools.callTool({ name: "bulk_lookup_ip", arguments: { ips, fields: "ip,location.country_name" } });
+    if (result.isError) {
+      assert.equal(result.structuredContent.error.source, "ipgeolocation_api");
+      assert.equal(result.structuredContent.error.status, 401);
+      assert.equal(result.structuredContent.error.retryable, false);
+    } else {
+      assert.deepEqual(result.structuredContent.items.map(item => item.ip), ips);
+      assert.equal(result.structuredContent.errors.length, 0);
+      assert.ok(result.structuredContent.items.every(item => typeof item.location?.country_name === "string"));
+      console.log("NOTICE: This free-plan key permits basic bulk geolocation; public API documentation describes bulk as paid-only.");
+    }
+  }));
+  return results.every(Boolean);
+}
+
 async function main() {
   const mode = process.argv[2];
   const keyEnvName =
@@ -304,7 +382,7 @@ async function main() {
         : undefined;
 
   if (!keyEnvName) {
-    console.error("Usage: node tests/live.smoke.mjs <free|paid>");
+    console.error("Usage: node tests/live.smoke.mjs <free|paid> [server-command ...args]");
     process.exit(1);
   }
 
@@ -317,8 +395,39 @@ async function main() {
   process.env.IPGEOLOCATION_API_KEY = apiKey;
 
   console.log(`Running ${mode} live smoke tests. Real API credits will be used.`);
-  const tools = await loadToolRegistry();
-  const ok = mode === "free" ? await runFreeChecks(tools) : await runPaidChecks(tools);
+  const tools = new Client({ name: "ipgeolocation-live-smoke", version: "1.0.0" });
+  const [, , , suppliedCommand, ...suppliedArgs] = process.argv;
+  const transport = new StdioClientTransport({
+    command: suppliedCommand ?? process.execPath,
+    args: suppliedCommand ? suppliedArgs : [fileURLToPath(new URL("../dist/cli.js", import.meta.url))],
+    env: { ...process.env, IPGEOLOCATION_API_KEY: apiKey },
+    stderr: "pipe",
+  });
+  let ok;
+  try {
+    await tools.connect(transport);
+    const { tools: listed } = await tools.listTools();
+    assert.equal(listed.length, 17);
+    assert.ok(listed.every(tool => tool.outputSchema));
+    const unknownOk = await runCheck("unknown selectors fail locally", async () => {
+      const result = await tools.callTool({ name: "lookup_ip", arguments: { ips: ["8.8.8.8"] } });
+      assert.equal(result.isError, true);
+      assert.equal(result.structuredContent.error.category, "validation");
+      assert.match(result.structuredContent.error.message, /ips/);
+    });
+    const readerOk = await runCheck("cached-result reader rejects invalid cursors locally", async () => {
+      const result = await tools.callTool({ name: "get_cached_result", arguments: { cursor: "invalid-cursor" } });
+      assert.equal(result.isError, true);
+      assert.equal(result.structuredContent.error.source, "mcp_server");
+      assert.equal(result.structuredContent.error.category, "validation");
+      assert.equal(result.structuredContent.error.status, undefined);
+      assert.equal(result.structuredContent.error.retryable, false);
+    });
+    const coreOk = await runFreeChecks(tools);
+    ok = (mode === "free" ? await runFreePlanChecks(tools) : await runPaidChecks(tools)) && coreOk && readerOk && unknownOk;
+  } finally {
+    await tools.close();
+  }
 
   if (!ok) {
     process.exit(1);

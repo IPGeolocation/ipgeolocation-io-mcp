@@ -4,13 +4,14 @@ import { getSecurity, getSecurityBulk } from "../client.js";
 import {
   MAX_BULK_ITEMS,
   errorToolResponse,
+  formatBulkToolResult,
   formatToolResult,
 } from "./response.js";
-import { getCachedValue, setCachedValue } from "./cache.js";
+import { getCachedOrFetchValue } from "./cache.js";
 import { applyFieldsAndExcludes } from "./projection.js";
 
 function buildSecurityCacheKey(ip: string | undefined): string {
-  return `security|ip=${ip?.trim().toLowerCase() ?? "self"}`;
+  return `security|${JSON.stringify(ip?.trim().toLowerCase() ?? null)}`;
 }
 
 function normalizeCsvForCacheKey(value: string | undefined): string {
@@ -30,12 +31,10 @@ function buildSecurityBulkCacheKey(params: {
   fields?: string;
   excludes?: string;
 }): string {
-  const normalizedIps = params.ips
-    .map((ip) => ip.trim().toLowerCase())
-    .join(",");
+  const normalizedIps = params.ips.map((ip) => ip.trim().toLowerCase());
   const normalizedFields = normalizeCsvForCacheKey(params.fields);
   const normalizedExcludes = normalizeCsvForCacheKey(params.excludes);
-  return `security-bulk|ips=${normalizedIps}|fields=${normalizedFields}|excludes=${normalizedExcludes}`;
+  return `security-bulk|${JSON.stringify([normalizedIps, normalizedFields, normalizedExcludes])}`;
 }
 
 export function registerSecurityTools(server: McpServer) {
@@ -51,13 +50,13 @@ export function registerSecurityTools(server: McpServer) {
 
 Returns { ip, security } with threat_score, VPN, proxy, residential proxy, Tor, relay, anonymity, bot, spam, known attacker, and cloud-provider fields; provider names, confidence scores, and last_seen dates appear when available.
 
-fields/excludes accept comma-separated security.* dot paths; ip is always returned. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
+fields/excludes accept comma-separated security.* dot paths; ip is always returned. Threat scores and flags are indicators, not a safety guarantee; missing or unknown data is inconclusive. This queries IP intelligence, not the separate live browser detection API. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
       inputSchema: {
         ip: z
           .string()
           .optional()
           .describe(
-            "IPv4 or IPv6 address to check. Omit to check the caller's IP."
+            "IPv4 or IPv6 address to check. Omit to check the server's public egress IP."
           ),
         fields: z
           .string()
@@ -83,22 +82,17 @@ fields/excludes accept comma-separated security.* dot paths; ip is always return
     async (params) => {
       try {
         const cacheKey = buildSecurityCacheKey(params.ip);
-        const cached = params.force_refresh ? undefined : getCachedValue(cacheKey);
-
-        const baseResult =
-          cached ??
-          (await getSecurity({
-            ip: params.ip,
-          }));
-
-        if (cached === undefined) {
-          setCachedValue(cacheKey, baseResult);
-        }
+        const baseResult = await getCachedOrFetchValue(
+          cacheKey,
+          () => getSecurity({ ip: params.ip }),
+          params.force_refresh
+        );
 
         const result = applyFieldsAndExcludes(baseResult, {
           fields: params.fields,
           excludes: params.excludes,
           rootKey: "security",
+          preserveIp: true,
         });
 
         return {
@@ -120,7 +114,7 @@ fields/excludes accept comma-separated security.* dot paths; ip is always return
         readOnlyHint: true,
         openWorldHint: true,
       },
-      description: `Read-only bulk security lookup via POST /v3/security-bulk. Paid only. Cost: 2 credits per valid IP. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs; private, bogon, and malformed IPs are not billed.
+      description: `Read-only bulk security lookup via POST /v3/security-bulk. Paid only. Cost: 2 credits per valid IP. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs; private, bogon, and malformed IPs are not billed. Larger batches are rejected before any API call. Complete results are returned directly or as cached pages. Oversized results contain page.next_cursor for complete retrieval through get_cached_result without another API call or additional credits.
 
 This endpoint is dedicated to security-only batches; bulk_lookup_ip with include=security provides security data together with geolocation or other IP domains. Returns one { ip, security } result per valid IP. fields/excludes accept security.* dot paths per item. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
       inputSchema: {
@@ -154,16 +148,15 @@ This endpoint is dedicated to security-only batches; bulk_lookup_ip with include
     async (params) => {
       try {
         const cacheKey = buildSecurityBulkCacheKey(params);
-        const cached = params.force_refresh ? undefined : getCachedValue(cacheKey);
-
-        const result = cached ?? (await getSecurityBulk(params));
-        if (cached === undefined) {
-          setCachedValue(cacheKey, result);
-        }
+        const result = await getCachedOrFetchValue(
+          cacheKey,
+          () => getSecurityBulk(params),
+          params.force_refresh
+        );
 
         return {
           content: [
-            { type: "text" as const, text: formatToolResult(result) },
+            { type: "text" as const, text: formatBulkToolResult(result) },
           ],
         };
       } catch (error) {

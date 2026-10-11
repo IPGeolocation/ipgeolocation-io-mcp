@@ -2,11 +2,11 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getAbuseContact } from "../client.js";
 import { errorToolResponse, formatToolResult } from "./response.js";
-import { getCachedValue, setCachedValue } from "./cache.js";
+import { getCachedOrFetchValue } from "./cache.js";
 import { applyFieldsAndExcludes } from "./projection.js";
 
 function buildAbuseCacheKey(ip: string | undefined): string {
-  return `abuse|ip=${ip?.trim().toLowerCase() ?? "self"}`;
+  return `abuse|${JSON.stringify(ip?.trim().toLowerCase() ?? null)}`;
 }
 
 export function registerAbuseTools(server: McpServer) {
@@ -28,7 +28,7 @@ fields/excludes accept comma-separated abuse.* paths such as abuse.emails; ip is
           .string()
           .optional()
           .describe(
-            "IPv4 or IPv6 address to get abuse contact for. Omit to use the caller's IP."
+            "IPv4 or IPv6 address to get abuse contact for. Omit to use the server's public egress IP."
           ),
         fields: z
           .string()
@@ -53,22 +53,17 @@ fields/excludes accept comma-separated abuse.* paths such as abuse.emails; ip is
     async (params) => {
       try {
         const cacheKey = buildAbuseCacheKey(params.ip);
-        const cached = params.force_refresh ? undefined : getCachedValue(cacheKey);
-
-        const baseResult =
-          cached ??
-          (await getAbuseContact({
-            ip: params.ip,
-          }));
-
-        if (cached === undefined) {
-          setCachedValue(cacheKey, baseResult);
-        }
+        const baseResult = await getCachedOrFetchValue(
+          cacheKey,
+          () => getAbuseContact({ ip: params.ip }),
+          params.force_refresh
+        );
 
         const result = applyFieldsAndExcludes(baseResult, {
           fields: params.fields,
           excludes: params.excludes,
           rootKey: "abuse",
+          preserveIp: true,
         });
 
         return {

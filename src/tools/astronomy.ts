@@ -2,7 +2,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getAstronomy, getAstronomyTimeSeries } from "../client.js";
 import { errorToolResponse, formatToolResult } from "./response.js";
-import { getCachedValue, setCachedValue } from "./cache.js";
+import { getCachedOrFetchValue } from "./cache.js";
 import {
   validateCoordinatePair,
   validateDateRange,
@@ -25,18 +25,10 @@ function buildAstronomyTimeSeriesCacheKey(params: {
   time_zone?: string;
   lang?: string;
 }): string {
-  return [
-    "astronomy-series",
-    `lat=${normalizeValue(params.lat)}`,
-    `long=${normalizeValue(params.long)}`,
-    `location=${normalizeValue(params.location)}`,
-    `ip=${normalizeValue(params.ip)}`,
-    `dateStart=${normalizeValue(params.dateStart)}`,
-    `dateEnd=${normalizeValue(params.dateEnd)}`,
-    `elevation=${normalizeValue(params.elevation)}`,
-    `time_zone=${normalizeValue(params.time_zone)}`,
-    `lang=${normalizeValue(params.lang)}`,
-  ].join("|");
+  return `astronomy-series|${JSON.stringify([
+    params.lat, params.long, params.location, params.ip, params.dateStart,
+    params.dateEnd, params.elevation, params.time_zone, params.lang,
+  ].map(normalizeValue))}`;
 }
 
 export function registerAstronomyTools(server: McpServer) {
@@ -50,9 +42,9 @@ export function registerAstronomyTools(server: McpServer) {
       },
       description: `Read-only single-date astronomy lookup via GET /v3/astronomy. Works on free and paid plans. Cost: 1 credit. This endpoint covers one date or real-time sun/moon position; get_astronomy_time_series provides daily sunrise, moon, and twilight data across a date range.
 
-Returns { location, astronomy } plus ip for IP/caller lookups. astronomy includes date/current_time, sunrise/sunset, moonrise/moonset, twilight blocks, day_length, sun/moon position, distance, status, moon_phase, moon_illumination_percentage, and moon_angle.
+Returns { location, astronomy } plus ip for IP/server-address lookups. astronomy includes date/current_time, sunrise/sunset, moonrise/moonset, twilight blocks, day_length, sun/moon position, distance, status, moon_phase, moon_illumination_percentage, and moon_angle.
 
-Selector priority is lat/long, location, ip, then caller IP when no selector is provided. lat and long must be provided together; date must be YYYY-MM-DD; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include full dates. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans.`,
+Selector priority is lat/long, location, ip, then the server's public egress IP when no selector is provided. lat and long must be provided together; date must be YYYY-MM-DD; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include full dates. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans.`,
       inputSchema: {
         lat: z
           .string()
@@ -94,7 +86,7 @@ Selector priority is lat/long, location, ip, then caller IP when no selector is 
           .string()
           .optional()
           .describe(
-            "Response language for location fields in IP-based lookups (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt). Paid plans only. Free plan returns 401 for non-English language values."
+            "Response language for location fields in IP-based lookups (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt, ar). Paid plans only. Free plan returns 401 for non-English language values."
           ),
       },
     },
@@ -151,7 +143,7 @@ Selector priority is lat/long, location, ip, then caller IP when no selector is 
       },
       description: `Read-only daily astronomy series via GET /v3/astronomy/timeSeries. Works on free and paid plans. Cost: 1 credit per request. This endpoint covers date ranges up to 90 days; get_astronomy provides one-date and real-time sun/moon data.
 
-Returns { location, astronomy: [...] } with one daily item per date containing sunrise/sunset, moonrise/moonset, twilight blocks, day_length, sun/moon status, and moon_phase. Selector priority is lat/long, location, ip, then caller IP when no selector is provided.
+Returns { location, astronomy: [...] } with one daily item per date containing sunrise/sunset, moonrise/moonset, twilight blocks, day_length, sun/moon status, and moon_phase. Selector priority is lat/long, location, ip, then the server's public egress IP when no selector is provided.
 
 dateStart and dateEnd are required YYYY-MM-DD values with a maximum 90-day span. lat and long must be provided together; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include full dates. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
       inputSchema: {
@@ -201,7 +193,7 @@ dateStart and dateEnd are required YYYY-MM-DD values with a maximum 90-day span.
           .string()
           .optional()
           .describe(
-            "Response language for location fields in IP-based lookups (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt). Paid plans only. Free plan returns 401 for non-English languages."
+            "Response language for location fields in IP-based lookups (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt, ar). Paid plans only. Free plan returns 401 for non-English languages."
           ),
         force_refresh: z
           .boolean()
@@ -237,10 +229,9 @@ dateStart and dateEnd are required YYYY-MM-DD values with a maximum 90-day span.
         }
 
         const cacheKey = buildAstronomyTimeSeriesCacheKey(params);
-        const cached = params.force_refresh ? undefined : getCachedValue(cacheKey);
-        const result =
-          cached ??
-          (await getAstronomyTimeSeries({
+        const result = await getCachedOrFetchValue(
+          cacheKey,
+          () => getAstronomyTimeSeries({
             lat: params.lat,
             long: params.long,
             location: params.location,
@@ -250,10 +241,9 @@ dateStart and dateEnd are required YYYY-MM-DD values with a maximum 90-day span.
             elevation: params.elevation,
             time_zone: params.time_zone,
             lang: params.lang,
-          }));
-        if (cached === undefined) {
-          setCachedValue(cacheKey, result);
-        }
+          }),
+          params.force_refresh
+        );
         return {
           content: [
             { type: "text" as const, text: formatToolResult(result) },

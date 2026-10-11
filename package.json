@@ -1,7 +1,7 @@
 {
   "name": "ipgeolocation-io-mcp",
   "mcpName": "io.github.IPGeolocation/ipgeolocation-io-mcp",
-  "description": "Official MCP server for IP geolocation, IP security, abuse contacts, ASN, timezone, astronomy, and user-agent parsing.",
+  "description": "Official MCP server for IP geolocation, security indicators, abuse contacts, ASN, time zones, astronomy, and user-agent parsing.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -12,18 +12,23 @@
     "dist",
     "icon.png",
     "manifest.json",
-    "server.json"
+    "server.json",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "RELEASING.md",
+    "packaging/mpak/README.md"
   ],
   "engines": {
     "node": ">=22.0.0"
   },
   "scripts": {
-    "build": "tsc && printf '%s\\n' '#!/usr/bin/env node' | cat - dist/cli.js > dist/cli.js.tmp && mv dist/cli.js.tmp dist/cli.js && chmod +x dist/cli.js",
+    "build": "tsc && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
     "prepare:mpak": "node scripts/prepare-mpak-package.mjs",
     "sbom:mpak": "node scripts/generate-mpak-sbom.mjs",
     "test": "npm run test:unit && npm run test:integration && npm run test:redteam && npm run test:fuzz",
-    "test:unit": "npm run build && node --test --test-concurrency=1 tests/client.test.mjs tests/response.test.mjs tests/validation.test.mjs",
-    "test:integration": "npm run build && node --test --test-concurrency=1 tests/tools.integration.test.mjs tests/mcp.protocol.test.mjs",
+    "test:unit": "npm run build && node --test --test-concurrency=1 tests/client.test.mjs tests/response.test.mjs tests/pagination.test.mjs tests/validation.test.mjs",
+    "test:integration": "npm run build && node --test --test-concurrency=1 tests/tools.integration.test.mjs tests/mcp.protocol.test.mjs tests/reliability.regression.test.mjs",
     "test:redteam": "npm run build && node --test --test-concurrency=1 tests/redteam.security.test.mjs",
     "test:fuzz": "npm run build && node --test --test-concurrency=1 tests/fuzz.security.test.js",
     "test:live": "npm run test:live:free && npm run test:live:paid",
@@ -73,14 +78,14 @@
     "type": "git",
     "url": "git+https://github.com/IPGeolocation/ipgeolocation-io-mcp.git"
   },
-  "homepage": "https://ipgeolocation.io",
+  "homepage": "https://ipgeolocation.io/integrations/ipgeolocation-io-mcp",
   "bugs": {
     "url": "https://github.com/IPGeolocation/ipgeolocation-io-mcp/issues"
   },
   "author": "ipgeolocation.io",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "zod": "4.4.3"
   },
   "overrides": {
@@ -90,6 +95,7 @@
     "fast-uri": "3.1.8",
     "hono": "4.13.11",
     "path-to-regexp": "8.4.2",
+    "proxy-addr": "2.0.8",
     "qs": "6.16.0"
   },
   "devDependencies": {
@@ -97,5 +103,5 @@
     "fast-check": "4.9.0",
     "typescript": "^7.0.2"
   },
-  "version": "2.0.0"
+  "version": "2.0.1"
 }
