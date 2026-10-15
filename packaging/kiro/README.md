@@ -1,6 +1,6 @@
 # IPGeolocation.io for Kiro
 
-This Power adds IPGeolocation.io's 17 tools to Kiro for IP geolocation, IP security (VPN, proxy, Tor, bot, hosting and spam detection), ASN details, abuse contacts, time zones, astronomy and user-agent parsing. It supports single and bulk IP lookups for investigations and data enrichment. It also caches responses so you can page through results without making repeat API calls.
+This official IPGeolocation.io Power adds IP geolocation with company and ISP information to Kiro. Its 17 tools also cover ASN and network data, IP security (VPN, proxy, Tor, bot, hosting and spam detection), abuse contacts, time zones, astronomy, currency data and user-agent parsing. Use single or bulk lookups for IP investigations and data enrichment, then page through cached results without repeat API calls.
 
 The Power runs `ipgeolocation-io-mcp@2.0.1` locally over stdio. It requires Node.js 22 or later, with `npx` on your PATH.
 
@@ -22,7 +22,7 @@ Add this server through only one method to avoid duplicate tool entries. Your ot
 
 ## Use
 
-Ask Kiro for an IP geolocation or ASN lookup to activate this Power. API tools use your account's plan and credits. Most tools require an API key; `get_my_ip` works without one. `get_cached_result` reads saved response pages without making another API request, but only within the same server process and with the same key that made the original lookup.
+To activate this Power, ask Kiro to look up an IP address or identify its company and ISP. Most tools require an API key; `get_my_ip` works without one. Data access and credit usage depend on your plan. `get_cached_result` reads saved response pages without making another API request, but only within the same server process and with the same key that made the original lookup.
 
 ## Privacy and support
 

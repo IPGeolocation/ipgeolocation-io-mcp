@@ -10,7 +10,7 @@
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-5FA04E?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-16A34A)](https://github.com/IPGeolocation/ipgeolocation-io-mcp/blob/main/LICENSE)
 
-Use the official [IPGeolocation.io](https://ipgeolocation.io) MCP server for IP geolocation, security indicators, ASN data, and abuse contacts. It also provides time zone conversions, sun and moon data, and user-agent parsing.
+Use the official [IPGeolocation.io](https://ipgeolocation.io) MCP server for IP geolocation with company and ISP information. Its 17 tools also cover ASN and network data, IP security (VPN, proxy, Tor, bot, hosting and spam detection), abuse contacts, time zones, astronomy, currency data and user-agent parsing.
 
 MCP (Model Context Protocol) connects your client to these tools. Your client or host must support launching a local command over `stdio`. See [Install by Client](#install-by-client) for configuration examples.
 
@@ -171,7 +171,7 @@ Save the file and reload the server in the client.
 
 ### Kiro Powers
 
-The [Kiro Power](packaging/kiro/README.md) provides 17 tools for IP geolocation, IP security checks, ASN details, abuse contacts, time zones, astronomy and user-agent parsing. It runs `ipgeolocation-io-mcp@2.0.1` locally over stdio and requires Node.js 22 or later. Import the `packaging/kiro` folder through **Powers > Add Custom Power** and follow the setup guide to configure your private API key.
+The [Kiro Power](packaging/kiro/README.md) adds IP geolocation with company and ISP information to Kiro. Its 17 tools also cover ASN and network data, IP security (VPN, proxy, Tor, bot, hosting and spam detection), abuse contacts, time zones, astronomy, currency data and user-agent parsing. It runs `ipgeolocation-io-mcp@2.0.1` locally over stdio and requires Node.js 22 or later. Import the `packaging/kiro` folder through **Powers > Add Custom Power** and follow the setup guide to configure your private API key. Most tools require a key; access and credits depend on your plan.
 
 ### VS Code / GitHub Copilot
 
