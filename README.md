@@ -169,6 +169,10 @@ In Cascade's **... (Actions)** menu, choose **Open MCP config file** in the MCPs
 
 Save the file and reload the server in the client.
 
+### Kiro Powers
+
+The [Kiro Power](packaging/kiro/README.md) provides 17 tools for IP geolocation, IP security checks, ASN details, abuse contacts, time zones, astronomy and user-agent parsing. It runs `ipgeolocation-io-mcp@2.0.1` locally over stdio and requires Node.js 22 or later. Import the `packaging/kiro` folder through **Powers > Add Custom Power** and follow the setup guide to configure your private API key.
+
 ### VS Code / GitHub Copilot
 
 Run **MCP: Add Server** from the Command Palette, choose a local command, and use `npx -y ipgeolocation-io-mcp`. Choose **Copilot Global** for private user settings or **.mcp.json** for a portable workspace configuration. Add `IPGEOLOCATION_API_KEY` to the server's environment.

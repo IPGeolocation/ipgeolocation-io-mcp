@@ -1,0 +1,26 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "ipgeolocation-io-mcp",
+  "version": "2.0.1",
+  "description": "Official IPGeolocation.io tools for IP geolocation, IP security (VPN, proxy, Tor, bot, hosting and spam detection), ASN intelligence, abuse contacts, time zones, astronomy and user-agent parsing.",
+  "author": {
+    "name": "IPGeolocation.io",
+    "email": "support@ipgeolocation.io",
+    "url": "https://ipgeolocation.io"
+  },
+  "homepage": "https://ipgeolocation.io/integrations/ipgeolocation-io-mcp",
+  "repository": "https://github.com/IPGeolocation/ipgeolocation-io-mcp",
+  "license": "MIT",
+  "keywords": [
+    "ipgeolocation",
+    "geoip",
+    "ip intelligence",
+    "ip security",
+    "vpn detection",
+    "proxy detection",
+    "asn",
+    "time zone",
+    "astronomy",
+    "user-agent parsing"
+  ]
+}
