@@ -1,0 +1,36 @@
+{
+  "name": "ipgeolocation-io-mcp",
+  "displayName": "IPGeolocation.io",
+  "version": "2.0.1",
+  "description": "IP geolocation and security tools from IPGeolocation.io, with ASN, time zone, astronomy and user-agent lookups.",
+  "author": {
+    "name": "IPGeolocation.io",
+    "email": "support@ipgeolocation.io"
+  },
+  "homepage": "https://ipgeolocation.io/integrations/ipgeolocation-io-mcp",
+  "repository": "https://github.com/IPGeolocation/ipgeolocation-io-mcp",
+  "license": "MIT",
+  "logo": "icon.png",
+  "keywords": [
+    "ipgeolocation",
+    "geoip",
+    "ip-security",
+    "asn",
+    "timezone",
+    "astronomy",
+    "user-agent",
+    "mcp"
+  ],
+  "mcpServers": "mcp.json",
+  "variables": {
+    "type": "object",
+    "properties": {
+      "IPGEOLOCATION_API_KEY": {
+        "type": "string",
+        "title": "IPGeolocation.io API key",
+        "description": "Your IPGeolocation.io API key. Most tools need it; get_my_ip works without a key.",
+        "default": ""
+      }
+    }
+  }
+}
