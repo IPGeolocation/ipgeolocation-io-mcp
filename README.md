@@ -142,6 +142,27 @@ Or add to `.cursor/mcp.json` for this project, or `~/.cursor/mcp.json` for all p
 
 Restart Cursor after saving.
 
+#### Cursor plugin
+
+This repository includes a Cursor plugin for `ipgeolocation-io-mcp@2.0.1`. The plugin runs locally over stdio and requires Node.js 22 or later.
+
+To install it locally, clone this repository into a new directory under `~/.cursor/plugins/local/`, reload Cursor, and open **Customize > Plugins**.
+
+- **Local plugin:** set `IPGEOLOCATION_API_KEY` in the environment that launches Cursor. The plugin reads the key from that environment.
+- **Marketplace install:** set the key in the plugin's private configuration.
+
+With an empty or unset API key, `get_my_ip` still works. API tools that require a key return a missing-key error without sending a request.
+
+To load a local checkout in Cursor CLI:
+
+```bash
+agent --plugin-dir /absolute/path/to/ipgeolocation-io-mcp
+```
+
+API requests that need a key use your account's plan and credits. The `get_cached_result` tool reads saved response pages without making another API request.
+
+Install this server by only one method, because using more than one creates duplicate tool entries. You can keep any other servers in your existing configuration.
+
 ### Windsurf / Cascade
 
 In Cascade's **... (Actions)** menu, choose **Open MCP config file** in the MCPs section. Merge the [Quick Start entry](#quick-start) into the file opened by your installed version; configuration paths vary by release. See the [vendor's Cascade MCP guide](https://docs.devin.ai/desktop/cascade/mcp) for the active agent and configuration location in newer releases.
