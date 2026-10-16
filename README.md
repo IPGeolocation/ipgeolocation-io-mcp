@@ -10,11 +10,11 @@
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-5FA04E?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-16A34A)](https://github.com/IPGeolocation/ipgeolocation-io-mcp/blob/main/LICENSE)
 
-Use the official [IPGeolocation.io](https://ipgeolocation.io) MCP server for IP geolocation with company and ISP information. Its 17 tools also cover ASN and network data, IP security (VPN, proxy, Tor, bot, hosting and spam detection), abuse contacts, time zones, astronomy, currency data and user-agent parsing.
+The official [IPGeolocation.io](https://ipgeolocation.io) MCP server provides 17 tools for accurate IP geolocation, company information, ASN and network data, IP security (VPN, proxy, Tor, bot, hosting and spam detection), abuse contacts, time zones, astronomy, currency data and user-agent parsing.
 
 MCP (Model Context Protocol) connects your client to these tools. Your client or host must support launching a local command over `stdio`. See [Install by Client](#install-by-client) for configuration examples.
 
-**This README describes [2.0.1](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.1).** The `npx` commands and Cursor install link below install the latest published npm package. See the [changelog](CHANGELOG.md) for changes to pagination, limits, and error handling.
+**This README describes [2.0.1](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.1).** The `npx` commands and Cursor install link below follow npm's `latest` tag, including future major releases. Restart the server to load an update; npm reuses cached package files when the selected version is unchanged. See the [changelog](CHANGELOG.md) for release details.
 
 | Item | Value |
 |------|-------|
@@ -34,7 +34,7 @@ MCP (Model Context Protocol) connects your client to these tools. Your client or
   "mcpServers": {
     "ipgeolocation": {
       "command": "npx",
-      "args": ["-y", "ipgeolocation-io-mcp"],
+      "args": ["-y", "ipgeolocation-io-mcp@latest"],
       "env": {
         "IPGEOLOCATION_API_KEY": "<YOUR_API_KEY>"
       }
@@ -90,7 +90,7 @@ Use a private user configuration or your client's secret/environment settings fo
 Set `IPGEOLOCATION_API_KEY` in your private shell environment before running these commands. The variable reference keeps the key value out of the command you type and its shell history.
 
 ```bash
-codex mcp add ipgeolocation --env "IPGEOLOCATION_API_KEY=$IPGEOLOCATION_API_KEY" -- npx -y ipgeolocation-io-mcp
+codex mcp add ipgeolocation --env "IPGEOLOCATION_API_KEY=$IPGEOLOCATION_API_KEY" -- npx -y ipgeolocation-io-mcp@latest
 codex mcp list
 ```
 
@@ -121,7 +121,7 @@ Restart Cline after saving.
 
 One-click install:
 
-[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=ipgeolocation&config=eyJ0eXBlIjoic3RkaW8iLCJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImlwZ2VvbG9jYXRpb24taW8tbWNwIl0sImVudiI6eyJJUEdFT0xPQ0FUSU9OX0FQSV9LRVkiOiIifX0%3D)
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=ipgeolocation&config=eyJ0eXBlIjoic3RkaW8iLCJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImlwZ2VvbG9jYXRpb24taW8tbWNwQGxhdGVzdCJdLCJlbnYiOnsiSVBHRU9MT0NBVElPTl9BUElfS0VZIjoiIn19)
 
 Or add to `.cursor/mcp.json` for this project, or `~/.cursor/mcp.json` for all projects. See [Cursor's MCP guide](https://cursor.com/docs/mcp).
 
@@ -131,7 +131,7 @@ Or add to `.cursor/mcp.json` for this project, or `~/.cursor/mcp.json` for all p
     "ipgeolocation": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "ipgeolocation-io-mcp"],
+      "args": ["-y", "ipgeolocation-io-mcp@latest"],
       "env": {
         "IPGEOLOCATION_API_KEY": "<YOUR_API_KEY>"
       }
@@ -144,7 +144,7 @@ Restart Cursor after saving.
 
 #### Cursor plugin
 
-This repository includes a Cursor plugin for `ipgeolocation-io-mcp@2.0.1`. The plugin runs locally over stdio and requires Node.js 22 or later.
+This repository includes a Cursor plugin for `ipgeolocation-io-mcp`. The plugin runs locally over stdio and requires Node.js 22 or later.
 
 To install it locally, clone this repository into a new directory under `~/.cursor/plugins/local/`, reload Cursor, and open **Customize > Plugins**.
 
@@ -171,11 +171,11 @@ Save the file and reload the server in the client.
 
 ### Kiro Powers
 
-The [Kiro Power](packaging/kiro/README.md) adds IP geolocation with company and ISP information to Kiro. Its 17 tools also cover ASN and network data, IP security (VPN, proxy, Tor, bot, hosting and spam detection), abuse contacts, time zones, astronomy, currency data and user-agent parsing. It runs `ipgeolocation-io-mcp@2.0.1` locally over stdio and requires Node.js 22 or later. Import the `packaging/kiro` folder through **Powers > Add Custom Power** and follow the setup guide to configure your private API key. Most tools require a key; access and credits depend on your plan.
+The [Kiro Power](packaging/kiro/README.md) provides 17 tools for IP geolocation, company information, ASN and network data, IP security (VPN, proxy, Tor, bot, hosting and spam detection), abuse contacts, time zones, astronomy, currency data and user-agent parsing. It runs `ipgeolocation-io-mcp` locally over stdio, follows npm's `latest` tag and requires Node.js 22 or later. Import the `packaging/kiro` folder through **Powers > Add Custom Power** and follow the setup guide to configure your private API key. Most tools require a key; access and credits depend on your plan.
 
 ### VS Code / GitHub Copilot
 
-Run **MCP: Add Server** from the Command Palette, choose a local command, and use `npx -y ipgeolocation-io-mcp`. Choose **Copilot Global** for private user settings or **.mcp.json** for a portable workspace configuration. Add `IPGEOLOCATION_API_KEY` to the server's environment.
+Run **MCP: Add Server** from the Command Palette, choose a local command, and use `npx -y ipgeolocation-io-mcp@latest`. Choose **Copilot Global** for private user settings or **.mcp.json** for a portable workspace configuration. Add `IPGEOLOCATION_API_KEY` to the server's environment.
 
 The portable `.mcp.json` format uses the top-level `mcpServers` object shown in [Quick Start](#quick-start).
 
