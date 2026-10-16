@@ -4,7 +4,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "ipgeolocation-io-mcp@2.0.1"
+        "ipgeolocation-io-mcp@latest"
       ],
       "env": {
         "IPGEOLOCATION_API_KEY": "${IPGEOLOCATION_API_KEY:-}"
