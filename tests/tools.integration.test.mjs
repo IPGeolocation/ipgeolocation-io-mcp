@@ -324,6 +324,37 @@ async function invoke(tools, name, args = {}) {
   return tool.handler(args);
 }
 
+test("bulk schemas reject oversized arrays before inspecting their elements", async (t) => {
+  clearToolEnv();
+  t.after(clearToolEnv);
+  const tools = await loadToolRegistry();
+  const { MAX_BULK_ITEMS } = await import("../dist/tools/response.js");
+
+  for (const [name, field] of [
+    ["bulk_lookup_ip", "ips"],
+    ["bulk_security_check", "ips"],
+    ["bulk_parse_user_agent", "uaStrings"],
+  ]) {
+    await t.test(name, async () => {
+      const schema = tools.get(name).definition.inputSchema[field];
+      const oversized = new Array(MAX_BULK_ITEMS + 1);
+      Object.defineProperty(oversized, 0, {
+        get() { throw new Error("oversized input must be rejected before element validation"); },
+      });
+      for (const result of [await schema.safeParseAsync(oversized), schema.safeParse(oversized)]) {
+        assert.equal(result.success, false);
+        assert.equal(result.error.issues.length, 1);
+        assert.equal(result.error.issues[0].code, "too_big");
+        assert.equal(result.error.issues[0].maximum, MAX_BULK_ITEMS);
+      }
+
+      const valid = Array.from({ length: MAX_BULK_ITEMS }, () => "test-value");
+      assert.deepEqual(schema.parse(valid), valid);
+      assert.equal(schema.safeParse([42]).success, false);
+    });
+  }
+});
+
 test("registers all MCP tools with expected metadata", async (t) => {
   clearToolEnv();
   process.env.IPGEOLOCATION_API_KEY = "test_api_key_local";
