@@ -30,7 +30,7 @@ Public npm commands and launcher configurations use `ipgeolocation-io-mcp@latest
 
 ## Release Order
 
-1. Keep the next version marked unreleased until publication is authorized. Confirm that `package.json`, `package-lock.json`, `manifest.json`, and both version fields in `server.json` agree.
+1. Keep the next version marked unreleased until publication is authorized. Confirm that `package.json`, `package-lock.json`, `manifest.json`, both version fields in `server.json`, the server version in `src/index.ts`, and the Cursor and Kiro plugin manifests agree. Update the README version, release date and bundle links.
 2. Run `npm test` and `npm audit`. Inspect `npm pack --dry-run`, then test the packed package in a fresh consumer installation. Build and test the Docker image and scan its runtime and operating-system packages. `npm audit` does not cover the whole image. Record any unfixed upstream advisories. Run credit-consuming live tests separately with private environment variables, including complete cached-pagination recovery.
 3. Prepare the release commit, change the unreleased labels to the release date, and create the matching `v<version>` tag and GitHub release. Build and publish from that tagged source. Before publication, rebuild assets after documentation or metadata edits. Do not reuse earlier QA bundles.
 4. Publish npm and verify its version, package contents, Node.js requirement, and fresh-consumer dependency audit. The Official MCP Registry workflow checks that the npm version already exists.

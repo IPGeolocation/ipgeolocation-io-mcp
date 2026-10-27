@@ -14,7 +14,8 @@ test("Docker runtime uses patched Node and preserves the stdio tool contract", a
   ], { encoding: "utf8", timeout: 30000 }));
   const [major, minor, patch] = runtime.version.slice(1).split(".").map(Number);
   assert.ok(major === 24 && (minor > 22 || (minor === 22 && patch >= 1)), runtime.version);
-  assert.equal(runtime.uid, 1000);
+  assert.ok(runtime.uid > 0);
+  assert.equal(runtime.uid, Number(process.env.MCP_DOCKER_UID || 1000));
 
   const transport = new StdioClientTransport({
     command: "docker",

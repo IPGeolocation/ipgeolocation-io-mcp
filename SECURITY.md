@@ -7,7 +7,7 @@
 | 2.x | Fixes ship in new 2.x releases; upgrade to the latest published patch. |
 | < 2.0 | Unsupported. |
 
-Version **2.0.1** adds strict argument validation, redirect blocking, and cached pagination. The design below describes this version. See the [changelog](CHANGELOG.md) and [published releases](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases) for version-specific changes.
+Version **2.0.2** includes the strict argument validation, redirect blocking, and cached pagination introduced in 2.0.1, with updated dependencies. The design below describes this version. See the [changelog](CHANGELOG.md) and [published releases](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases) for version-specific changes.
 
 Keep your Node.js runtime on a supported release with current security updates. The minimum Node.js version describes compatibility; it does not make older patch releases safe to use.
 
