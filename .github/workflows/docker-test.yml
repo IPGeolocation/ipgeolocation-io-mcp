@@ -27,6 +27,8 @@ jobs:
           cache: npm
       - name: Install test dependencies
         run: npm ci --ignore-scripts
+      - name: Run regression suite in container base
+        run: docker build --pull --target test --tag ipgeolocation-io-mcp:security-tests .
       - name: Build image
         run: docker build --pull --tag ipgeolocation-io-mcp:security-test .
       - name: Test container runtime and stdio protocol
@@ -36,7 +38,7 @@ jobs:
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         with:
           image: ipgeolocation-io-mcp:security-test
-          grype-version: v0.116.0
+          grype-version: v0.121.0
           severity-cutoff: high
           fail-build: true
           only-fixed: false

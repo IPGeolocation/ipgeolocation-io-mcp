@@ -787,7 +787,7 @@ docker run --rm -i -e IPGEOLOCATION_API_KEY ipgeolocation-mcp
 
 Set `IPGEOLOCATION_API_KEY` in your private shell environment first. The image includes Node.js and runs as the unprivileged `node` user. [Docker's `-i` flag](https://docs.docker.com/reference/cli/docker/container/run/#interactive) keeps stdin open for MCP messages. Omit `-t` so the protocol uses ordinary stdin/stdout.
 
-The final image runs the compiled server directly. npm and Yarn are available in the build stage; the runtime image contains Node.js and the installed production dependencies.
+The image uses the official Node.js 24.22.1 Alpine 3.24 base with musl and runs the compiled server directly. The server has no native Node.js add-ons. npm and Yarn are available in the build stage; the runtime image contains Node.js and the installed production dependencies.
 
 After building the image, configure a local-command MCP client with:
 
