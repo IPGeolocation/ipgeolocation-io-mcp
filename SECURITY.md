@@ -11,6 +11,12 @@ Version **2.0.1** adds strict argument validation, redirect blocking, and cached
 
 Keep your Node.js runtime on a supported release with current security updates. The minimum Node.js version describes compatibility; it does not make older patch releases safe to use.
 
+The [October 21, 2026 Node.js security release](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases)
+requires Node.js 22.23.4+, 24.22.1+ or 26.12.1+ on those respective release lines.
+Update the runtime used by npm installations and restart the server process.
+The Dockerfile pins Node.js 24.22.1 by image digest; rebuild existing images to
+receive the runtime update.
+
 ## Reporting a Vulnerability
 
 Use [GitHub private vulnerability reporting](https://github.com/IPGeolocation/ipgeolocation-io-mcp/security/advisories/new), or email **support@ipgeolocation.io** if private reporting is unavailable. Keep vulnerability details out of public issues.

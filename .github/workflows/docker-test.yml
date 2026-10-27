@@ -1,0 +1,53 @@
+name: Docker Test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.22.1"
+          cache: npm
+      - name: Install test dependencies
+        run: npm ci --ignore-scripts
+      - name: Run regression suite in container base
+        run: docker build --pull --target test --tag ipgeolocation-io-mcp:security-tests .
+      - name: Build image
+        run: docker build --pull --tag ipgeolocation-io-mcp:security-test .
+      - name: Test container runtime and stdio protocol
+        run: node --test tests/docker.smoke.mjs
+      - name: Scan runtime image
+        id: scan
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: ipgeolocation-io-mcp:security-test
+          grype-version: v0.121.0
+          severity-cutoff: high
+          fail-build: true
+          only-fixed: false
+          output-format: json
+          output-file: runtime-vulnerabilities.json
+      - name: Retain runtime vulnerability report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: runtime-vulnerabilities-${{ matrix.runner }}
+          path: runtime-vulnerabilities.json
+          if-no-files-found: error

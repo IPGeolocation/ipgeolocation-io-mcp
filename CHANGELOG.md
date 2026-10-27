@@ -2,6 +2,11 @@
 
 Changes in development appear under Unreleased. Published release details are available on [GitHub Releases](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases).
 
+## Unreleased
+
+- Update Zod to 4.6.7 and the body-parser, fast-uri, ip-address and qs dependency resolutions for security fixes and compatible transitive requirements. Oversized bulk input now fails its collection limit before individual elements are inspected.
+- Pin the Docker build and runtime stages to Node.js 24.22.1 on Alpine 3.24 by digest, replacing the Debian base with unresolved OS advisories. Keep the non-root user, entrypoint and configuration unchanged. Run the full regression suite inside the container base on amd64 and arm64, verify read-only stdio and live HTTPS behavior, and reject high/critical image findings, including those without a fix.
+
 ## [2.0.1](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.1) - 2026-10-11
 
 - Retrieve complete oversized results with the new zero-credit `get_cached_result` tool. Page reads support replay and sliding idle expiry; unavailable cursors fail locally without another API call.
