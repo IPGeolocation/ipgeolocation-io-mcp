@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "ipgeolocation-io-mcp",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Official IPGeolocation.io tools for IP geolocation, company information, ASN and network data, IP security (VPN, proxy, Tor, bot, hosting and spam detection), abuse contacts, time zones, astronomy, currency data and user-agent parsing.",
   "author": {
     "name": "IPGeolocation.io",

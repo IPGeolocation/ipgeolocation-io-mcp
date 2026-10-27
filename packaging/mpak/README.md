@@ -2,13 +2,13 @@
 
 mpak publishes this server as `@ipgeolocation/ipgeolocation-io-mcp`. The prep script derives that bundle from the root metadata and stages it in `artifacts/mpak-package/`. The npm package name, root manifests, and existing client install commands stay unchanged.
 
-Version **2.0.1**. See the [release checklist](../../RELEASING.md) for publication channels, dated listing checks, and follow-ups.
+Version **2.0.2**. See the [release checklist](../../RELEASING.md) for publication channels, dated listing checks, and follow-ups.
 
 ## Prepare and Publish
 
 1. Build the intended source with `npm run build`. Use `npm run prepare:mpak` and `npm run sbom:mpak` to inspect a local staging package and its CycloneDX SBOM. These commands write build artifacts; they do not publish a version.
 2. Complete source and consumer verification, then create the matching Git tag and GitHub release as part of an authorized release.
-3. Dispatch **mpak Release** from that tag. Set both `source_ref` and `release_tag` to the same tag, such as `v2.0.1` for this version.
+3. Dispatch **mpak Release** from that tag. Set both `source_ref` and `release_tag` to the same tag, such as `v2.0.2` for this version.
 4. Confirm that the workflow uploaded the `.mcpb`, `.mcpb.sigstore.json`, `.mcpb.provenance.sigstore.json`, `sbom.cdx.json`, and `server.json` assets, then announced the bundle to mpak.
 5. Verify the public package version and bundle using the commands below. Review scan results for the same version.
 
@@ -24,11 +24,11 @@ Local staging and scan builds do not acquire release signatures or provenance au
 
 ## Verify a Published Bundle
 
-Use GitHub CLI and Cosign in an empty download directory. Run the following as a Bash script so a failed download or verification stops the procedure. This example verifies `v2.0.1`; use the matching tag for other published releases.
+Use GitHub CLI and Cosign in an empty download directory. Run the following as a Bash script so a failed download or verification stops the procedure. This example verifies `v2.0.2`; use the matching tag for other published releases.
 
 ```bash
 set -euo pipefail
-release_tag=v2.0.1
+release_tag=v2.0.2
 bundle_name="ipgeolocation-ipgeolocation-io-mcp-${release_tag#v}.mcpb"
 workflow_identity="https://github.com/IPGeolocation/ipgeolocation-io-mcp/.github/workflows/mpak-release.yml@refs/tags/$release_tag"
 release_commit=$(gh api "repos/IPGeolocation/ipgeolocation-io-mcp/commits/$release_tag" --jq .sha)
