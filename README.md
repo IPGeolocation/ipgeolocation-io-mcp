@@ -414,7 +414,7 @@ Each daily entry includes `mid_night`, `night_end`, `morning`, `sunrise`, `sunse
 
 ### parse_user_agent
 
-Parses one UA string into browser, device, OS, and engine data through the [User-Agent API](https://ipgeolocation.io/documentation/user-agent-api.html). **Paid. 1 credit.**
+Parses one UA string into browser, device, OS, and engine data through the [User Agent API](https://ipgeolocation.io/documentation/user-agent-api.html). **Paid. 1 credit.**
 
 Also classifies bots and crawlers. Note: this parses the `uaString` you pass in. It does not infer a caller UA from the MCP connection itself.
 
