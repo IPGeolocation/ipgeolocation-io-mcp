@@ -254,7 +254,7 @@ All 17 tools, including the zero-credit cached result reader. Paid plans also ad
 | `include=security&fields=security` | 2 |
 | `include=abuse&fields=abuse` | 1 |
 
-For current plan details and pricing, see the [IPGeolocation pricing page](https://ipgeolocation.io/pricing.html).
+For current plan details and pricing, see the [IPGeolocation.io pricing page](https://ipgeolocation.io/pricing.html).
 
 ## Tool Reference
 
@@ -703,7 +703,7 @@ Expiry, eviction, or process restart can make cached data unavailable. `get_cach
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `IPGEOLOCATION_API_KEY` | Yes (most tools) | | Your ipgeolocation.io API key |
+| `IPGEOLOCATION_API_KEY` | Yes (most tools) | | Your IPGeolocation.io API key |
 | `IPGEOLOCATION_REQUEST_TIMEOUT_MS` | No | `15000` | Upstream deadline in ms, including response-body reading. Range: 1000-120000 |
 | `IPGEOLOCATION_MCP_CACHE_TTL_MS` | No | `300000` | Normal-response TTL and page-snapshot idle TTL in ms. Range: 1000-3600000 |
 | `IPGEOLOCATION_MCP_CACHE_MAX_ENTRIES` | No | `500` | Maximum cached responses and page snapshots; not a memory-byte limit. Range: 10-5000 |
@@ -854,13 +854,13 @@ node tests/pagination.stdio.mjs free docker run --rm -i \
 
 ## Pricing
 
-For current plan details, credits, and pricing, see the [IPGeolocation pricing page](https://ipgeolocation.io/pricing.html).
+For current plan details, credits, and pricing, see the [IPGeolocation.io pricing page](https://ipgeolocation.io/pricing.html).
 
 ## Links
 
-- [IPGeolocation Website](https://ipgeolocation.io)
+- [IPGeolocation.io Website](https://ipgeolocation.io)
 - [IPGeolocation API Documentation](https://ipgeolocation.io/documentation.html)
-- [IPGeolocation Pricing](https://ipgeolocation.io/pricing.html)
+- [IPGeolocation.io Pricing](https://ipgeolocation.io/pricing.html)
 - [Create a Free IPGeolocation API Key](https://app.ipgeolocation.io/signup)
 - [Changelog](CHANGELOG.md)
 - [Security Policy](SECURITY.md)
@@ -873,4 +873,4 @@ For current plan details, credits, and pricing, see the [IPGeolocation pricing p
 
 ## Privacy Policy
 
-API lookups send the requested inputs to IPGeolocation.io, which also receives the server machine's public egress IP. The server caches results in process memory. Your MCP client or hosting provider controls its own configuration and log storage. See the [Security Policy](SECURITY.md#lookup-data-and-caching) for retention details and the [IPGeolocation Privacy Policy](https://ipgeolocation.io/privacy.html) for provider handling.
+API lookups send the requested inputs to IPGeolocation.io, which also receives the server machine's public egress IP. The server caches results in process memory. Your MCP client or hosting provider controls its own configuration and log storage. See the [Security Policy](SECURITY.md#lookup-data-and-caching) for retention details and the [IPGeolocation.io Privacy Policy](https://ipgeolocation.io/privacy.html) for provider handling.
