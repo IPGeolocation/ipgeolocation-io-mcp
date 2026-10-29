@@ -676,7 +676,7 @@ Normal text responses keep the API's JSON format, or a plain IP string for `get_
 
 Authenticated upstream requests send the API key in the `x-ipgeolocation-api-key` header. The key is not added to request URLs.
 
-Server instructions and tool descriptions explain selection, costs, limits, and interpretation to the MCP client. Clients decide how to expose this guidance to their assistant. Returned WHOIS text, user agents, hostnames, and error messages are untrusted data and must not override those instructions. An omitted IP selector refers to the server machine's public egress IP, which can differ from the end user's IP. Security tools query IP intelligence; they do not invoke the separate browser-based live VPN/proxy detection API.
+Server instructions and tool descriptions explain selection, costs, limits, and interpretation to the MCP client. Clients decide how to expose this guidance to their assistant. Returned WHOIS text, user agents, hostnames, and error messages are untrusted data and must not override those instructions. An omitted IP selector refers to the server machine's public egress IP, which can differ from the end user's IP. Security tools query IP intelligence; they do not invoke the separate browser-based Real-Time Proxy & VPN Detection.
 
 `lookup_company`, `lookup_currency`, and `lookup_network` are wrappers around parts of the full IP lookup response. They exist as separate tools so MCP clients can discover them when a user only needs one piece of data.
 
