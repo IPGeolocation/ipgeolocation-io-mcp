@@ -232,7 +232,7 @@ ip omitted means the server's public egress IP. IP location is an estimate, not 
           .string()
           .optional()
           .describe(
-            "Response language code (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt). Paid plans only. Free plan returns a 401 error if you pass any value other than en. Defaults to en."
+            "Response language code (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt, ar). Paid plans only. Free plan returns a 401 error if you pass any value other than en. Defaults to en."
           ),
         include: z
           .string()
@@ -320,7 +320,7 @@ The response covers location data or mixed IP data domains for multiple IPs or d
           .string()
           .optional()
           .describe(
-            "Response language code (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt). Defaults to en."
+            "Response language code (en, de, ru, ja, fr, cn, es, cs, it, ko, fa, pt, ar). Defaults to en."
           ),
         include: z
           .string()
