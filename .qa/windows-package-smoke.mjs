@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {readFile,writeFile,mkdir,mkdtemp,access,readdir,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -31,8 +32,17 @@ assert.equal(JSON.parse(await readFile(path.join(installed,'package.json'),'utf8
 async function runtimeFiles(directory,prefix=''){const files=[];for(const entry of await readdir(directory,{withFileTypes:true})){const relative=prefix+entry.name;if(entry.isDirectory())files.push(...await runtimeFiles(path.join(directory,entry.name),relative+'/'));else files.push(relative);}return files.sort();}
 const compiledFiles=await runtimeFiles(path.join(repo,'dist'));
 assert.deepEqual(await runtimeFiles(path.join(installed,'dist')),compiledFiles);
+const preparedDist=path.join(repo,'artifacts','Windows bundle QA','dist');
+assert.deepEqual(await runtimeFiles(preparedDist),compiledFiles);
+const compiledSha256={},normalizedCompiledSha256={},preparedCompiledSha256={};
 for(const relative of compiledFiles){
- assert.deepEqual(await readFile(path.join(installed,'dist',relative)),await readFile(path.join(repo,'dist',relative)),`Fresh package differs: ${relative}`);
+ const sourceBytes=await readFile(path.join(repo,'dist',relative));
+ const preparedBytes=await readFile(path.join(preparedDist,relative));
+ assert.deepEqual(await readFile(path.join(installed,'dist',relative)),sourceBytes,`Fresh package differs: ${relative}`);
+ assert.deepEqual(preparedBytes,sourceBytes,`Prepared bundle differs: ${relative}`);
+ compiledSha256[relative]=createHash('sha256').update(sourceBytes).digest('hex');
+ normalizedCompiledSha256[relative]=createHash('sha256').update(sourceBytes.toString('utf8').replace(/\r\n/g,'\n')).digest('hex');
+ preparedCompiledSha256[relative]=createHash('sha256').update(preparedBytes).digest('hex');
 }
 const fixture=path.join(root,'offline-fetch.mjs');
 await writeFile(fixture,`globalThis.fetch=async(input,init={})=>{const u=new URL(input);if(u.origin!=='https://api.ipgeolocation.io')throw new Error('Unexpected mock destination');console.error('WINDOWS_QA_UPSTREAM_CALL');const row={ip:u.searchParams.get('ip')||'203.0.113.10',company:{name:'Fixture Company'},asn:{as_number:'AS15169'},network:{route:'8.8.8.0/24'},currency:{code:'TST'},country_metadata:{tld:'.test'},security:{is_vpn:false},astronomy:[{date:'2026-01-01'}]};if(u.searchParams.get('ip')==='8.8.4.4')row.large='界😀'.repeat(12000);const body=init.body?JSON.parse(init.body):{};return new Response(JSON.stringify(body.ips?body.ips.map(ip=>({...row,ip})):body.uaStrings?body.uaStrings.map(user_agent_string=>({user_agent_string})):u.pathname==='/v3/user-agent'?{user_agent_string:body.uaString||'Synthetic-UA'}:row));};\n`);
@@ -73,5 +83,5 @@ try{
 assert.equal((keylessStderr.match(/WINDOWS_QA_UPSTREAM_CALL/g)||[]).length,1,'A protected keyless lookup reached the upstream fixture');
 const direct=spawnSync(process.execPath,[path.join(repo,'scripts','prepare-mpak-package.mjs')],{cwd:repo,env:{...process.env,npm_execpath:'',MPAK_STAGING_DIR:'artifacts/Unsupported direct Windows invocation'},encoding:'utf8',windowsHide:true,timeout:30000});
 assert.notEqual(direct.status,0);assert.match(direct.stderr,/On Windows, run npm run prepare:mpak/);
-const report={compiledFilesCompared:compiledFiles.length,platform:process.platform,arch:process.arch,node:process.version,sourceVersion:sourcePackage.version,sourceUnreleased:true,launches:results,unsupportedDirectInvocationHelpful:true,keylessShimChecked:true,providerApiCalls:0,paidApiCalls:0,published:false};
+const report={compiledFilesCompared:compiledFiles.length,compiledSha256,normalizedCompiledSha256,preparedCompiledSha256,archiveSha256:createHash('sha256').update(await readFile(archive)).digest('hex'),platform:process.platform,arch:process.arch,node:process.version,sourceVersion:sourcePackage.version,sourceUnreleased:true,launches:results,unsupportedDirectInvocationHelpful:true,keylessShimChecked:true,providerApiCalls:0,paidApiCalls:0,published:false};
 await writeFile(path.join(output,'native-package-report.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report));
