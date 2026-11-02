@@ -59,7 +59,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run the native Windows suite
         run: |
-          $guard = (Resolve-Path .qa/loopback-only.cjs).Path
+          $guard = (Resolve-Path .qa/loopback-only.cjs).Path.Replace('\', '/')
           $env:NODE_OPTIONS = "--require=`"$guard`""
           $env:IPGEO_QA_NETWORK_BLOCK_LOG = Join-Path $env:GITHUB_WORKSPACE "artifacts/windows-platform/blocked-network.jsonl"
           npm.cmd test 2>&1 | Tee-Object -FilePath artifacts/windows-platform/source-tests.log
