@@ -7,6 +7,22 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 const image = process.env.MCP_DOCKER_IMAGE || "ipgeolocation-io-mcp:security-test";
 
+test("Docker runtime contains no unused package-manager modules or launchers", () => {
+  const remaining = JSON.parse(execFileSync("docker", [
+    "run", "--rm", "--network", "none", "--read-only", "--entrypoint", "node", image,
+    "-p", `(() => {
+      const fs = require('node:fs'), path = require('node:path');
+      const names = ['npm', 'npx', 'corepack', 'yarn', 'yarnpkg', 'pnpm', 'pnpx'];
+      const exists = file => { try { fs.lstatSync(file); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } };
+      const commands = [...new Set(process.env.PATH.split(path.delimiter))].flatMap(directory => names.map(name => path.join(directory, name))).filter(exists);
+      const modules = ['npm', 'corepack'].map(name => '/usr/local/lib/node_modules/' + name).filter(exists);
+      const yarnBundles = fs.readdirSync('/opt').filter(name => name.startsWith('yarn'));
+      return JSON.stringify({ commands, modules, yarnBundles });
+    })()`,
+  ], { encoding: "utf8", timeout: 30000 }));
+  assert.deepEqual(remaining, { commands: [], modules: [], yarnBundles: [] });
+});
+
 test("Docker runtime uses patched Node and preserves the stdio tool contract", async () => {
   const runtime = JSON.parse(execFileSync("docker", [
     "run", "--rm", "--network", "none", "--entrypoint", "node", image,

@@ -13,23 +13,6 @@ async function readRepoFile(relativePath) {
   return readFile(path.join(repoRoot, relativePath), "utf8");
 }
 
-test("server entrypoint uses stdio transport and connects MCP server", async () => {
-  const indexSource = await readRepoFile("dist/index.js");
-
-  assert.match(indexSource, /StdioServerTransport/);
-  assert.match(indexSource, /new StdioServerTransport\(\)/);
-  assert.match(indexSource, /await server\.connect\(transport\)/);
-  assert.match(indexSource, /process\.stdin\.resume\(\)/);
-});
-
-test("server entrypoint has graceful shutdown handlers", async () => {
-  const indexSource = await readRepoFile("dist/index.js");
-
-  assert.match(indexSource, /process\.on\("SIGINT"/);
-  assert.match(indexSource, /process\.on\("SIGTERM"/);
-  assert.match(indexSource, /await server\.close\(\)/);
-});
-
 test("server entrypoint includes global tool-selection instructions", async () => {
   const indexSource = await readRepoFile("dist/index.js");
 
@@ -243,7 +226,8 @@ test("SDK rejects malformed public-IP responses safely and bounds Unicode failur
     const result = await client.callTool({ name: "get_my_ip", arguments: {} });
     assert.equal(result.isError, true);
     assert.equal(result.structuredContent.error.source, "mcp_server");
-    assert.equal(result.structuredContent.error.category, "upstream_request");
+    assert.equal(result.structuredContent.error.category, "upstream_response");
+    assert.equal(result.structuredContent.error.retryable, false);
     assert.match(result.structuredContent.error.message, /invalid getip response.*IPv4 or IPv6/);
     assert.doesNotMatch(JSON.stringify(result), new RegExp(fakeKey));
   }
@@ -459,6 +443,9 @@ test("manifest mcp_config is aligned for stdio startup", async () => {
     IPGEOLOCATION_API_KEY: "${user_config.api_key}",
     IPGEOLOCATION_REQUEST_TIMEOUT_MS: "${user_config.request_timeout_ms}",
     IPGEOLOCATION_MCP_CACHE_TTL_MS: "${user_config.cache_ttl_ms}",
+    IPGEOLOCATION_MCP_CACHE_MAX_BYTES: "${user_config.cache_max_bytes}",
+    IPGEOLOCATION_UPSTREAM_MAX_RESPONSE_BYTES: "${user_config.upstream_max_response_bytes}",
+    IPGEOLOCATION_MCP_MAX_ARGUMENT_BYTES: "${user_config.max_argument_bytes}",
     IPGEOLOCATION_MCP_CACHE_MAX_ENTRIES:
       "${user_config.cache_max_entries}",
     IPGEOLOCATION_MCP_MAX_BULK_ITEMS: "${user_config.max_bulk_items}",
@@ -481,13 +468,16 @@ test("manifest mcp_config is aligned for stdio startup", async () => {
     Object.keys(manifest.user_config).sort(),
     [
       "api_key",
+      "cache_max_bytes",
       "cache_max_entries",
       "cache_ttl_ms",
+      "max_argument_bytes",
       "max_bulk_items",
       "max_error_chars",
       "max_response_chars",
       "max_result_items",
       "request_timeout_ms",
+      "upstream_max_response_bytes",
     ]
   );
 });

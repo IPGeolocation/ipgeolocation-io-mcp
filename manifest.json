@@ -3,7 +3,7 @@
   "name": "ipgeolocation-io-mcp",
   "display_name": "IPGeolocation.io MCP Server",
   "description": "Official MCP server for IP geolocation, security indicators, abuse contacts, ASN, time zones, astronomy, and user-agent parsing.",
-  "long_description": "Use IPGeolocation.io APIs from an MCP client or host that can launch a local stdio command. Provides 16 API tools and a zero-credit cached-result reader; endpoint and module access depends on the API plan. Bulk tools accept 250 inputs by default, set by the lower of the input and result item limits. Oversized successful results use cached JSON pages, preserving nested arrays and individual records. Read pages with the same process and API key before idle expiry or eviction; unavailable cursors fail locally without another API call.",
+  "long_description": "Use IPGeolocation.io APIs from an MCP client or host that can launch a local stdio command. Provides 16 API tools and a zero-credit cached-result reader; endpoint and module access depends on the API plan. Bulk tools accept 250 inputs by default, subject to input and response limits. Results above the tool-response budget use cached JSON pages when the complete snapshot fits the cache byte budget. A snapshot that cannot fit returns a local resource-limit error after the lookup may have used credits. Read pages with the same process and API key before expiry or eviction; unavailable cursors fail locally without another API call.",
   "author": {
     "name": "ipgeolocation.io",
     "email": "support@ipgeolocation.io",
@@ -37,7 +37,10 @@
         "IPGEOLOCATION_MCP_MAX_BULK_ITEMS": "${user_config.max_bulk_items}",
         "IPGEOLOCATION_MCP_MAX_RESULT_ITEMS": "${user_config.max_result_items}",
         "IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS": "${user_config.max_response_chars}",
-        "IPGEOLOCATION_MCP_MAX_ERROR_CHARS": "${user_config.max_error_chars}"
+        "IPGEOLOCATION_MCP_MAX_ERROR_CHARS": "${user_config.max_error_chars}",
+        "IPGEOLOCATION_MCP_CACHE_MAX_BYTES": "${user_config.cache_max_bytes}",
+        "IPGEOLOCATION_UPSTREAM_MAX_RESPONSE_BYTES": "${user_config.upstream_max_response_bytes}",
+        "IPGEOLOCATION_MCP_MAX_ARGUMENT_BYTES": "${user_config.max_argument_bytes}"
       }
     }
   },
@@ -211,7 +214,7 @@
     "cache_max_entries": {
       "type": "number",
       "title": "Maximum cache entries",
-      "description": "Maximum cached responses and page snapshots. This limits entry count, not total bytes or memory.",
+      "description": "Maximum cached responses and page snapshots. The entry ceiling and cache byte budget both apply.",
       "default": 500,
       "min": 10,
       "max": 5000
@@ -235,7 +238,7 @@
     "max_response_chars": {
       "type": "number",
       "title": "Maximum response bytes",
-      "description": "Maximum UTF-8 size of a complete serialized tool result, including text and structured content. Larger successful results use cached pagination without additional API calls; error messages are shortened while retaining status and guidance.",
+      "description": "Maximum UTF-8 bytes of a complete serialized tool result, including text and structured content. Larger successes use cached pages if the complete snapshot fits the cache byte budget; otherwise the call fails locally and may already have used API credits. Error messages are shortened while retaining status and guidance.",
       "default": 200000,
       "min": 10000,
       "max": 2000000
@@ -247,6 +250,30 @@
       "default": 4000,
       "min": 200,
       "max": 50000
+    },
+    "cache_max_bytes": {
+      "type": "number",
+      "title": "Maximum cache bytes",
+      "description": "Maximum accounted bytes for cached values and keys, shared by responses and page snapshots. This is not a process-memory limit. An oversized normal value is not stored but can still serve a fitting result; a snapshot that cannot fit fails locally after the lookup may have used credits.",
+      "default": 33554432,
+      "min": 4194304,
+      "max": 1073741824
+    },
+    "upstream_max_response_bytes": {
+      "type": "number",
+      "title": "Maximum upstream response bytes",
+      "description": "Maximum bytes read from a successful API response after HTTP decompression. Oversized responses fail locally after the API may have used credits. Upstream error bodies have a separate fixed 64 KiB limit.",
+      "default": 8388608,
+      "min": 1048576,
+      "max": 268435456
+    },
+    "max_argument_bytes": {
+      "type": "number",
+      "title": "Maximum tool argument bytes",
+      "description": "Maximum UTF-8 bytes of serialized tool arguments. Oversized arguments fail locally before an API request. The stdio message buffer allows six times this limit plus 128 KiB for the protocol envelope.",
+      "default": 4194304,
+      "min": 65536,
+      "max": 33554432
     }
   },
   "version": "2.0.2"

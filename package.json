@@ -17,7 +17,10 @@
     "SECURITY.md",
     "CONTRIBUTING.md",
     "RELEASING.md",
-    "packaging/mpak/README.md"
+    "packaging/mpak/README.md",
+    "packaging/kiro/README.md",
+    "packaging/kiro/mcp.json",
+    "packaging/kiro/plugin.json"
   ],
   "engines": {
     "node": ">=22.0.0"
@@ -27,8 +30,8 @@
     "prepare:mpak": "node scripts/prepare-mpak-package.mjs",
     "sbom:mpak": "node scripts/generate-mpak-sbom.mjs",
     "test": "npm run test:unit && npm run test:integration && npm run test:redteam && npm run test:fuzz",
-    "test:unit": "npm run build && node --test --test-concurrency=1 tests/client.test.mjs tests/response.test.mjs tests/pagination.test.mjs tests/validation.test.mjs",
-    "test:integration": "npm run build && node --test --test-concurrency=1 tests/tools.integration.test.mjs tests/mcp.protocol.test.mjs tests/reliability.regression.test.mjs",
+    "test:unit": "npm run build && node --test --test-concurrency=1 tests/client.test.mjs tests/response.test.mjs tests/pagination.test.mjs tests/validation.test.mjs tests/cache.hardening.test.mjs",
+    "test:integration": "npm run build && node --test --test-concurrency=1 tests/tools.integration.test.mjs tests/mcp.protocol.test.mjs tests/reliability.regression.test.mjs tests/server.hardening.test.mjs tests/readiness-stdio-boundaries.test.mjs tests/readiness-races.test.mjs tests/cancellation-listeners.test.mjs tests/readiness-regression.test.mjs tests/readiness-security.test.mjs tests/release-assets.test.mjs tests/cache-pagination.hardening.test.mjs tests/redaction.hardening.test.mjs tests/transport.hardening.test.mjs tests/packaging.hardening.test.mjs tests/projection.hardening.test.mjs",
     "test:redteam": "npm run build && node --test --test-concurrency=1 tests/redteam.security.test.mjs",
     "test:fuzz": "npm run build && node --test --test-concurrency=1 tests/fuzz.security.test.js",
     "test:live": "npm run test:live:free && npm run test:live:paid",

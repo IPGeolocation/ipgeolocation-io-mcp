@@ -27,7 +27,7 @@ function buildAstronomyTimeSeriesCacheKey(params: {
 }): string {
   return `astronomy-series|${JSON.stringify([
     params.lat, params.long, params.location, params.ip, params.dateStart,
-    params.dateEnd, params.elevation, params.time_zone, params.lang,
+    params.dateEnd, params.elevation, params.time_zone, params.lang?.trim().toLowerCase() || "en",
   ].map(normalizeValue))}`;
 }
 

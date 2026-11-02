@@ -2,6 +2,21 @@
 
 Changes in development appear under Unreleased. Published release details are available on [GitHub Releases](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases).
 
+## Unreleased
+
+Planned version: 2.0.3.
+
+- Bound serialized arguments, upstream bodies, JSON depth and shared cache storage, with structured local errors and credit-aware retry guidance.
+- Reject blank selectors and invalid dates or coordinate pairs before an API request. Keep cancellation and shared in-flight requests isolated between callers.
+- Keep successful refreshes from leaving older cached views behind when a newer overlapping refresh fails or is cancelled.
+- Preserve received API error statuses when an error body times out, while respecting explicit cancellation.
+- Avoid redaction stack overflows and preserve ordinary company names, user-agent strings and bulk input labels while masking configured credentials and sensitive fields, including encoded echoes.
+- Limit large-response formatting overhead, count cached JSON without another escaping layer, and extend page expiry without serializing the whole snapshot again.
+- Allow six-byte JSON string escapes within the bounded stdio wire buffer and handle closed output pipes without an unhandled error.
+- Recover interrupted mpak uploads from verified retained files and retry announcements from published bundle bytes, without rebuilding, signing or replacing assets.
+- Skip dependency symlinks and junctions while pruning, reject escaped workspace paths in SBOM data, and remove rejected scanner output.
+- Remove unused Corepack launchers and modules from the runtime image.
+
 ## [2.0.2](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.2) - 2026-10-27
 
 - Update Zod to 4.6.7 and the body-parser, fast-uri, ip-address and qs dependency resolutions for security fixes and compatible transitive requirements. Oversized bulk input now fails its collection limit before individual elements are inspected.

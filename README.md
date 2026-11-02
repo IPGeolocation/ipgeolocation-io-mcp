@@ -16,6 +16,8 @@ MCP (Model Context Protocol) connects your client to these tools. Your client or
 
 **This README describes [2.0.2](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.2).** The `npx` commands and Cursor install link below follow npm's `latest` tag, including future major releases. Restart the server to load an update; npm reuses cached package files when the selected version is unchanged. See the [changelog](CHANGELOG.md) for release details.
 
+**Unreleased in this checkout:** the resource limits and cache-refresh hardening described below require a source build until the next release.
+
 | Item | Value |
 |------|-------|
 | Package | `ipgeolocation-io-mcp` |
@@ -225,7 +227,7 @@ Listed costs apply to successful upstream requests. Cache hits and cached-page r
 | `get_astronomy` | 1 | Sunrise, sunset, moonrise, moonset, twilight, moon phase for one date |
 | `get_astronomy_time_series` | 1 | Daily astronomy data for a date range (up to 90 days) |
 
-`lookup_company` also returns basic ASN ownership on free plans, without company details. `lookup_network` returns a local error if the API omits the paid network data. The API documentation describes bulk geolocation as paid-only; live checks with a free-plan key also returned basic bulk results. Plan access is determined upstream, so free bulk support should not be assumed from this observation.
+`lookup_company` also returns basic ASN ownership on free plans, without company details. `lookup_network` returns a local error if the API omits the paid network data. On Free, `include=*` returns only the base IP response and costs 1 credit. Specific paid include values, such as `security`, return 401 on Free. The API documentation describes bulk geolocation as paid-only; live checks with a free-plan key also returned basic bulk results. Plan access is determined upstream, so free bulk support should not be assumed from this observation.
 
 ### Paid Plans
 
@@ -250,7 +252,8 @@ All 17 tools, including the zero-credit cached result reader. Paid plans also ad
 | Base lookup | 1 |
 | `include=security` | 3 |
 | `include=abuse` | 2 |
-| `include=*` | 4 |
+| `include=*` (Paid, unfiltered) | 4 |
+| `include=*` (Free, base only) | 1 |
 | `include=security&fields=security` | 2 |
 | `include=abuse&fields=abuse` | 1 |
 
@@ -274,7 +277,7 @@ Free plan returns base location, country metadata, currency, timezone, and basic
 |-----------|----------|-------------|
 | `ip` | No | IPv4, IPv6, or domain. Domain lookup requires a paid plan. |
 | `lang` | No | Response language. Non-English requires a paid plan. |
-| `include` | No | Extra modules: `security`, `abuse`, `hostname`, `liveHostname`, `hostnameFallbackLive`, `user_agent`, `geo_accuracy`, `dma_code`, or `*` |
+| `include` | No | Extra modules on Paid: `security`, `abuse`, `hostname`, `liveHostname`, `hostnameFallbackLive`, `user_agent`, `geo_accuracy`, `dma_code`, or `*`. On Free, `*` returns base data only. |
 | `fields` | No | Comma-separated fields to return |
 | `excludes` | No | Comma-separated fields to exclude |
 | `force_refresh` | No | Skip the cache and hit the API directly |
@@ -289,7 +292,9 @@ Fields enable the optional modules they need. These modules require a paid plan:
 | `location.accuracy_radius`, `location.confidence`, or `location.locality` | `geo_accuracy` |
 | `location.dma_code` | `dma_code` |
 
-Accuracy and DMA values appear inside `location`. An explicit include keeps its module present even if `fields` omits it. You can exclude nested fields, but a root named by `fields` or an explicit include stays present. `include=*` follows field selection and exclusions without protecting those roots. Cached results follow the same rules as fresh responses.
+Accuracy and DMA values appear inside `location`. An explicit include keeps its module present even if `fields` omits it. Selecting children of an included module keeps only those children. A recognized include protects its response root from a whole-root exclusion: `security` protects `security`, while `geo_accuracy` and `dma_code` protect `location`. A root named only by `fields` can still be excluded. Nested exclusions apply; removing the last selected child also removes its empty parent. `include=*` follows field selection and exclusions without protecting roots. Cached results follow the same rules as fresh responses.
+
+The `user_agent` include parses this server's outbound User-Agent header, normally `node`. It cannot identify a browser or device from the target IP. To parse a known visitor's user agent, pass the exact string to `parse_user_agent` or `bulk_parse_user_agent`.
 
 ### bulk_lookup_ip
 
@@ -629,7 +634,10 @@ Tool failures return `isError: true`, readable text, and `structuredContent.erro
 | Registered-schema rejection: wrong field type, missing required field, unknown parameter, or oversized batch | `source: "mcp_server"`, `category: "validation"`, `retryable: false`; rejected before an API call |
 | Handler validation (such as dates or coordinate pairs), missing API key, or unavailable cached result | `source: "mcp_server"`, `category: "tool_error"`, `retryable: false`; no HTTP status is invented |
 | Local request timeout | `source: "mcp_server"`, `category: "timeout"`, local `status: 504`, `retryable: true` |
-| Connection failure, invalid JSON, or invalid `get_my_ip` provider payload | `source: "mcp_server"`, `category: "upstream_request"`, local `status: 502`, `retryable: true` |
+| Connection failure | `source: "mcp_server"`, `category: "upstream_request"`, local `status: 502`; follow the returned retry guidance |
+| Invalid upstream JSON, UTF-8, payload shape, or nesting above 64 levels | `source: "mcp_server"`, `category: "upstream_response"`, local `status: 502`, `retryable: false`; the API may already have processed the request |
+| Tool arguments, upstream success body, or required pagination snapshot exceeds a resource limit | Local `resource_limit`, `retryable: false`; argument rejection precedes the API request, while body/snapshot rejection can happen after credits were used |
+| Cancelled lookup | Local `cancelled`, `retryable: false`; the API may already have processed the request, so a new attempt can use credits |
 | API returned an HTTP redirect | `source: "mcp_server"`, `category: "redirect_blocked"`, local `status: 502`, `retryable: false`; investigate the redirect or contact support |
 
 Input validation uses the registered Zod schemas and the same structured error envelope as execution failures. Unknown tools and malformed MCP requests produce protocol errors. Retry guidance does not guarantee that a retry will succeed or be free: a local timeout can happen after the API processed a paid request. HTTP 429 is a credit/subscription limit, so immediate automatic retries are disabled; retry after credits become available.
@@ -689,11 +697,11 @@ The server stores cached responses in process memory and shares identical reques
 | Normal tool response | 5 minutes after storage | No |
 | Complete pagination snapshot | 5 minutes of idle time | Yes, after each successful `get_cached_result` read |
 
-Both use `IPGEOLOCATION_MCP_CACHE_TTL_MS` (`300000` ms by default). The cache holds up to 500 entries by default, shared by normal responses and page snapshots. This limits entry count, not total bytes or memory. A complete snapshot can be much larger than an individual page.
+Both use `IPGEOLOCATION_MCP_CACHE_TTL_MS` (`300000` ms by default). The default cache holds up to 500 entries within a 32 MiB data budget. Larger results may not fit. A lookup can use API credits even when its result cannot be cached. The cache budget does not cap the server's total memory use.
 
 Expiry, eviction, or process restart can make cached data unavailable. `get_cached_result` then fails locally without refetching. Repeating the original lookup after a cache miss can consume credits again.
 
-`force_refresh: true` starts a new upstream request, even if an identical request is running. Older requests cannot overwrite its cached result.
+`force_refresh: true` starts a new upstream request, even if an identical request is running. A successful unified IP refresh invalidates its related cached projections. Older requests cannot overwrite the refreshed data.
 
 **Cached:** `lookup_ip`, `bulk_lookup_ip`, `check_security`, `bulk_security_check`, `lookup_company`, `lookup_currency`, `lookup_network`, `parse_user_agent`, `bulk_parse_user_agent`, `lookup_asn`, `get_abuse_contact`, `get_astronomy_time_series`
 
@@ -706,21 +714,26 @@ Expiry, eviction, or process restart can make cached data unavailable. `get_cach
 | `IPGEOLOCATION_API_KEY` | Yes (most tools) | | Your IPGeolocation.io API key |
 | `IPGEOLOCATION_REQUEST_TIMEOUT_MS` | No | `15000` | Upstream deadline in ms, including response-body reading. Range: 1000-120000 |
 | `IPGEOLOCATION_MCP_CACHE_TTL_MS` | No | `300000` | Normal-response TTL and page-snapshot idle TTL in ms. Range: 1000-3600000 |
-| `IPGEOLOCATION_MCP_CACHE_MAX_ENTRIES` | No | `500` | Maximum cached responses and page snapshots; not a memory-byte limit. Range: 10-5000 |
+| `IPGEOLOCATION_MCP_CACHE_MAX_ENTRIES` | No | `500` | Maximum cached responses and page snapshots; also subject to the cache byte budget. Range: 10-5000 |
+| `IPGEOLOCATION_MCP_CACHE_MAX_BYTES` | No | `33554432` (32 MiB) | Accounted cache-data budget shared by responses and snapshots; not a process-memory limit. Range: 4194304-1073741824 (4 MiB-1 GiB) |
+| `IPGEOLOCATION_UPSTREAM_MAX_RESPONSE_BYTES` | No | `8388608` (8 MiB) | Maximum successful upstream body bytes after HTTP decompression. Range: 1048576-268435456 (1-256 MiB) |
+| `IPGEOLOCATION_MCP_MAX_ARGUMENT_BYTES` | No | `4194304` (4 MiB) | Maximum UTF-8 bytes of serialized tool arguments before an API request. Range: 65536-33554432 (64 KiB-32 MiB) |
 | `IPGEOLOCATION_MCP_MAX_BULK_ITEMS` | No | `1000` | Bulk input ceiling, also capped by `IPGEOLOCATION_MCP_MAX_RESULT_ITEMS`. Max: 50000 |
 | `IPGEOLOCATION_MCP_MAX_RESULT_ITEMS` | No | `250` | Bulk input/result item ceiling; nested arrays remain complete. Max: 50000 |
-| `IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS` | No | `200000` | Maximum UTF-8 bytes of a complete serialized tool result, including text and structured content. Oversized successes use cached pages; oversized errors shorten messages. Range: 10000-2000000 |
+| `IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS` | No | `200000` | Maximum UTF-8 bytes of a complete serialized tool result, including text and structured content. Oversized successes use cached pages when the full snapshot fits; oversized errors shorten messages. Range: 10000-2000000 |
 | `IPGEOLOCATION_MCP_MAX_ERROR_CHARS` | No | `4000` | Upper limit on error-message characters before truncation markers. The complete response byte budget can shorten messages further. Range: 200-50000 |
 
 Bulk batches above the effective item limit are rejected before an upstream request, without using API credits. Raising only `IPGEOLOCATION_MCP_MAX_BULK_ITEMS` does not raise the effective limit; raise both item settings if larger batches are needed.
 
-The response limit includes both text and structured content, JSON escaping, and UTF-8 encoding. Successful results retain every record and nested array through cached pages when needed. Oversized errors shorten only their messages, preserving their category, retryability, guidance, and any status.
+The response limit includes both text and structured content, JSON escaping, and UTF-8 encoding. Results retain every record and nested array through cached pages when the full snapshot fits the cache budget; an unavailable snapshot returns a local error instead of partial data. Oversized errors shorten only their messages, preserving their category, retryability, guidance, and any status.
+
+Input and response limits protect against unusually large requests and results. See [resource limits](CONTRIBUTING.md#resource-limits) for the technical details.
 
 ## Cached Result Pagination
 
 `get_cached_result` costs **0 credits** and never calls the API, including when its cursor is invalid, expired, evicted, or unavailable after a server restart. It accepts one required `cursor`, returned in `page.cursor` or `page.next_cursor`. Use the same server process and API key.
 
-A large original lookup returns `{ "page": ... }` instead of its normal `data` or `items`/`errors`. Each page contains:
+A large original lookup returns `{ "page": ... }` instead of its normal `data` or `items`/`errors` when the complete snapshot fits the cache budget. If it cannot fit, the tool returns a local `resource_limit` error without a cursor; the lookup may already have used credits. Each available page contains:
 
 | Field | Meaning |
 |-------|---------|
@@ -849,6 +862,8 @@ node tests/pagination.stdio.mjs free docker run --rm -i \
 **Redirect blocked:** The server received an unexpected HTTP redirect and stopped before forwarding credentials or request data. Do not retry automatically. Investigate the API endpoint or contact support with the sanitized error.
 
 **Cached result unavailable:** The cursor belongs to another key or process, or the snapshot expired or was evicted. The failed page read made no API call. A new lookup can consume credits.
+
+**Resource limit:** Check the error's guidance before trying again. The server rejects oversized tool arguments before making an API request. A response can exceed a limit after the API has used credits. Another lookup can use more credits. Reducing displayed fields does not always reduce the API response size. If you received a page cursor, use `get_cached_result` to read the remaining data without another API request. Raise limits only when the server has enough memory.
 
 **Client asks for an MCP URL:** This package supplies a local `stdio` command. Use a client or host that can launch it; a remote-only connector needs a hosted MCP endpoint.
 

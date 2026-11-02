@@ -1,0 +1,87 @@
+name: Windows package QA
+
+on:
+  push:
+    branches:
+      - 'qa/windows-readiness-20261103-final'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-package-qa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.23.4', '24.22.2', '26.13.0']
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      IPGEOLOCATION_API_KEY: ''
+      NPM_CONFIG_FUND: 'false'
+      NPM_CONFIG_AUDIT: 'false'
+      NODE_USE_ENV_PROXY: '0'
+      NO_PROXY: 'api.ipgeolocation.io,127.0.0.1,localhost,::1'
+    steps:
+      - name: Keep the source checkout byte stable
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Prepare isolated test settings
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:NPM_CONFIG_USERCONFIG = Join-Path $env:RUNNER_TEMP 'empty.npmrc'
+          $env:NPM_CONFIG_CACHE = Join-Path $env:RUNNER_TEMP 'npm-cache'
+          Add-Content -Path $env:GITHUB_ENV -Value "NPM_CONFIG_USERCONFIG=$env:NPM_CONFIG_USERCONFIG"
+          Add-Content -Path $env:GITHUB_ENV -Value "NPM_CONFIG_CACHE=$env:NPM_CONFIG_CACHE"
+          New-Item -ItemType File -Path $env:NPM_CONFIG_USERCONFIG -Force | Out-Null
+          Add-Content -Path "$env:SystemRoot\System32\drivers\etc\hosts" -Value "`n127.0.0.1 api.ipgeolocation.io`n::1 api.ipgeolocation.io"
+          node --version
+          npm.cmd --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Path artifacts/windows-platform -Force | Out-Null
+      - name: Verify the approved source snapshot
+        run: node .qa/verify-source.mjs
+      - name: Install exact source dependencies
+        run: |
+          npm.cmd ci --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run the native Windows suite
+        run: |
+          $guard = (Resolve-Path .qa/loopback-only.cjs).Path
+          $env:NODE_OPTIONS = "--require=`"$guard`""
+          $env:IPGEO_QA_NETWORK_BLOCK_LOG = Join-Path $env:GITHUB_WORKSPACE "artifacts/windows-platform/blocked-network.jsonl"
+          npm.cmd test 2>&1 | Tee-Object -FilePath artifacts/windows-platform/source-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare the native bundle staging package
+        env:
+          MPAK_STAGING_DIR: artifacts/Windows bundle QA
+        run: |
+          npm.cmd run prepare:mpak 2>&1 | Tee-Object -FilePath artifacts/windows-platform/bundle-staging.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check fresh archive and native launchers
+        run: |
+          node .qa/windows-package-smoke.mjs 2>&1 | Tee-Object -FilePath artifacts/windows-platform/package-smoke.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify source preservation
+        if: always()
+        run: node .qa/verify-source.mjs
+      - name: Retain test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows-package-qa-node-${{ matrix.node }}
+          path: artifacts/windows-platform/
+          if-no-files-found: error
+          retention-days: 3

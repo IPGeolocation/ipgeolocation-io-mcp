@@ -1,11 +1,12 @@
 import {
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   rmSync,
   readdirSync,
-  statSync,
+  realpathSync,
   writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -94,10 +95,13 @@ function buildStagingServer(rootServerMetadata, rootManifest, version, bundleNam
 }
 
 function installBundledDependencies(outputDir) {
-  const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
+  const npmCli = process.env.npm_execpath;
+  if (process.platform === "win32" && !npmCli) {
+    throw new Error("On Windows, run npm run prepare:mpak so npm_execpath identifies the npm JavaScript CLI.");
+  }
   const result = spawnSync(
-    npmBin,
-    ["ci", "--omit=dev", "--ignore-scripts"],
+    npmCli ? process.execPath : "npm",
+    [...(npmCli ? [npmCli] : []), "ci", "--omit=dev", "--ignore-scripts"],
     {
       cwd: outputDir,
       encoding: "utf8",
@@ -106,7 +110,7 @@ function installBundledDependencies(outputDir) {
 
   if (result.status !== 0) {
     throw new Error(
-      `npm ci failed while preparing the mpak package.\n${result.stderr || result.stdout}`,
+      `npm ci failed while preparing the mpak package.\n${result.error?.message || result.stderr || result.stdout}`,
     );
   }
 }
@@ -124,14 +128,15 @@ function pruneBundledDependencyNoise(outputDir) {
   ]);
   const ignoredFilePattern = /^(readme|changelog|history)/i;
 
-  if (!existsSync(nodeModulesDir)) {
+  if (!existsSync(nodeModulesDir) || lstatSync(nodeModulesDir).isSymbolicLink()) {
     return;
   }
 
   function walk(currentPath) {
     for (const entry of readdirSync(currentPath)) {
       const entryPath = path.join(currentPath, entry);
-      const entryStats = statSync(entryPath);
+      const entryStats = lstatSync(entryPath);
+      if (entryStats.isSymbolicLink()) continue;
 
       if (entryStats.isDirectory()) {
         if (ignoredDirectoryNames.has(entry)) {
@@ -159,22 +164,33 @@ const rootServerMetadata = readJson(path.join(sourceDir, "server.json"));
 const mpakConfig = readJson(path.join(packagingDir, "config.json"));
 const version = rootPackage.version;
 
-if (
-  sourceDir !== repoRoot &&
-  sourceDir !== workspaceRoot &&
-  !sourceDir.startsWith(`${repoRoot}${path.sep}`) &&
-  !sourceDir.startsWith(`${workspaceRoot}${path.sep}`)
-) {
+const physicalSource = realpathSync(sourceDir);
+const physicalRepo = realpathSync(repoRoot);
+const physicalWorkspace = realpathSync(workspaceRoot);
+if (![physicalRepo, physicalWorkspace].some(parent => path.relative(parent, physicalSource) === "" || isChild(parent, physicalSource))) {
   throw new Error(
     "MPAK_SOURCE_DIR must stay within the repository or the GitHub Actions workspace.",
   );
 }
 
-if (
-  outputDir !== artifactsRoot &&
-  !outputDir.startsWith(`${artifactsRoot}${path.sep}`)
-) {
-  throw new Error("MPAK_STAGING_DIR must stay within the repository artifacts/ directory.");
+function isChild(parent, target) {
+  const relative = path.relative(parent, target);
+  return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+function physicalPath(target) {
+  if (existsSync(target)) return realpathSync(target);
+  return path.join(physicalPath(path.dirname(target)), path.basename(target));
+}
+
+if (!isChild(artifactsRoot, outputDir)) throw new Error("MPAK_STAGING_DIR must be a child of the repository artifacts/ directory.");
+const physicalOutput = physicalPath(outputDir);
+const physicalArtifacts = path.join(physicalRepo, "artifacts");
+if (!isChild(physicalArtifacts, physicalOutput)) {
+  throw new Error("MPAK_STAGING_DIR must be a child of the repository artifacts/ directory without escaping through a symlink.");
+}
+if (path.relative(physicalOutput, physicalSource) === "" || isChild(physicalOutput, physicalSource)) {
+  throw new Error("MPAK_STAGING_DIR must not contain MPAK_SOURCE_DIR.");
 }
 
 if (!existsSync(distDir)) {
@@ -202,7 +218,7 @@ if (existsSync(licensePath)) {
   cpSync(licensePath, path.join(outputDir, "LICENSE"));
 }
 
-for (const name of ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md"]) {
+for (const name of ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md", "packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json"]) {
   const destination = path.join(outputDir, name);
   mkdirSync(path.dirname(destination), { recursive: true });
   cpSync(path.join(sourceDir, name), destination);

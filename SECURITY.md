@@ -7,7 +7,7 @@
 | 2.x | Fixes ship in new 2.x releases; upgrade to the latest published patch. |
 | < 2.0 | Unsupported. |
 
-Version **2.0.2** includes the strict argument validation, redirect blocking, and cached pagination introduced in 2.0.1, with updated dependencies. The design below describes this version. See the [changelog](CHANGELOG.md) and [published releases](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases) for version-specific changes.
+Version **2.0.2** includes the strict argument validation, redirect blocking, and cached pagination introduced in 2.0.1, with updated dependencies. The design below also covers unreleased resource limits and cache-refresh hardening in this checkout; use the matching release tag for published-version behavior. See the [changelog](CHANGELOG.md) and [published releases](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases) for version-specific changes.
 
 Keep your Node.js runtime on a supported release with current security updates. The minimum Node.js version describes compatibility; it does not make older patch releases safe to use.
 
@@ -30,7 +30,9 @@ We triage reports and coordinate fixes and disclosure with the reporter. Respons
 ### API Key Handling
 
 - The server reads `IPGEOLOCATION_API_KEY` from its environment or accepts an API key through per-session runtime configuration.
-- The server keeps the key in process memory and does not write it to disk. It redacts the configured key and recognized secret formats from tool responses and tool errors.
+- The server keeps the key in process memory and does not write it to disk. It masks explicit credential fields and configured-key matches while preserving ordinary names and user-agent strings. Error diagnostics also mask recognized credential patterns.
+- Configured-key matching supports literal text, mixed JSON escapes, `encodeURI`/`encodeURIComponent` output, form encoding, fully percent-encoded text, and one additional `encodeURIComponent` layer over URI/form/percent forms. Matching preserves the key's letter case; it does not guess uppercasing or other transformations.
+- Keys shorter than four Unicode characters use token boundaries in ordinary text. Unlabeled numbers are masked only when their complete string representation matches a key of at least four characters. Labeled credential fields are always masked in full.
 - Authenticated API calls send the key to `https://api.ipgeolocation.io` over HTTPS in the `x-ipgeolocation-api-key` header, rather than a request URL. HTTP redirects are blocked before credentials or request bodies can be forwarded.
 - Your MCP client or hosting provider may store configuration and logs separately. Protect those settings and keep credentials out of committed project files, public issues, screenshots, and command histories.
 
@@ -42,13 +44,13 @@ Normal cached responses and complete pagination snapshots stay in process memory
 
 Normal responses expire five minutes after storage by default. Successful cached-page reads extend that snapshot's idle expiry by five minutes. Expired entries are removed during later cache operations; expiry is not a secure memory-erasure guarantee. Eviction or process exit can also remove results.
 
-The default cache limit is 500 entries shared by responses and snapshots. It limits entry count, not total memory. The response limit bounds complete serialized tool results: oversized successes use cached pages, while oversized errors shorten messages and retain their category, retryability, guidance, and any status. Complete snapshots and upstream response bodies can be larger.
+The cache enforces entry and byte limits shared by responses and pagination snapshots. Input and response limits also reduce the risk of resource exhaustion. These limits do not cap total process memory; JSON parsing and concurrent requests require additional memory. See [resource limits](CONTRIBUTING.md#resource-limits) for the calculations.
 
 Cached-result cursors contain random identifiers and use the same API-key namespace. Complete output is redacted before fragmentation. Page reads never call the API, including on invalid, expired, or unavailable cursors. See [pagination](README.md#cached-result-pagination) for retrieval and expiry behavior.
 
 ### Tool Inputs and Returned Text
 
-Registered schemas reject unknown arguments, wrong field types, missing required fields, and oversized batches before an API call. Tool handlers also validate dates and coordinate pairs. The API validates other values, including lookup targets and plan access. Malformed MCP requests can instead fail at the protocol layer. Valid lookup calls can consume API credits even though the tools only read API data.
+Registered schemas reject unknown arguments, wrong field types, missing required fields, and oversized batches before an API call. The server also checks argument size and validates dates and coordinate pairs. It closes the connection if incoming stdio data exceeds the wire-buffer cap. The API validates other values, including lookup targets and plan access. Malformed MCP requests can instead fail at the protocol layer. Valid lookup calls can consume API credits even though the tools only read API data.
 
 Treat returned WHOIS, hostnames, user agents, contact text, and error messages as untrusted data. These values must not override the client's instructions or authorize another action. IP security indicators provide evidence for a user's policy; they do not establish that traffic is harmless or malicious.
 
@@ -56,6 +58,8 @@ Treat returned WHOIS, hostnames, user agents, contact text, and error messages a
 
 - The server's lookup requests target `https://api.ipgeolocation.io`. Redirect responses produce a non-retryable local `redirect_blocked` error.
 - The configurable request deadline covers headers and body reading; its default is 15 seconds. A timeout can occur after a paid request was processed, so retrying can consume credits again.
+- Successful upstream bodies are limited to 8 MiB by default after HTTP decompression. Bodies above the configured limit fail locally and can already have used credits. Error bodies have a fixed 64 KiB diagnostic limit; oversized diagnostics are omitted while the received HTTP status is preserved.
+- Upstream JSON must have the expected object/bulk shape and nesting depth of at most 64 before recursive formatting, redaction, and caching. The depth guard applies to upstream JSON; tool arguments use their byte limit and registered schemas.
 - The server communicates over stdio and creates no inbound network listener.
 
 ### Permissions
@@ -75,7 +79,10 @@ These declarations in `manifest.json` describe the server's runtime behavior; th
 | `IPGEOLOCATION_API_KEY` | API authentication | Yes |
 | `IPGEOLOCATION_REQUEST_TIMEOUT_MS` | Request timeout (1,000-120,000 ms) | No |
 | `IPGEOLOCATION_MCP_CACHE_TTL_MS` | Normal-response TTL and page idle TTL (1,000-3,600,000 ms) | No |
-| `IPGEOLOCATION_MCP_CACHE_MAX_ENTRIES` | Cached response and snapshot entry limit (10-5,000); not a memory-byte limit | No |
+| `IPGEOLOCATION_MCP_CACHE_MAX_ENTRIES` | Cached response and snapshot entry limit (10-5,000), also subject to the cache byte budget | No |
+| `IPGEOLOCATION_MCP_CACHE_MAX_BYTES` | Accounted cache-data budget: default 33,554,432 bytes (32 MiB), range 4,194,304-1,073,741,824 (4 MiB-1 GiB); not a process-memory limit | No |
+| `IPGEOLOCATION_UPSTREAM_MAX_RESPONSE_BYTES` | Successful upstream body limit: default 8,388,608 bytes (8 MiB), range 1,048,576-268,435,456 (1-256 MiB) | No |
+| `IPGEOLOCATION_MCP_MAX_ARGUMENT_BYTES` | Serialized argument limit: default 4,194,304 bytes (4 MiB), range 65,536-33,554,432 (64 KiB-32 MiB) | No |
 | `IPGEOLOCATION_MCP_MAX_BULK_ITEMS` | Bulk input ceiling (1-50,000), also capped by `IPGEOLOCATION_MCP_MAX_RESULT_ITEMS` | No |
 | `IPGEOLOCATION_MCP_MAX_RESULT_ITEMS` | Bulk input/result item ceiling (1-50,000); nested arrays remain complete through cached pagination | No |
 | `IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS` | Complete tool-result budget in UTF-8 bytes (10,000-2,000,000), including text and structured content for successes and errors | No |
@@ -94,6 +101,6 @@ The repository uses a lockfile and `overrides` for transitive dependencies. npm 
 
 ### Release Integrity
 
-Bundles published through the repository's **mpak Release** workflow include a CycloneDX SBOM, Sigstore keyless signature, and GitHub build-provenance attestation. The workflow verifies signature and provenance before uploading release assets. Locally built bundles do not receive those attestations automatically.
+Bundles published through the repository's **mpak Release** workflow include a CycloneDX SBOM, Sigstore keyless signature, and GitHub build-provenance attestation. The workflow verifies signature and provenance before uploading release assets, checks all target asset names before uploading, and refuses to replace existing assets. Locally built bundles do not receive those attestations automatically.
 
 Follow the [bundle verification commands](packaging/mpak/README.md#verify-a-published-bundle) and [release checklist](RELEASING.md). A signature identifies the workflow that produced an artifact; review its source, dependency audits, and scan results for the matching version as well.

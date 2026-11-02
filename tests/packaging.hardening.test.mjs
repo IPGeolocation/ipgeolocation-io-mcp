@@ -1,0 +1,560 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { spawnSync } from "node:child_process";
+
+const repo = fileURLToPath(new URL("../", import.meta.url));
+const bundleName = "@ipgeolocation/ipgeolocation-io-mcp";
+const version = "2.0.2";
+const filename = `ipgeolocation-ipgeolocation-io-mcp-${version}.mcpb`;
+const tag = `v${version}`;
+const sourceDigest = "a".repeat(40);
+const onReleasePlatform = (name, handler) => test(name, {
+  skip: process.platform === "win32" ? "The release job uses POSIX tools on Linux." : false,
+}, handler);
+
+async function fixture(t) {
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), "packaging-hardening-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const repository = path.join(root, "repository with spaces %20");
+  await mkdir(path.join(repository, "scripts"), { recursive: true });
+  await mkdir(path.join(repository, "packaging/mpak"), { recursive: true });
+  for (const file of ["prepare-mpak-package.mjs", "generate-mpak-sbom.mjs", "upload-mpak-release-assets.mjs", "prepare-mpak-announcement.mjs", "finalize-mpak-bundle.mjs"]) {
+    await cp(path.join(repo, "scripts", file), path.join(repository, "scripts", file));
+  }
+  const metadata = {
+    "package.json": { name: "fixture", version, type: "module", license: "MIT", dependencies: {} },
+    "package-lock.json": { name: "fixture", version, lockfileVersion: 3, packages: { "": { name: "fixture", version, dependencies: {} } } },
+    "manifest.json": { name: bundleName, version },
+    "server.json": { name: bundleName, version },
+    "packaging/mpak/config.json": { bundleName },
+  };
+  for (const [name, value] of Object.entries(metadata)) await writeFile(path.join(repository, name), JSON.stringify(value));
+  for (const name of ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "LICENSE", "packaging/mpak/README.md", "packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json"]) {
+    await mkdir(path.dirname(path.join(repository, name)), { recursive: true });
+    await writeFile(path.join(repository, name), `Fixture ${name}\n`);
+  }
+  await mkdir(path.join(repository, "dist"));
+  await writeFile(path.join(repository, "dist/cli.js"), "// Fixture runtime\n");
+  const staging = path.join(repository, "artifacts/package with spaces");
+  await mkdir(staging, { recursive: true });
+  await writeFile(path.join(staging, "manifest.json"), JSON.stringify({ name: bundleName, version }));
+  const childEnv = { ...process.env };
+  for (const name of Object.keys(childEnv)) if (/IPGEOLOCATION|TOKEN|SECRET|API_KEY/i.test(name)) delete childEnv[name];
+  return {
+    root, repository, staging, env: childEnv,
+    run: (script, args = [], env = {}) => spawnSync(process.execPath, [path.join(repository, "scripts", script), ...args], {
+      cwd: repository, env: { ...childEnv, ...env }, encoding: "utf8", timeout: 30000,
+    }),
+  };
+}
+
+for (const rootLink of [false, true]) {
+  test(`dependency pruning preserves outside data through ${rootLink ? "a node_modules junction" : "nested symlinks or junctions"}`, async t => {
+    const f = await fixture(t);
+    const outside = path.join(f.root, "outside-staging");
+    await mkdir(path.join(outside, "docs"), { recursive: true });
+    await writeFile(path.join(outside, "docs/sentinel.txt"), "protected outside documentation");
+    await writeFile(path.join(outside, "README.md"), "protected outside README");
+    const npmCli = path.join(f.root, "npm fixture.mjs");
+    await writeFile(npmCli, `import {mkdir,writeFile,symlink} from 'node:fs/promises'; import path from 'node:path';
+const modules=path.join(process.cwd(),'node_modules'), outside=process.env.FIXTURE_OUTSIDE, kind=process.platform==='win32'?'junction':'dir';
+if(process.env.FIXTURE_ROOT_LINK==='1') await symlink(outside,modules,kind);
+else {const pkg=path.join(modules,'fixture');await mkdir(path.join(pkg,'docs'),{recursive:true});await writeFile(path.join(pkg,'docs/remove.txt'),'remove');await writeFile(path.join(pkg,'README.md'),'remove');await writeFile(path.join(pkg,'LICENSE'),'keep license');await writeFile(path.join(pkg,'index.js'),'keep runtime');await symlink(outside,path.join(pkg,'linked'),kind);}
+`);
+    const result = f.run("prepare-mpak-package.mjs", [], {
+      npm_execpath: npmCli, MPAK_STAGING_DIR: f.staging,
+      FIXTURE_OUTSIDE: outside, FIXTURE_ROOT_LINK: rootLink ? "1" : "0",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(await readFile(path.join(outside, "docs/sentinel.txt"), "utf8"), "protected outside documentation");
+    assert.equal(await readFile(path.join(outside, "README.md"), "utf8"), "protected outside README");
+    const modules = path.join(f.staging, "node_modules");
+    assert.equal((await lstat(rootLink ? modules : path.join(modules, "fixture/linked"))).isSymbolicLink(), true);
+    if (!rootLink) {
+      assert.equal(await readFile(path.join(modules, "fixture/LICENSE"), "utf8"), "keep license");
+      assert.equal(await readFile(path.join(modules, "fixture/index.js"), "utf8"), "keep runtime");
+      await assert.rejects(readFile(path.join(modules, "fixture/docs/remove.txt")), { code: "ENOENT" });
+      await assert.rejects(readFile(path.join(modules, "fixture/README.md")), { code: "ENOENT" });
+    }
+  });
+}
+
+async function sbomFixture(t, mode) {
+  const f = await fixture(t);
+  const preload = path.join(f.root, "syft fixture.mjs");
+  await writeFile(preload, `import fs from 'node:fs';import path from 'node:path';import {pathToFileURL} from 'node:url';
+if(process.argv.includes('--source-name')&&process.argv.includes('--output')){
+ const output=process.argv[process.argv.indexOf('--output')+1].slice('cyclonedx-json='.length),mode=process.env.FIXTURE_SYFT_MODE,root=process.env.FIXTURE_REPOSITORY;
+ const sbom={bomFormat:'CycloneDX',specVersion:'1.6',components:[{type:'library',name:'fixture',version:'1',purl:'pkg:npm/fixture@1'}],metadata:{note:'node_modules/fixture/index.js'}};
+ if(mode==='backslash')sbom.metadata.note=root.replaceAll('/','\\\\');
+ if(mode==='forward')sbom.metadata.note=root.replaceAll('\\\\','/');
+ if(mode==='file-url')sbom.metadata.note=pathToFileURL(root).href;
+ if(mode==='key')sbom.metadata[root]='private key name';
+ if(mode==='dot-exit')sbom.metadata.note=root+path.sep+'..'+path.sep+'outside';
+ if(mode==='dot-enter')sbom.metadata.note=path.dirname(root)+path.sep+'intermediate'+path.sep+'..'+path.sep+path.basename(root);
+ if(mode==='case')sbom.metadata.note=root.toUpperCase();
+ if(mode==='shape')sbom.bomFormat='invalid';
+ if(mode==='version')sbom.specVersion='2.0';
+ if(mode==='empty')sbom.components=[];
+ if(mode==='purl')delete sbom.components[0].purl;
+ fs.writeFileSync(output,mode==='bad-json'?'{"private":':JSON.stringify(sbom));
+ process.exit(mode==='scanner-failure'?11:0);
+}
+`);
+  await writeFile(path.join(f.staging, "sbom.cdx.json"), "old SBOM must not survive a failed scan");
+  return {
+    ...f,
+    generate: () => f.run("generate-mpak-sbom.mjs", [f.staging], {
+      SYFT_BIN: process.execPath, NODE_OPTIONS: `--import=${pathToFileURL(preload).href}`,
+      FIXTURE_SYFT_MODE: mode, FIXTURE_REPOSITORY: f.repository,
+    }),
+  };
+}
+
+test("validated SBOM output is retained without leaving raw scanner files", async t => {
+  const f = await sbomFixture(t, "valid");
+  const result = f.generate();
+  assert.equal(result.status, 0, result.stderr);
+  const sbom = JSON.parse(await readFile(path.join(f.staging, "sbom.cdx.json"), "utf8"));
+  assert.equal(sbom.metadata.component.name, bundleName);
+  assert.equal(sbom.specVersion, "1.6");
+  assert.deepEqual((await readdir(f.staging)).filter(name => name.startsWith(".sbom-")), []);
+});
+
+for (const mode of ["backslash", "forward", "file-url", "key", "dot-exit", "dot-enter", "scanner-failure", "bad-json", "shape", "version", "empty", "purl", ...(process.platform === "win32" ? ["case"] : [])]) {
+  test(`rejected SBOM ${mode} leaves no final or raw scanner artifact`, async t => {
+    const f = await sbomFixture(t, mode);
+    const result = f.generate();
+    assert.notEqual(result.status, 0);
+    if (["backslash", "forward", "file-url", "key", "dot-exit", "dot-enter", "case"].includes(mode)) assert.match(result.stderr, /absolute workspace path/);
+    await assert.rejects(readFile(path.join(f.staging, "sbom.cdx.json")), { code: "ENOENT" });
+    assert.deepEqual((await readdir(f.staging)).filter(name => name.startsWith(".sbom-")), []);
+  });
+}
+
+function fixtureArchive(entries) {
+  const files = [], directory = [];
+  let offset = 0;
+  for (const [filename, content] of Object.entries(entries)) {
+    const name = Buffer.from(filename), data = Buffer.from(content);
+    let crc = 0xffffffff;
+    for (const byte of data) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    }
+    crc = (crc ^ 0xffffffff) >>> 0;
+    const local = Buffer.alloc(30), central = Buffer.alloc(46);
+    local.writeUInt32LE(0x04034b50); local.writeUInt16LE(20, 4); local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18); local.writeUInt32LE(data.length, 22); local.writeUInt16LE(name.length, 26);
+    central.writeUInt32LE(0x02014b50); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6);
+    central.writeUInt32LE(crc, 16); central.writeUInt32LE(data.length, 20); central.writeUInt32LE(data.length, 24); central.writeUInt16LE(name.length, 28);
+    central.writeUInt32LE(offset, 42);
+    files.push(local, name, data); directory.push(central, name);
+    offset += local.length + name.length + data.length;
+  }
+  const end = Buffer.alloc(22), count = Object.keys(entries).length;
+  end.writeUInt32LE(0x06054b50); end.writeUInt16LE(count, 8); end.writeUInt16LE(count, 10);
+  end.writeUInt32LE(Buffer.concat(directory).length, 12); end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...files, ...directory, end]);
+}
+
+async function announcementFixture(t, manifest = { name: bundleName, version }) {
+  const f = await fixture(t);
+  const bin = path.join(f.root, "bin"), published = path.join(f.root, "published"), local = path.join(f.root, "local-assets");
+  await Promise.all([bin, published, local].map(directory => mkdir(directory)));
+  const log = path.join(f.root, "calls.jsonl"), metadata = path.join(f.root, "release.json"), runMetadata = path.join(f.root, "run.json");
+  await writeFile(metadata, JSON.stringify({ tag_name: tag, draft: false, prerelease: false, assets: [] }));
+  await writeFile(runMetadata, JSON.stringify({ id: 123, repository: { full_name: "IPGeolocation/ipgeolocation-io-mcp" }, head_sha: sourceDigest, head_branch: tag, path: ".github/workflows/mpak-release.yml", event: "workflow_dispatch", status: "completed" }));
+  const assets = [filename, `${filename}.sigstore.json`, `${filename}.provenance.sigstore.json`, "server.json", "sbom.cdx.json"];
+  const embedded = { "manifest.json": JSON.stringify(manifest), "server.json": JSON.stringify({ fixture: "server.json" }), "sbom.cdx.json": JSON.stringify({ fixture: "sbom.cdx.json" }) };
+  await Promise.all(assets.map(name => writeFile(path.join(local, name), name === filename ? fixtureArchive(embedded) : JSON.stringify({ fixture: name }))));
+  await writeFile(path.join(bin, "gh"), `#!${process.execPath}\n` + `
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),args=process.argv.slice(2);
+fs.appendFileSync(process.env.FIXTURE_CALLS,JSON.stringify({command:'gh',args})+'\\n');
+const read=()=>JSON.parse(fs.readFileSync(process.env.FIXTURE_RELEASE,'utf8'));
+if(args[0]==='api') {process.stdout.write(JSON.stringify(args[1].includes('/commits/')?{sha:process.env.FIXTURE_COMMIT}:args[1].includes('/actions/runs/')?JSON.parse(fs.readFileSync(process.env.FIXTURE_RUN,'utf8')):read()));}
+else if(args[0]==='release'&&args[1]==='view')process.stdout.write(JSON.stringify(read()));
+else if(args[0]==='release'&&args[1]==='upload'){
+ const release=read(),file=args[3],name=path.basename(file);
+ if(process.env.FIXTURE_UPLOAD_FAIL===name&&!process.env.FIXTURE_FAIL_AFTER_UPLOAD)process.exit(23);
+ if(release.assets.some(asset=>asset.name===name))process.exit(24);
+ const data=fs.readFileSync(file);fs.copyFileSync(file,path.join(process.env.FIXTURE_PUBLISHED,name));release.assets.push({name,size:data.length,digest:'sha256:'+crypto.createHash('sha256').update(data).digest('hex'),state:'uploaded'});fs.writeFileSync(process.env.FIXTURE_RELEASE,JSON.stringify(release));
+ if(process.env.FIXTURE_UPLOAD_FAIL===name)process.exit(23);
+} else if(args[0]==='release'&&args[1]==='download'){
+ const destination=args[args.indexOf('--dir')+1];for(let i=0;i<args.length;i++)if(args[i]==='--pattern'){const name=args[++i],data=fs.readFileSync(path.join(process.env.FIXTURE_PUBLISHED,name));if(process.env.FIXTURE_CORRUPT===name)data[0]^=1;fs.writeFileSync(path.join(destination,name),data);}
+} else if(args[0]==='run'&&args[1]==='download'){
+ if(process.env.FIXTURE_EXPIRED)process.exit(25);
+ const destination=args[args.indexOf('--dir')+1];for(const name of fs.readdirSync(process.env.FIXTURE_RETAINED)){if(process.env.FIXTURE_MISSING===name)continue;fs.copyFileSync(path.join(process.env.FIXTURE_RETAINED,name),path.join(destination,name));}
+} else if(args[0]==='attestation'&&args[1]==='verify'){process.exitCode=process.env.FIXTURE_BAD_PROVENANCE?23:0;}
+else process.exitCode=91;
+`, { mode: 0o755 });
+  await writeFile(path.join(bin, "cosign"), `#!${process.execPath}\n` + `
+const fs=require('node:fs'),args=process.argv.slice(2);fs.appendFileSync(process.env.FIXTURE_CALLS,JSON.stringify({command:'cosign',args})+'\\n');process.exitCode=args[0]!=='verify-blob'||process.env.FIXTURE_BAD_SIGNATURE?23:0;
+`, { mode: 0o755 });
+  await writeFile(path.join(bin, "curl"), `#!${process.execPath}\n` + `
+const fs=require('node:fs'),args=process.argv.slice(2),post=args.includes('POST');
+if(!post){fs.appendFileSync(process.env.FIXTURE_CALLS,JSON.stringify({command:'curl',kind:'oidc'})+'\\n');process.stdout.write(JSON.stringify({value:'fixture-oidc-token'}));}
+else {const body=JSON.parse(fs.readFileSync(args[args.indexOf('--data-binary')+1].slice(1),'utf8'));fs.appendFileSync(process.env.FIXTURE_CALLS,JSON.stringify({command:'curl',kind:'announce',payload:body})+'\\n');process.stdout.write(JSON.stringify({message:'Fixture response'})+'\\n'+(process.env.FIXTURE_ANNOUNCE_FAIL?'503':'200'));}
+`, { mode: 0o755 });
+  await writeFile(path.join(bin, "jq"), `#!${process.execPath}\n` + `
+const fs=require('node:fs'),args=process.argv.slice(2),index=args[0]==='-r'?1:0,query=args[index],file=args[index+1],value=JSON.parse(fs.readFileSync(file||0,'utf8'));process.stdout.write((query==='.'?JSON.stringify(value):String(value[query.slice(1)]))+'\\n');
+`, { mode: 0o755 });
+  const env = {
+    ...f.env, PATH: `${bin}${path.delimiter}${f.env.PATH}`,
+    GITHUB_REPOSITORY: "IPGeolocation/ipgeolocation-io-mcp", GITHUB_REF: `refs/tags/${tag}`, GITHUB_SHA: sourceDigest, SOURCE_REF: tag,
+    FIXTURE_CALLS: log, FIXTURE_RELEASE: metadata, FIXTURE_COMMIT: sourceDigest, FIXTURE_PUBLISHED: published,
+    FIXTURE_RUN: runMetadata, FIXTURE_RETAINED: local,
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: "fixture-action-token", ACTIONS_ID_TOKEN_REQUEST_URL: "https://example.test/oidc?fixture=1",
+  };
+  return {
+    ...f, env, assets, local, published, metadata, runMetadata,
+    upload: (extra = {}) => f.run("upload-mpak-release-assets.mjs", [tag, ...assets.map(name => path.join(local, name))], { ...env, ...extra }),
+    preflight: (extra = {}) => f.run("upload-mpak-release-assets.mjs", ["--preflight", tag], { ...env, ...extra }),
+    restore: (output, extra = {}, runId = "123") => f.run("prepare-mpak-announcement.mjs", ["--restore", tag, runId, output], { ...env, ...extra }),
+    resume: (directory = local, extra = {}) => f.run("upload-mpak-release-assets.mjs", ["--resume", tag, directory], { ...env, ...extra }),
+    prepare: (output, extra = {}, inputTag = tag) => f.run("prepare-mpak-announcement.mjs", [inputTag, output], { ...env, ...extra }),
+    announce: async (runnerTemp, extra = {}) => {
+      const workflow = await readFile(path.join(repo, ".github/workflows/mpak-release.yml"), "utf8");
+      const block = workflow.split("      - name: Announce universal mpak bundle\n        run: |\n")[1];
+      assert.ok(block, "The actual announce step must remain independently executable");
+      const script = block.split("\n").map(line => line.startsWith("          ") ? line.slice(10) : line).join("\n");
+      const shell = spawnSync("sh", ["-c", "set -o pipefail"]).status === 0 ? "sh" : "bash";
+      return spawnSync(shell, ["-c", script], { env: { ...env, RUNNER_TEMP: runnerTemp, ...extra }, encoding: "utf8", timeout: 30000 });
+    },
+    calls: async () => { try { return (await readFile(log, "utf8")).trim().split("\n").filter(Boolean).map(JSON.parse); } catch (error) { if (error.code === "ENOENT") return []; throw error; } },
+  };
+}
+
+test("announcement is a separate read-only job with no build, signing or immutable uploads", async () => {
+  const workflow = (await readFile(path.join(repo, ".github/workflows/mpak-release.yml"), "utf8")).replace(/\r\n/g, "\n");
+  const [publish, announce] = workflow.split("\n  announce:\n");
+  assert.ok(announce);
+  assert.match(announce, /needs: publish/);
+  assert.match(announce, /contents: read\n      id-token: write/);
+  assert.match(announce, /prepare-mpak-announcement\.mjs/);
+  assert.doesNotMatch(announce, /sign-blob|upload-mpak-release-assets|mcpb-pack@|npm ci|npm test|contents: write/);
+  assert.doesNotMatch(publish, /bundles\/announce|Announce universal/);
+});
+
+onReleasePlatform("failed announcement reruns from the same published assets without uploading or signing again", async t => {
+  const f = await announcementFixture(t);
+  assert.equal(f.upload().status, 0);
+  const publishedBefore = await Promise.all(f.assets.map(async name => createHash("sha256").update(await readFile(path.join(f.published, name))).digest("hex")));
+  const first = path.join(f.root, "first-job"), retry = path.join(f.root, "retried-job");
+  await mkdir(first); await mkdir(retry);
+  const initial = f.prepare(path.join(first, "mpak-announcement"));
+  assert.equal(initial.status, 0, initial.stderr);
+  assert.notEqual((await f.announce(first, { FIXTURE_ANNOUNCE_FAIL: "1" })).status, 0);
+  const second = f.prepare(path.join(retry, "mpak-announcement"));
+  assert.equal(second.status, 0, second.stderr);
+  assert.equal((await f.announce(retry)).status, 0);
+  const calls = await f.calls();
+  assert.equal(calls.filter(call => call.command === "gh" && call.args[0] === "release" && call.args[1] === "upload").length, 5);
+  assert.equal(calls.filter(call => call.command === "curl" && call.kind === "announce").length, 2);
+  assert.ok(calls.filter(call => call.command === "cosign").every(call => call.args[0] === "verify-blob"));
+  assert.deepEqual(await readFile(path.join(first, "mpak-announcement/announcement.json")), await readFile(path.join(retry, "mpak-announcement/announcement.json")));
+  assert.deepEqual(await Promise.all(f.assets.map(async name => createHash("sha256").update(await readFile(path.join(f.published, name))).digest("hex"))), publishedBefore);
+  const verification = calls.find(call => call.command === "gh" && call.args[0] === "attestation");
+  assert.equal(verification.args[verification.args.indexOf("--source-ref") + 1], `refs/tags/${tag}`);
+  assert.equal(verification.args[verification.args.indexOf("--source-digest") + 1], sourceDigest);
+});
+
+for (const manifest of [{ name: "@other/server", version }, { name: bundleName, version: "9.9.9" }]) {
+  onReleasePlatform(`published manifest mismatch is rejected: ${JSON.stringify(manifest)}`, async t => {
+    const f = await announcementFixture(t, manifest);
+    assert.equal(f.upload().status, 0);
+    const output = path.join(f.root, "download");
+    const result = f.prepare(output);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /published bundle manifest does not match/);
+    await assert.rejects(readFile(path.join(output, "announcement.json")), { code: "ENOENT" });
+  });
+}
+
+for (const [name, env, message] of [
+  ["artifact bytes", { FIXTURE_CORRUPT: filename }, /checksum does not match/],
+  ["tag commit", { FIXTURE_COMMIT: "b".repeat(40) }, /source commit/],
+  ["signature", { FIXTURE_BAD_SIGNATURE: "1" }, /cosign failed/],
+  ["provenance", { FIXTURE_BAD_PROVENANCE: "1" }, /gh failed/],
+]) {
+  onReleasePlatform(`announcement preparation rejects mismatched ${name}`, async t => {
+    const f = await announcementFixture(t);
+    assert.equal(f.upload().status, 0);
+    const output = path.join(f.root, "download"), result = f.prepare(output, env);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, message);
+    await assert.rejects(readFile(path.join(output, "announcement.json")), { code: "ENOENT" });
+    assert.equal((await f.calls()).filter(call => call.command === "curl").length, 0);
+  });
+}
+
+for (const inputTag of ["--help", "v2.0.2/../../escape", "v2.0.2;echo", "v2.0.2$(echo)", "v2.0.2\n", "v2.0.2#label"]) {
+  test(`unsafe release tag is rejected before commands or filesystem output: ${JSON.stringify(inputTag)}`, async t => {
+    const f = await announcementFixture(t);
+    const output = path.join(f.root, "download"), result = f.prepare(output, { GITHUB_REF: `refs/tags/${inputTag}`, SOURCE_REF: inputTag }, inputTag);
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(await f.calls(), []);
+    await assert.rejects(lstat(output), { code: "ENOENT" });
+  });
+}
+
+onReleasePlatform("unexpected release filenames cannot select paths outside the new download directory", async t => {
+  const f = await announcementFixture(t);
+  assert.equal(f.upload().status, 0);
+  const metadata = JSON.parse(await readFile(f.metadata, "utf8"));
+  metadata.assets.find(asset => asset.name === filename).name = "../../escape.mcpb";
+  await writeFile(f.metadata, JSON.stringify(metadata));
+  const output = path.join(f.root, "download"), result = f.prepare(output);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Published asset metadata is missing or invalid/);
+  await assert.rejects(lstat(output), { code: "ENOENT" });
+  assert.equal((await f.calls()).filter(call => call.args?.includes("download")).length, 0);
+});
+
+for (const env of [
+  { GITHUB_REF: "refs/heads/main" }, { SOURCE_REF: "v9.9.9" },
+  { GITHUB_REPOSITORY: "IPGeolocation/repo;echo" }, { GITHUB_SHA: "not-a-commit" },
+]) {
+  test(`invalid announcement source context is rejected before any command: ${JSON.stringify(env)}`, async t => {
+    const f = await announcementFixture(t);
+    const result = f.prepare(path.join(f.root, "download"), env);
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(await f.calls(), []);
+  });
+}
+
+onReleasePlatform("unverifiable release checksums cannot produce an announcement payload", async t => {
+  const f = await announcementFixture(t);
+  assert.equal(f.upload().status, 0);
+  const metadata = JSON.parse(await readFile(f.metadata, "utf8"));
+  delete metadata.assets[0].digest;
+  await writeFile(f.metadata, JSON.stringify(metadata));
+  const result = f.prepare(path.join(f.root, "download"));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Published asset metadata is missing or invalid/);
+  assert.equal((await f.calls()).filter(call => call.args?.includes("download")).length, 0);
+});
+
+test("a scanner startup failure leaves no previous SBOM or raw output", async t => {
+  const f = await fixture(t);
+  await writeFile(path.join(f.staging, "sbom.cdx.json"), "previous SBOM");
+  const result = f.run("generate-mpak-sbom.mjs", [f.staging], { SYFT_BIN: path.join(f.root, "missing-scanner") });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Unable to run Syft/);
+  await assert.rejects(readFile(path.join(f.staging, "sbom.cdx.json")), { code: "ENOENT" });
+  assert.deepEqual((await readdir(f.staging)).filter(name => name.startsWith(".sbom-")), []);
+});
+
+const uploadCalls = calls => calls.filter(call => call.command === "gh" && call.args[0] === "release" && call.args[1] === "upload");
+const publicationOrder = [`${filename}.sigstore.json`, `${filename}.provenance.sigstore.json`, "sbom.cdx.json", "server.json", filename];
+
+onReleasePlatform("early publication preflight stops on a partial release before signing or uploading", async t => {
+  const f = await announcementFixture(t);
+  assert.equal(f.preflight().status, 0);
+  assert.deepEqual((await f.calls()).map(call => call.args[0]), ["api", "api"]);
+  assert.equal(f.upload({ FIXTURE_UPLOAD_FAIL: publicationOrder[1] }).status, 23);
+  const count = (await f.calls()).length, result = f.preflight();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Release assets already exist/);
+  assert.deepEqual((await f.calls()).slice(count).map(call => call.args[0]), ["api", "api"]);
+});
+
+for (const failedAsset of publicationOrder) {
+  for (const accepted of [false, true]) {
+    onReleasePlatform(`interrupted upload ${accepted ? "after" : "before"} accepting ${failedAsset} resumes identical bytes`, async t => {
+      const f = await announcementFixture(t);
+      assert.equal(f.upload({ FIXTURE_UPLOAD_FAIL: failedAsset, FIXTURE_FAIL_AFTER_UPLOAD: accepted ? "1" : "" }).status, 23);
+      const first = JSON.parse(await readFile(f.metadata, "utf8"));
+      const count = publicationOrder.indexOf(failedAsset) + Number(accepted);
+      assert.deepEqual(first.assets.map(asset => asset.name), publicationOrder.slice(0, count));
+      assert.equal(first.assets.some(asset => asset.name === filename), count === 5);
+      const before = (await f.calls()).length, recovered = path.join(f.root, "recovered");
+      const restore = f.restore(recovered);
+      assert.equal(restore.status, 0, restore.stderr);
+      const resume = f.resume(recovered);
+      assert.equal(resume.status, 0, resume.stderr);
+      const after = (await f.calls()).slice(before);
+      assert.deepEqual(uploadCalls(after).map(call => path.basename(call.args[3])), publicationOrder.slice(count));
+      assert.ok(after.filter(call => call.command === "cosign").every(call => call.args[0] === "verify-blob"));
+      for (const name of f.assets) assert.deepEqual(await readFile(path.join(f.published, name)), await readFile(path.join(f.local, name)));
+      const snapshot = await readFile(f.metadata);
+      assert.equal(f.resume(recovered).status, 0);
+      assert.deepEqual(await readFile(f.metadata), snapshot);
+      assert.equal(f.prepare(path.join(f.root, "announcement")).status, 0);
+    });
+  }
+}
+
+onReleasePlatform("resume accepts every matching subset without replacing or duplicating assets", async t => {
+  for (let mask = 0; mask < 32; mask++) {
+    await t.test(`existing asset mask ${mask}`, async t => {
+      const f = await announcementFixture(t);
+      const published = JSON.parse(await readFile(f.metadata, "utf8"));
+      for (const [index, name] of publicationOrder.entries()) {
+        if (!(mask & (1 << index))) continue;
+        const data = await readFile(path.join(f.local, name));
+        await writeFile(path.join(f.published, name), data);
+        published.assets.push({ name, size: data.length, digest: "sha256:" + createHash("sha256").update(data).digest("hex"), state: "uploaded" });
+      }
+      await writeFile(f.metadata, JSON.stringify(published));
+      const result = f.resume();
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(uploadCalls(await f.calls()).map(call => path.basename(call.args[3])), publicationOrder.filter((_, index) => !(mask & (1 << index))));
+      assert.equal(JSON.parse(await readFile(f.metadata, "utf8")).assets.length, 5);
+      for (const name of f.assets) assert.deepEqual(await readFile(path.join(f.published, name)), await readFile(path.join(f.local, name)));
+    });
+  }
+});
+
+for (const mismatch of ["digest", "size", "state", "duplicate"]) {
+  onReleasePlatform(`resume rejects existing ${mismatch} mismatch before any missing asset upload`, async t => {
+    const f = await announcementFixture(t);
+    assert.equal(f.upload({ FIXTURE_UPLOAD_FAIL: publicationOrder[1] }).status, 23);
+    const published = JSON.parse(await readFile(f.metadata, "utf8"));
+    if (mismatch === "digest") published.assets[0].digest = "sha256:" + "b".repeat(64);
+    if (mismatch === "size") published.assets[0].size++;
+    if (mismatch === "state") published.assets[0].state = "starter";
+    if (mismatch === "duplicate") published.assets.push(published.assets[0]);
+    await writeFile(f.metadata, JSON.stringify(published));
+    const before = uploadCalls(await f.calls()).length, result = f.resume();
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Published bytes differ|Published asset metadata is missing or invalid/);
+    assert.equal(uploadCalls(await f.calls()).length, before);
+  });
+}
+
+for (const name of ["server.json", "sbom.cdx.json"]) {
+  onReleasePlatform(`unsigned ${name} must match its signed bundle entry before resume or announcement`, async t => {
+    const f = await announcementFixture(t);
+    await writeFile(path.join(f.local, name), "different metadata");
+    const result = f.resume();
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Release metadata does not match the signed bundle/);
+    assert.equal(uploadCalls(await f.calls()).length, 0);
+    assert.equal(f.upload().status, 0);
+    assert.notEqual(f.prepare(path.join(f.root, "announcement")).status, 0);
+  });
+}
+
+onReleasePlatform("large signed SBOMs are compared without the command's default buffer truncation", async t => {
+  const f = await announcementFixture(t);
+  const sbom = JSON.stringify({ components: [], fixture: "x".repeat(2 * 1024 * 1024) });
+  await writeFile(path.join(f.local, "sbom.cdx.json"), sbom);
+  await writeFile(path.join(f.local, filename), fixtureArchive({
+    "manifest.json": JSON.stringify({ name: bundleName, version }),
+    "server.json": await readFile(path.join(f.local, "server.json")),
+    "sbom.cdx.json": sbom,
+  }));
+  const result = f.resume();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(f.prepare(path.join(f.root, "announcement")).status, 0);
+});
+
+for (const extra of [{ FIXTURE_BAD_SIGNATURE: "1" }, { FIXTURE_BAD_PROVENANCE: "1" }, { FIXTURE_EXPIRED: "1" }, { FIXTURE_MISSING: filename }]) {
+  onReleasePlatform(`retained asset verification fails closed: ${JSON.stringify(extra)}`, async t => {
+    const f = await announcementFixture(t), output = path.join(f.root, "recovered");
+    assert.notEqual(f.restore(output, extra).status, 0);
+    assert.equal(uploadCalls(await f.calls()).length, 0);
+    assert.equal((await readdir(f.published)).length, 0);
+  });
+}
+
+for (const patch of [
+  { id: 456 }, { repository: { full_name: "other/repository" } }, { head_sha: "b".repeat(40) },
+  { head_branch: "main" }, { path: ".github/workflows/other.yml" }, { event: "push" }, { status: "in_progress" },
+]) {
+  onReleasePlatform(`a recovery run must match its original release context: ${JSON.stringify(patch)}`, async t => {
+    const f = await announcementFixture(t);
+    const original = JSON.parse(await readFile(f.runMetadata, "utf8"));
+    await writeFile(f.runMetadata, JSON.stringify({ ...original, ...patch }));
+    const result = f.restore(path.join(f.root, "recovered"));
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /completed mpak release dispatch/);
+    assert.equal((await f.calls()).filter(call => call.args?.includes("download")).length, 0);
+    assert.equal(uploadCalls(await f.calls()).length, 0);
+  });
+}
+
+for (const runId of ["", "0", "-1", "00123", "1.5", "9007199254740992", "123\n", "123;echo", "123/../456"]) {
+  test(`invalid recovery run ID fails before commands: ${JSON.stringify(runId)}`, async t => {
+    const f = await announcementFixture(t), result = f.restore(path.join(f.root, "recovered"), {}, runId);
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(await f.calls(), []);
+  });
+}
+
+test("release dispatch retains default publish and supports fresh announcement without a publish job", async () => {
+  const workflow = (await readFile(path.join(repo, ".github/workflows/mpak-release.yml"), "utf8")).replace(/\r\n/g, "\n");
+  assert.match(workflow, /default: publish\n        options:\n          - publish\n          - resume\n          - announce/);
+  assert.match(workflow, /publish:\n    if: inputs\.operation != 'announce'/);
+  assert.match(workflow, /always\(\) && !cancelled\(\) && \(inputs\.operation == 'announce' \|\| needs\.publish\.result == 'success'\)/);
+  assert.ok(workflow.indexOf('--preflight "$RELEASE_TAG"') < workflow.indexOf("      - name: Install root dependencies"));
+  assert.ok(workflow.indexOf("      - name: Retain the exact signed asset set") < workflow.indexOf("      - name: Upload new mpak assets"));
+  assert.match(workflow, /retention-days: 90/);
+  const publishOnlySteps = ["Install root dependencies", "Run root test suite", "Build universal mpak bundle", "Sign mpak bundle with Sigstore keyless", "Generate build provenance attestation", "Retain the exact signed asset set before publication"];
+  for (const step of publishOnlySteps) assert.ok(workflow.includes(`      - name: ${step}\n        if: inputs.operation == 'publish'`));
+});
+
+onReleasePlatform("the actual publication context step accepts only the selected tag, commit and operation", async t => {
+  const f = await announcementFixture(t);
+  await writeFile(path.join(f.root, "bin/git"), `#!${process.execPath}\nprocess.stdout.write('${sourceDigest}\\n');\n`, { mode: 0o755 });
+  const workflow = (await readFile(path.join(repo, ".github/workflows/mpak-release.yml"), "utf8")).replace(/\r\n/g, "\n");
+  const step = workflow.split("      - name: Bind source ref to workflow provenance\n")[1]?.split("\n      - ")[0];
+  const body = step?.split("        run: |\n")[1];
+  assert.ok(body, "The actual context binding shell must be present");
+  const shell = body.split("\n").map(line => line.startsWith("          ") ? line.slice(10) : line).join("\n");
+  const execute = extra => spawnSync("bash", ["-c", shell], { env: { ...f.env, RELEASE_TAG: tag, OPERATION: "publish", RECOVERY_RUN_ID: "", ...extra }, encoding: "utf8" });
+  for (const extra of [{}, { OPERATION: "resume", RECOVERY_RUN_ID: "123" }]) {
+    const result = execute(extra);
+    assert.equal(result.status, 0, result.stderr);
+  }
+  for (const extra of [{ OPERATION: "announce" }, { OPERATION: "unknown" }, { OPERATION: "resume" }, { OPERATION: "resume", RECOVERY_RUN_ID: "123;echo" }, { SOURCE_REF: "main" }, { GITHUB_REF: "refs/heads/main" }, { GITHUB_SHA: "b".repeat(40) }]) {
+    assert.notEqual(execute(extra).status, 0, JSON.stringify(extra));
+  }
+  assert.deepEqual(await f.calls(), []);
+});
+
+test("staging retains the README's Kiro guide and both existing configuration files", async t => {
+  const f = await fixture(t), npmCli = path.join(f.root, "npm fixture.mjs");
+  await writeFile(npmCli, "// No dependencies in this fixture.\n");
+  const result = f.run("prepare-mpak-package.mjs", [], { npm_execpath: npmCli, MPAK_STAGING_DIR: f.staging });
+  assert.equal(result.status, 0, result.stderr);
+  const pkg = JSON.parse(await readFile(path.join(repo, "package.json"), "utf8"));
+  for (const name of ["README.md", "mcp.json", "plugin.json"]) {
+    const relative = `packaging/kiro/${name}`;
+    assert.deepEqual(await readFile(path.join(f.staging, relative)), await readFile(path.join(f.repository, relative)));
+    assert.ok(pkg.files.includes(relative));
+  }
+  assert.match(await readFile(path.join(repo, "Dockerfile"), "utf8"), /COPY packaging\/kiro\/ \.\/packaging\/kiro\//);
+});
+
+onReleasePlatform("bundle finalization rejects a missing Kiro file in staging or inside the archive", async t => {
+  const f = await fixture(t), entries = {};
+  for (const name of ["LICENSE", "README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md", "packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json", "icon.png", "manifest.json", "package-lock.json", "package.json", "sbom.cdx.json", "server.json"]) {
+    entries[name] = "fixture";
+    await mkdir(path.dirname(path.join(f.staging, name)), { recursive: true });
+    await writeFile(path.join(f.staging, name), entries[name]);
+  }
+  const bundle = path.join(f.root, "bundle.mcpb");
+  await writeFile(bundle, fixtureArchive(entries));
+  assert.equal(f.run("finalize-mpak-bundle.mjs", [bundle, f.staging]).status, 0);
+  for (const name of ["README.md", "mcp.json", "plugin.json"]) {
+    const relative = `packaging/kiro/${name}`;
+    await rm(path.join(f.staging, relative));
+    const missingStaging = f.run("finalize-mpak-bundle.mjs", [bundle, f.staging]);
+    assert.notEqual(missingStaging.status, 0);
+    assert.match(missingStaging.stderr, /Required mpak file is missing from staging: packaging\/kiro\//);
+    await writeFile(path.join(f.staging, relative), entries[relative]);
+    const omitted = { ...entries }; delete omitted[relative];
+    await writeFile(bundle, fixtureArchive(omitted));
+    const missingArchive = f.run("finalize-mpak-bundle.mjs", [bundle, f.staging]);
+    assert.notEqual(missingArchive.status, 0);
+    assert.match(missingArchive.stderr, /Required file is missing from the mpak bundle: packaging\/kiro\//);
+    await writeFile(bundle, fixtureArchive(entries));
+  }
+});

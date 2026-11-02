@@ -68,7 +68,7 @@ test("red-team: cache entries are scoped per API key", async (t) => {
   assert.deepEqual(cacheModule.getCachedValue("same-target"), { tenant: "a" });
 });
 
-test("red-team: successful tool results redact configured API keys and bearer tokens", async (t) => {
+test("red-team: successful results redact configured keys and credential fields without rewriting company text", async (t) => {
   clearRedteamEnv();
   const rawSecret = "secret/value+with=symbols";
   const encodedSecret = encodeURIComponent(rawSecret);
@@ -82,12 +82,16 @@ test("red-team: successful tool results redact configured API keys and bearer to
     nested: {
       api_key: rawSecret,
     },
+    authorization: "Bearer independent-secret",
+    company: { name: "Bearer Networks Ltd" },
   });
 
   assertNoSecret(formatted, [rawSecret, encodedSecret]);
   assert.match(formatted, /\[REDACTED_API_KEY\]/);
   assert.match(formatted, /\[REDACTED_TOKEN\]/);
-  assert.doesNotThrow(() => JSON.parse(formatted));
+  const data = JSON.parse(formatted);
+  assert.equal(data.authorization, "[REDACTED_TOKEN]");
+  assert.equal(data.company.name, "Bearer Networks Ltd");
 });
 
 test("red-team: generic and API errors redact secrets in visible and structured output", async (t) => {
@@ -260,7 +264,7 @@ test("red-team: query parameter injection cannot override destination or authent
   assert.equal(capturedHeaders.get("x-ipgeolocation-api-key"), "real_key");
   assert.equal(
     capturedUrl.searchParams.get("ip"),
-    "8.8.8.8&apiKey=attacker&url=https://evil.example"
+    "8.8.8.8&apikey=attacker&url=https://evil.example"
   );
 });
 

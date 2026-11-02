@@ -33,6 +33,20 @@ Follow the TypeScript patterns in `src/` and discuss new dependencies first. Kee
 
 See [RELEASING.md](RELEASING.md) for publication channels and release verification.
 
+## Resource Limits
+
+Tool arguments have a 4 MiB default limit, measured as UTF-8 bytes of `JSON.stringify(arguments)`. Stdio uses a separate wire-buffer cap of `6 × argument limit + 128 KiB` (24 MiB + 128 KiB by default) to accommodate six-byte JSON string escapes. Exceeding that cap closes the session and can discard pending replies after the API has used credits.
+
+The default cache budget is 32 MiB across up to 500 entries. Accounting covers serialized API values, cache keys and refresh-family identifiers, plus retained pagination JSON and snapshot metadata. Snapshot JSON counts at its UTF-8 size without another escaping layer. Successful page reads extend snapshot expiry without serializing the full snapshot again.
+
+Cached API data and its pagination snapshot both use this budget. If they do not fit together, storing the snapshot can evict the API response. Calling the lookup again may then spend credits; use `get_cached_result` to retrieve its remaining pages. Allow space for the response, snapshot, metadata and other cached results when lowering the cache budget.
+
+The server limits successful API bodies to 8 MiB by default after decompression, error bodies to 64 KiB and upstream JSON to 64 nesting levels. These bounds do not limit total heap or resident memory.
+
+Size a memory-limited runtime for the expected response shapes, cache settings and concurrent calls. The tested object-heavy workloads completed with a 512 MiB V8 heap, but this is not a guarantee for every response. The container also needs memory for Buffers and other allocations outside that heap. Test available memory before raising response or cache limits.
+
+A local fields/excludes projection cannot reduce bytes already downloaded. ASN fields can enable optional upstream include datasets. Check request-specific error guidance before changing the request.
+
 ## License
 
 By contributing, you agree that your work will be licensed under the [MIT License](LICENSE).

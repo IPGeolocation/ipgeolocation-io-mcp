@@ -130,3 +130,58 @@ test("validateTimezoneConversionTime enforces documented formats", async () => {
     /yyyy-MM-dd HH:mm/
   );
 });
+
+
+test("date validation respects Gregorian leap years across the first century", async () => {
+  const { validateIsoDate, validateDateRange } = await import(validationModuleUrl());
+  assert.equal(validateIsoDate("0000-02-29", "date"), null);
+  assert.equal(validateIsoDate("0099-12-31", "date"), null);
+  assert.equal(validateDateRange("0099-12-31", "0100-01-01", 90), null);
+  assert.match(validateIsoDate("0100-02-29", "date"), /YYYY-MM-DD/);
+  assert.equal(validateIsoDate("0400-02-29", "date"), null);
+  assert.match(validateDateRange("0099-12-31", "0100-04-01", 90), /90/);
+});
+
+
+test("lookup normalization rejects sparse direct-client bulk arrays", async () => {
+  const { normalizeLookupArguments } = await import(validationModuleUrl());
+  for (const name of ["ips", "uaStrings"]) {
+    const rows = new Array(2); rows[0] = "8.8.8.8";
+    assert.throws(() => normalizeLookupArguments({ [name]: rows }), /non-blank string/);
+  }
+});
+
+test("lookup normalization aligns CSV selectors without altering case, duplicates or user agents", async () => {
+  const { normalizeLookupArguments } = await import(validationModuleUrl());
+  const uaString = "  Synthetic-UA/1.0, Company=Example\t😀  ";
+  const args = {
+    fields: " currency, Country.Code ,currency,, ",
+    excludes: " location.city, Company.Name , location.city ",
+    uaString,
+    uaStrings: [uaString],
+  };
+  const normalized = normalizeLookupArguments(args);
+  assert.equal(normalized.fields, "Country.Code,currency,currency");
+  assert.equal(normalized.excludes, "Company.Name,location.city,location.city");
+  assert.equal(normalized.uaString, uaString);
+  assert.deepEqual(normalized.uaStrings, [uaString]);
+  assert.equal(args.fields, " currency, Country.Code ,currency,, ");
+  assert.equal(normalizeLookupArguments({ fields: " , , ", excludes: "" }).fields, "");
+  assert.equal(normalizeLookupArguments({ fields: undefined }).fields, undefined);
+  for (const name of ["fields", "excludes"]) {
+    for (const value of [null, 1, false, [], {}]) {
+      assert.throws(() => normalizeLookupArguments({ [name]: value }), new RegExp(`'${name}' must be a string`));
+    }
+  }
+});
+
+test("numeric configuration rejects partial, fractional and unsafe integer values", async t => {
+  const { getRequestTimeoutMs } = await import("../dist/config.js");
+  const name = "IPGEOLOCATION_REQUEST_TIMEOUT_MS", previous = process.env[name];
+  t.after(() => previous === undefined ? delete process.env[name] : process.env[name] = previous);
+  for (const value of ["30000ms", "30000.1", "30000junk", "-1", "Infinity", "9007199254740992"]) {
+    process.env[name] = value;
+    assert.equal(getRequestTimeoutMs(), 15000, value);
+  }
+  process.env[name] = " 30000 "; assert.equal(getRequestTimeoutMs(), 30000);
+});
