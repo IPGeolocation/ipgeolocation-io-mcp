@@ -54,7 +54,7 @@ const cases=[
  {name:'prepared-bundle-runtime',command:process.execPath,args:[path.join(repo,'artifacts','Windows bundle QA','dist','cli.js')],cwd:path.join(repo,'artifacts','Windows bundle QA')},
 ];
 const inputs={lookup_ip:{ip:'8.8.8.8'},bulk_lookup_ip:{ips:['8.8.8.8','1.1.1.1']},lookup_company:{ip:'8.8.8.8'},lookup_currency:{ip:'8.8.8.8'},lookup_network:{ip:'8.8.8.8'},check_security:{ip:'8.8.8.8'},bulk_security_check:{ips:['8.8.8.8']},lookup_asn:{asn:'AS15169'},get_abuse_contact:{ip:'8.8.8.8'},get_timezone:{tz:'UTC'},convert_timezone:{tz_from:'UTC',tz_to:'Asia/Karachi'},get_astronomy:{location:'Karachi, PK',date:'2026-01-01'},get_astronomy_time_series:{location:'Karachi, PK',dateStart:'2026-01-01',dateEnd:'2026-01-02'},parse_user_agent:{uaString:'Synthetic-UA'},bulk_parse_user_agent:{uaStrings:['Synthetic-UA','Other-UA']},get_my_ip:{}};
-const mockEnvironment={NODE_OPTIONS:`--require="${path.join(repo,'.qa','loopback-only.cjs').replaceAll('\\','/')}" --import=${pathToFileURL(fixture).href}`,IPGEO_QA_NETWORK_BLOCK_LOG:path.join(output,'blocked-network.jsonl')};
+const mockEnvironment={NPM_CONFIG_UPDATE_NOTIFIER:'false',NPM_CONFIG_AUDIT:'false',NPM_CONFIG_FUND:'false',NPM_CONFIG_OFFLINE:'true',NODE_OPTIONS:`--require="${path.join(repo,'.qa','loopback-only.cjs').replaceAll('\\','/')}" --import=${pathToFileURL(fixture).href}`,IPGEO_QA_NETWORK_BLOCK_LOG:path.join(output,'blocked-network.jsonl')};
 const results=[];
 for(const testCase of cases){
  const transport=new StdioClientTransport({...testCase,stderr:'pipe',env:{...mockEnvironment,IPGEOLOCATION_API_KEY:'windows-platform-synthetic-key',IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS:'10000'}});
