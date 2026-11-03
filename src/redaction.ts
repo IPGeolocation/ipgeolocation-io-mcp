@@ -35,7 +35,7 @@ function configuredSecrets(): Secrets {
 }
 
 function normalizeEscapes(text: string, variant: SecretVariant): string {
-  if (variant.percentDepth === 0) return text;
+  if (variant.percentDepth === 0 || !text.includes("%")) return text;
   const pattern = variant.percentDepth === 2 ? /%25[\da-f]{2}|%[\da-f]{2}/gi : /%[\da-f]{2}/gi;
   return text.replace(pattern, value => value.toUpperCase());
 }
@@ -107,6 +107,7 @@ function redactJsonEscapes(text: string, secrets: Secrets): string {
 }
 
 function redactKnown(text: string, secrets: Secrets): string {
+  if (!secrets.value || text.length < secrets.value.length) return text;
   let redacted = redactJsonEscapes(text, secrets), normalized: string | undefined, normalizedEncoding: string | undefined;
   for (const variant of secrets.variants) {
     const { value } = variant;

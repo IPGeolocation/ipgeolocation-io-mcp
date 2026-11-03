@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { errorToolResponse } from "../dist/tools/response.js";
 
 const CLIENT_ENV_KEYS = [
   "IPGEOLOCATION_API_KEY",
@@ -218,6 +219,12 @@ for (const method of ["getIpGeolocation", "getMyIp"]) {
           assert.equal(error.status, status === 200 ? 504 : status);
           assert.equal(error.source, status === 200 ? "mcp_server" : "ipgeolocation_api");
           assert.match(error.message, status === 200 ? /timed out after 1000ms/ : /error body was unavailable.*HTTP status is preserved/);
+          const detail = errorToolResponse(error).structuredContent.error;
+          assert.equal(detail.retryable, false);
+          if (status === 200) {
+            assert.equal(error.code, "response_incomplete");
+            assert.match(detail.guidance, /Do not retry automatically/);
+          }
           return true;
         }
       );
@@ -281,8 +288,11 @@ test("a disconnected response warns about processed requests without retrying", 
   await assert.rejects(() => client.getIpGeolocation({ ip: "8.8.8.8" }), error => {
     assert.equal(error.status, 502);
     assert.equal(error.source, "mcp_server");
-    assert.match(error.message, /request or response failed/);
-    assert.match(error.message, /API may already have processed.*no automatic retry/);
+    assert.equal(error.code, "response_incomplete");
+    assert.match(error.message, /success status.*response was interrupted/);
+    assert.match(error.message, /Credits may already have been used.*new request may use credits again/);
+    assert.match(error.message, /No automatic retry/);
+    assert.equal(errorToolResponse(error).structuredContent.error.retryable, false);
     assert.doesNotMatch(error.message, /body-disconnect-synthetic-key/);
     return true;
   });

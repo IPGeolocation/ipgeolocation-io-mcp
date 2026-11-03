@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdtemp, symlink, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -94,6 +95,27 @@ test("package main can run as a stdio server for generic hosts", async () => {
       name: "ipgeolocation-io-mcp",
       version: packageJson.version,
     });
+  } finally {
+    await client.close();
+  }
+});
+
+test("package main starts through a linked directory and discovers all tools", async t => {
+  const temporary = await mkdtemp(path.join(tmpdir(), "mcp-linked-entry-"));
+  const linked = path.join(temporary, "linked runtime");
+  t.after(() => rm(temporary, { recursive: true, force: true }));
+  await symlink(path.join(repoRoot, "dist"), linked, process.platform === "win32" ? "junction" : "dir");
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [path.join(linked, "index.js")],
+    cwd: temporary,
+    env: { IPGEOLOCATION_API_KEY: "" },
+    stderr: "pipe",
+  });
+  const client = new Client({ name: "linked-entry-test", version: "1.0.0" });
+  try {
+    await client.connect(transport, { timeout: 5000 });
+    assert.equal((await client.listTools()).tools.length, 17);
   } finally {
     await client.close();
   }

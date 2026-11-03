@@ -9,10 +9,11 @@ type CacheEntry = { value: unknown; expiresAt: number; bytes: number; version: n
 type Family = { generation: number; inFlight: number; lastSuccess: number };
 type Pending = {
   promise: Promise<unknown>; controller: AbortController; users: number;
-  family?: Family; generation: number;
+  family?: Family; generation: number; version: number; restored?: boolean;
 };
+type PendingGroup = { entries: Set<Pending>; latest?: Pending; lastSuccess: number };
 const cache = new Map<string, CacheEntry>();
-const pending = new Map<string, Pending>();
+const pending = new Map<string, PendingGroup>();
 const families = new Map<string, Family>();
 let cachedBytes = 0;
 let cacheVersion = 0;
@@ -74,9 +75,30 @@ export function setCachedValue(key: string, value: unknown, valueBytes?: number)
   return setCacheEntry(scopedKey(key), value, undefined, valueBytes);
 }
 
-function subscribe(key: string, entry: Pending, signal?: AbortSignal): Promise<unknown> {
+function removePending(key: string, group: PendingGroup, entry: Pending, restore = false): void {
+  group.entries.delete(entry);
+  if (group.latest === entry) {
+    group.latest = undefined;
+    if (restore && (!entry.family || entry.generation === entry.family.generation)) {
+      for (const candidate of group.entries) {
+        if (candidate.users > 0 && !candidate.controller.signal.aborted && candidate.family === entry.family
+          && group.lastSuccess <= candidate.version && (!candidate.family || candidate.family.lastSuccess <= candidate.version)) {
+          group.latest = candidate;
+        }
+      }
+      // Cancellation can restore live work, but must not roll back a family's refresh barrier.
+      if (group.latest) {
+        group.latest.restored = true;
+        if (group.latest.family) group.latest.generation = group.latest.family.generation;
+      }
+    }
+  }
+  if (group.entries.size === 0 && pending.get(key) === group) pending.delete(key);
+}
+
+function subscribe(key: string, group: PendingGroup, entry: Pending, signal?: AbortSignal): Promise<unknown> {
   if (signal?.aborted) {
-    if (entry.users === 0) { entry.controller.abort(); if (pending.get(key) === entry) pending.delete(key); }
+    if (entry.users === 0) { entry.controller.abort(); removePending(key, group, entry, true); }
     return Promise.reject(new RequestCancelledError());
   }
   entry.users++;
@@ -92,7 +114,7 @@ function subscribe(key: string, entry: Pending, signal?: AbortSignal): Promise<u
       release();
       if (entry.users === 0) {
         entry.controller.abort();
-        if (pending.get(key) === entry) pending.delete(key);
+        removePending(key, group, entry, true);
       }
       reject(new RequestCancelledError());
     };
@@ -116,9 +138,10 @@ export async function getCachedOrFetchValue(
   if (!forceRefresh) {
     const cached = getCachedValue(key);
     if (cached !== undefined) return cached;
-    const existing = pending.get(namespacedKey);
-    if (existing && !existing.controller.signal.aborted && (!existing.family || existing.generation === existing.family.generation)) {
-      return subscribe(namespacedKey, existing, signal);
+    const group = pending.get(namespacedKey), existing = group?.latest;
+    if (group && existing && !existing.controller.signal.aborted && (!existing.family || existing.generation === existing.family.generation)
+      && (!existing.restored || !existing.family || existing.family.lastSuccess <= existing.version)) {
+      return subscribe(namespacedKey, group, existing, signal);
     }
   }
   const versionAtStart = ++cacheVersion;
@@ -127,16 +150,21 @@ export async function getCachedOrFetchValue(
     if (forceRefresh) state.generation++;
     state.inFlight++;
   }
-  const entry: Pending = { promise: undefined!, controller: new AbortController(), users: 0, family: state, generation: state?.generation ?? 0 };
-  pending.set(namespacedKey, entry);
+  const generationAtStart = state?.generation ?? 0;
+  const group: PendingGroup = pending.get(namespacedKey) ?? { entries: new Set<Pending>(), lastSuccess: 0 };
+  const entry: Pending = { promise: undefined!, controller: new AbortController(), users: 0, family: state, generation: generationAtStart, version: versionAtStart };
+  group.entries.add(entry);
+  group.latest = entry;
+  pending.set(namespacedKey, group);
   entry.promise = (async () => {
     try {
       const value = await withRequestSignal(entry.controller.signal, fetchValue);
       const active = !entry.controller.signal.aborted;
-      const refresh = forceRefresh || entry.generation > 0;
+      const refresh = forceRefresh || generationAtStart > 0;
+      if (active) group.lastSuccess = Math.max(group.lastSuccess, versionAtStart);
       if (active && state) state.lastSuccess = Math.max(state.lastSuccess, versionAtStart);
-      const latest = active && pending.get(namespacedKey) === entry && (!state || entry.generation === state.generation)
-        && (!refresh || !state || state.lastSuccess === versionAtStart);
+      const latest = active && pending.get(namespacedKey) === group && group.latest === entry && (!state || entry.generation === state.generation)
+        && ((!refresh && !entry.restored) || !state || state.lastSuccess === versionAtStart);
       // A superseded success still invalidates data that predates its refresh.
       if (active && refresh) {
         for (const [cachedKey, cached] of cache) {
@@ -151,14 +179,14 @@ export async function getCachedOrFetchValue(
       }
       return value;
     } finally {
-      if (pending.get(namespacedKey) === entry) pending.delete(namespacedKey);
+      removePending(namespacedKey, group, entry);
       if (state && --state.inFlight === 0 && familyKey !== undefined && families.get(familyKey) === state) families.delete(familyKey);
     }
   })();
-  return subscribe(namespacedKey, entry, signal);
+  return subscribe(namespacedKey, group, entry, signal);
 }
 
 export function clearToolCacheForTests(): void {
-  for (const entry of pending.values()) entry.controller.abort();
+  for (const group of pending.values()) for (const entry of group.entries) entry.controller.abort();
   cache.clear(); pending.clear(); families.clear(); cachedBytes = 0;
 }

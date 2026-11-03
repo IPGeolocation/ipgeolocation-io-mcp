@@ -226,7 +226,7 @@ test('follow-up: exact numeric echoes mask longer keys without rewriting short-k
 });
 
 for (const [secret, echo] of [
-  ['kéy/Synth-0042', String.raw`k\u00e9y\/Synth-0042`],
+  ['key/Synth-0042', String.raw`k\u0065y\/Synth-0042`],
   ['1.1', 'v1.1.1'],
   ['123456', 123456],
 ]) test(`follow-up: real MCP inline and paged results mask ${JSON.stringify(secret)} echoes`, async t => {
@@ -239,4 +239,33 @@ for (const [secret, echo] of [
   assert.deepEqual(recovered.data.company, ordinary.company);
   assert.equal(recovered.data.user_agent_string, ordinary.user_agent_string);
   assert.equal(count(), 1);
+});
+
+test('short values and percent-free text avoid unnecessary percent normalization', t => {
+  const replace = String.prototype.replace;
+  let unnecessaryPasses = 0;
+  t.mock.method(String.prototype, 'replace', function (pattern, ...args) {
+    if (pattern instanceof RegExp && pattern.source.startsWith('%') && !String(this).includes('%')) unnecessaryPasses++;
+    return Reflect.apply(replace, this, [pattern, ...args]);
+  });
+  const values = Array.from({ length: 10000 }, (_, index) => index % 2 ? 'short' : 'Ordinary company and location names without encoded characters.');
+  assert.deepEqual(scoped(key, () => redaction.redactSensitiveValue(values)), values);
+  assert.equal(unnecessaryPasses, 0);
+  assert.equal(scoped(key, () => redaction.redactKnownSecrets(key)), '[REDACTED_API_KEY]');
+  const encoded = Array.from(Buffer.from(key), byte => `%${byte.toString(16).padStart(2, '0')}`).join('');
+  assert.equal(scoped(key, () => redaction.redactKnownSecrets(encoded)), '[REDACTED_API_KEY]');
+});
+
+test('literal backslash credentials and their JSON encodings remain masked without decoding the configured key', () => {
+  for (const secret of [String.raw`ab\ncd1234`, String.raw`ab\tcd1234`, String.raw`ab\u0061cd1234`, String.raw`ab\\cd1234`]) {
+    const escaped = JSON.stringify(secret).slice(1, -1);
+    for (const echo of [secret, escaped, JSON.stringify(escaped).slice(1, -1)]) {
+      assert.equal(scoped(secret, () => redaction.redactKnownSecrets(echo)), '[REDACTED_API_KEY]');
+    }
+    const decoded = JSON.parse(`"${secret}"`);
+    assert.notEqual(decoded, secret);
+    assert.deepEqual(scoped(secret, () => redaction.redactSensitiveValue({ ordinary: decoded, apiKey: decoded })), {
+      ordinary: decoded, apiKey: '[REDACTED_API_KEY]',
+    });
+  }
 });

@@ -13,7 +13,7 @@ import { cachedResultPageSchema, paginateToolResult } from "./pagination.js";
 type ApiErrorLike = Error & {
   status: number;
   source?: "ipgeolocation_api" | "mcp_server";
-  code?: "redirect_blocked" | "invalid_response";
+  code?: "redirect_blocked" | "invalid_response" | "response_incomplete" | "invalid_api_key";
 };
 
 export const MAX_BULK_ITEMS = Math.min(getMaxBulkItems(), getMaxItemsInResponse());
@@ -301,6 +301,8 @@ function buildErrorToolResponse(error: unknown, localCategory: string, maxErrorC
     const timeout = apiError?.status === 504;
     const redirectBlocked = apiError?.code === "redirect_blocked";
     const invalidResponse = apiError?.code === "invalid_response";
+    const incompleteResponse = apiError?.code === "response_incomplete";
+    const invalidApiKey = apiError?.code === "invalid_api_key";
     const resourceLimit = error instanceof ResourceLimitError;
     const cancelled = error instanceof RequestCancelledError;
     const upstreamRequest = apiError?.status === 502 && !redirectBlocked && !invalidResponse;
@@ -309,11 +311,15 @@ function buildErrorToolResponse(error: unknown, localCategory: string, maxErrorC
       structuredContent: {
         error: {
           source: "mcp_server",
-          category: resourceLimit ? "resource_limit" : cancelled ? "cancelled" : invalidResponse ? "upstream_response" : redirectBlocked ? "redirect_blocked" : timeout ? "timeout" : upstreamRequest ? "upstream_request" : localCategory,
+          category: invalidApiKey ? "configuration" : resourceLimit ? "resource_limit" : cancelled ? "cancelled" : invalidResponse ? "upstream_response" : redirectBlocked ? "redirect_blocked" : timeout ? "timeout" : upstreamRequest ? "upstream_request" : localCategory,
           ...(apiError ? { status: apiError.status } : {}),
           message,
-          retryable: timeout || upstreamRequest,
-          guidance: cancelled
+          retryable: !incompleteResponse && (timeout || upstreamRequest),
+          guidance: invalidApiKey
+            ? "Correct IPGEOLOCATION_API_KEY using the key from your account before retrying. No API request was sent."
+            : incompleteResponse
+            ? "Do not retry automatically. The API returned a success status before the response failed; credits may already have been used. Ask for approval before a new request that may use credits again."
+            : cancelled
             ? "Do not retry automatically. The API may already have processed the cancelled request; a new lookup can use credits."
             : resourceLimit || invalidResponse
             ? "Do not retry automatically. Check the named limit or upstream response and use a smaller request when appropriate. A new API request can use credits."

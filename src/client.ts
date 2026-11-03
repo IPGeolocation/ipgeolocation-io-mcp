@@ -33,6 +33,9 @@ export function getApiKey(): string {
       "API key not configured. Set the IPGEOLOCATION_API_KEY environment variable."
     );
   }
+  if (!/^[\x21-\x7e]+$/.test(apiKey)) {
+    throw new ApiError(400, "400: API key must contain only printable ASCII characters without spaces. Update IPGEOLOCATION_API_KEY. No API request was sent.", "mcp_server", "invalid_api_key");
+  }
   return apiKey;
 }
 
@@ -41,7 +44,7 @@ export class ApiError extends Error {
     public status: number,
     message: string,
     public source: "ipgeolocation_api" | "mcp_server" = "ipgeolocation_api",
-    public code?: "redirect_blocked" | "invalid_response"
+    public code?: "redirect_blocked" | "invalid_response" | "response_incomplete" | "invalid_api_key"
   ) {
     super(message);
     this.name = "ApiError";
@@ -145,8 +148,10 @@ async function fetchJsonWithTimeout(
   const signal = requestSignal ? AbortSignal.any([requestSignal, controller.signal]) : controller.signal;
   if (signal.aborted) throw new RequestCancelledError();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let receivedSuccess = false;
   try {
     const response = await fetch(url, { ...options, redirect: "manual", signal });
+    receivedSuccess = response.ok;
     if (response.status >= 300 && response.status < 400) {
       void response.body?.cancel().catch(() => {});
       throw new ApiError(502, "502: Upstream API returned an unexpected redirect. Redirects are blocked to protect credentials and request data.", "mcp_server", "redirect_blocked");
@@ -165,9 +170,12 @@ async function fetchJsonWithTimeout(
     if (requestSignal?.aborted) throw new RequestCancelledError();
     if (error instanceof ApiError && error.source === "ipgeolocation_api") throw error;
     if (signal.aborted) {
-      throw new ApiError(504, `504: Upstream request timed out after ${timeoutMs}ms`, "mcp_server");
+      throw new ApiError(504, `504: Upstream request timed out after ${timeoutMs}ms${receivedSuccess ? ". The API returned a success status, but its response was incomplete. Credits may already have been used; a new request may use credits again. No automatic retry was made." : ""}`, "mcp_server", receivedSuccess ? "response_incomplete" : undefined);
     }
     if (error instanceof ApiError || error instanceof ResourceLimitError || error instanceof RequestCancelledError) throw error;
+    if (receivedSuccess) {
+      throw new ApiError(502, "502: The API returned a success status, but its response was interrupted. Credits may already have been used; a new request may use credits again. No automatic retry was made.", "mcp_server", "response_incomplete");
+    }
     throw new ApiError(502, `502: Upstream request or response failed (${redactSensitiveText(error instanceof Error ? error.message : String(error))}). The API may already have processed the request; no automatic retry was made.`, "mcp_server");
   } finally {
     clearTimeout(timeout);

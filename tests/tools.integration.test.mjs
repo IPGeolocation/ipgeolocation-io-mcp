@@ -1171,10 +1171,10 @@ test("validates timezone and astronomy inputs before network calls", async (t) =
 
   const elevationError = await invoke(tools, "get_astronomy", {
     location: "Karachi, PK",
-    elevation: "-1",
+    elevation: "10001",
   });
   assert.equal(elevationError.isError, true);
-  assert.match(parseTextResult(elevationError), /between 0 and 10000/);
+  assert.match(parseTextResult(elevationError), /finite number no greater than 10000/);
   assert.equal(calls.length, beforeCalls);
 
   for (const result of [timezoneError, conversionError, astronomyDateError, astronomyRangeError, timezoneValueError, conversionTimeError, elevationError]) {

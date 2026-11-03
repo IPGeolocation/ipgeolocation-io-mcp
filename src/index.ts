@@ -1,7 +1,7 @@
 import { McpServer, type RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { CallToolRequestSchema, type CallToolResult, ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import path from "node:path";
+import { realpathSync } from "node:fs";
 import { Transform } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -297,7 +297,11 @@ function isDirectEntrypoint(): boolean {
     return false;
   }
 
-  return path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
 }
 
 if (isDirectEntrypoint()) {

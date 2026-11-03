@@ -156,6 +156,40 @@ test("direct API client callers reject blanks before fetch and share normalizati
   assert.deepEqual(requests[1].body.ips, ["example.com", "example.com"]);
 });
 
+test("astronomy clamps negative elevations before requests and shares the zero-elevation cache", async t => {
+  const { call, requests } = await sdk(t, request => ({ location: { elevation: request.url.searchParams.get("elevation") }, astronomy: {} }));
+  const base = { lat: "0", long: "0" };
+  const dates = { dateStart: "2026-12-01", dateEnd: "2026-12-02" };
+  for (const elevation of ["-1", " -0.5 ", "-1e200"]) {
+    const result = await call("get_astronomy", { ...base, elevation });
+    assert.equal(result.isError, undefined);
+    assert.equal(result.structuredContent.data.location.elevation, "0");
+    assert.equal(requests.at(-1).url.searchParams.get("elevation"), "0");
+  }
+  const before = requests.length;
+  for (const elevation of ["-1", "-0.5", "0"]) {
+    const result = await call("get_astronomy_time_series", { ...base, ...dates, elevation });
+    assert.equal(result.isError, undefined);
+    assert.equal(result.structuredContent.data.location.elevation, "0");
+  }
+  assert.equal(requests.length, before + 1);
+  const validRequests = requests.length;
+  for (const name of ["get_astronomy", "get_astronomy_time_series"]) {
+    for (const elevation of ["10001", "NaN", "Infinity", "-Infinity", ""]) {
+      const result = await call(name, { ...base, ...(name.endsWith("time_series") ? dates : {}), elevation });
+      assert.equal(result.isError, true);
+      assert.equal(result.structuredContent.error.retryable, false);
+    }
+  }
+  assert.equal(requests.length, validRequests);
+  const original = process.env.IPGEOLOCATION_API_KEY;
+  process.env.IPGEOLOCATION_API_KEY = "direct-astronomy-synthetic-key";
+  t.after(() => original === undefined ? delete process.env.IPGEOLOCATION_API_KEY : process.env.IPGEOLOCATION_API_KEY = original);
+  await api.getAstronomy({ ...base, elevation: "-5" });
+  await api.getAstronomyTimeSeries({ ...base, ...dates, elevation: "-5" });
+  assert.ok(requests.slice(-2).every(request => request.url.searchParams.get("elevation") === "0"));
+});
+
 for (const name of ["parse_user_agent", "bulk_parse_user_agent"]) {
   test(`${name}: whitespace-only UA fails before the API without changing valid bytes`, async t => {
     const { call, requests } = await sdk(t);

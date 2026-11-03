@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -52,6 +52,47 @@ async function fixture(t) {
     }),
   };
 }
+
+test("npm packing rebuilds dist without stale code or stray credential files", async t => {
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), "npm-clean-build-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const repository = path.join(root, "repository with spaces");
+  await mkdir(repository);
+  for (const name of ["package.json", "tsconfig.json", "src"]) {
+    await cp(path.join(repo, name), path.join(repository, name), { recursive: true });
+  }
+  await symlink(await realpath(path.join(repo, "node_modules")), path.join(repository, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+  const strayFiles = ["dist/tools/removed-old-tool.js", "dist/scratch/.env.local"];
+  for (const name of strayFiles) {
+    await mkdir(path.dirname(path.join(repository, name)), { recursive: true });
+    await writeFile(path.join(repository, name), "synthetic stray-file marker\n");
+  }
+  const npmCli = process.env.npm_execpath || path.resolve(path.dirname(process.execPath), process.platform === "win32"
+    ? "node_modules/npm/bin/npm-cli.js" : "../lib/node_modules/npm/bin/npm-cli.js");
+  const userNpmrc = path.join(root, "user.npmrc"), globalNpmrc = path.join(root, "global.npmrc");
+  await writeFile(userNpmrc, "");
+  await writeFile(globalNpmrc, "");
+  const env = { ...process.env };
+  for (const name of Object.keys(env)) if (/IPGEOLOCATION|TOKEN|SECRET|API_KEY|^npm_config_/i.test(name)) delete env[name];
+  Object.assign(env, {
+    PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH}`,
+    NPM_CONFIG_USERCONFIG: userNpmrc, NPM_CONFIG_GLOBALCONFIG: globalNpmrc,
+    NPM_CONFIG_CACHE: path.join(root, "npm-cache"), NPM_CONFIG_UPDATE_NOTIFIER: "false",
+    NPM_CONFIG_AUDIT: "false", NPM_CONFIG_FUND: "false",
+  });
+  const result = spawnSync(process.execPath, [npmCli, "pack", "--dry-run", "--json", "--offline"], {
+    cwd: repository, env, encoding: "utf8", timeout: 60000,
+  });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  const [packed] = JSON.parse(result.stdout.slice(result.stdout.indexOf("[")));
+  const files = new Set(packed.files.map(file => file.path));
+  assert.ok(files.has("dist/cli.js"));
+  assert.ok(files.has("dist/index.js"));
+  for (const name of strayFiles) {
+    assert.equal(files.has(name), false, `${name} must not enter the package`);
+    await assert.rejects(readFile(path.join(repository, name)), { code: "ENOENT" });
+  }
+});
 
 for (const rootLink of [false, true]) {
   test(`dependency pruning preserves outside data through ${rootLink ? "a node_modules junction" : "nested symlinks or junctions"}`, async t => {
@@ -177,7 +218,10 @@ async function announcementFixture(t, manifest = { name: bundleName, version }) 
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),args=process.argv.slice(2);
 fs.appendFileSync(process.env.FIXTURE_CALLS,JSON.stringify({command:'gh',args})+'\\n');
 const read=()=>JSON.parse(fs.readFileSync(process.env.FIXTURE_RELEASE,'utf8'));
-if(args[0]==='api') {process.stdout.write(JSON.stringify(args[1].includes('/commits/')?{sha:process.env.FIXTURE_COMMIT}:args[1].includes('/actions/runs/')?JSON.parse(fs.readFileSync(process.env.FIXTURE_RUN,'utf8')):read()));}
+if(args[0]==='api') {
+ const commit=args[1].endsWith('/commits/refs%2Ftags%2F'+process.env.SOURCE_REF)?process.env.FIXTURE_COMMIT:process.env.FIXTURE_BRANCH_COMMIT||process.env.FIXTURE_COMMIT;
+ process.stdout.write(JSON.stringify(args[1].includes('/commits/')?{sha:commit}:args[1].includes('/actions/runs/')?JSON.parse(fs.readFileSync(process.env.FIXTURE_RUN,'utf8')):read()));
+}
 else if(args[0]==='release'&&args[1]==='view')process.stdout.write(JSON.stringify(read()));
 else if(args[0]==='release'&&args[1]==='upload'){
  const release=read(),file=args[3],name=path.basename(file);
@@ -352,6 +396,21 @@ test("a scanner startup failure leaves no previous SBOM or raw output", async t 
 
 const uploadCalls = calls => calls.filter(call => call.command === "gh" && call.args[0] === "release" && call.args[1] === "upload");
 const publicationOrder = [`${filename}.sigstore.json`, `${filename}.provenance.sigstore.json`, "sbom.cdx.json", "server.json", filename];
+
+onReleasePlatform("every release path verifies the exact tag when a branch shares its name", async t => {
+  for (const operation of ["preflight", "upload", "restore", "resume", "prepare"]) {
+    await t.test(operation, async t => {
+      const f = await announcementFixture(t);
+      const extra = { FIXTURE_COMMIT: "b".repeat(40), FIXTURE_BRANCH_COMMIT: sourceDigest };
+      const result = operation === "restore" || operation === "prepare"
+        ? f[operation](path.join(f.root, "new-output"), extra)
+        : operation === "resume" ? f.resume(f.local, extra) : f[operation](extra);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /release tag does not match this workflow's source commit/);
+      assert.deepEqual(await f.calls(), [{ command: "gh", args: ["api", `repos/IPGeolocation/ipgeolocation-io-mcp/commits/refs%2Ftags%2F${tag}`] }]);
+    });
+  }
+});
 
 onReleasePlatform("early publication preflight stops on a partial release before signing or uploading", async t => {
   const f = await announcementFixture(t);

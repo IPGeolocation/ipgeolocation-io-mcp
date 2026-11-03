@@ -10,7 +10,7 @@ Version **2.0.2**. See the [release checklist](../../RELEASING.md) for publicati
 2. Complete source and consumer verification, then create the matching Git tag and GitHub release as part of an authorized release.
 3. For a new authorized release, dispatch **mpak Release** from its tag with `operation: publish`. Set both `source_ref` and `release_tag` to that tag. The workflow checks all five target filenames before building or signing and stops if any already exists.
 4. Confirm that the release contains the `.mcpb`, `.mcpb.sigstore.json`, `.mcpb.provenance.sigstore.json`, `sbom.cdx.json`, and `server.json` assets. The workflow retains the exact signed files before uploading the signature, provenance and metadata, then uploads the bundle last. The separate announcement job verifies all five published files before announcing the bundle.
-5. If an upload stops partway through, dispatch the same tagged workflow with `operation: resume` and the original `recovery_run_id`. It verifies that run's repository, tag and commit, checks its retained signature and provenance, and compares every existing release asset before uploading missing files. If only announcement needs retrying, dispatch with `operation: announce`. This works without rerunning the original job and does not rebuild, sign or upload files. Keep both tag inputs unchanged. These modes apply to releases created with this workflow. Older tags retain their original workflow. Signed files are retained for up to 90 days, subject to repository limits. If they have expired or are missing, stop for manual release review. Do not regenerate or replace existing signed assets.
+5. If an upload stops partway through, dispatch the same tagged workflow with `operation: resume` and the original `recovery_run_id`. It verifies that run's repository, tag and commit, checks its retained signature and provenance, and compares every existing release asset before uploading missing files. If only announcement needs retrying, dispatch with `operation: announce`. This works without rerunning the original job and does not rebuild, sign or upload files. Keep both tag inputs unchanged. These modes apply to releases created with this workflow. Do not dispatch **mpak Release** from tags before `v2.0.3`: older tagged workflows can rebuild and replace published assets. Signed files are retained for up to 90 days, subject to repository limits. If they have expired or are missing, stop for manual release review. Do not regenerate or replace existing signed assets.
 6. Verify the public package version and bundle using the commands below. Review scan results for the same version.
 
 The existing workflows have separate roles:
@@ -34,7 +34,7 @@ set -euo pipefail
 release_tag=v2.0.2
 bundle_name="ipgeolocation-ipgeolocation-io-mcp-${release_tag#v}.mcpb"
 workflow_identity="https://github.com/IPGeolocation/ipgeolocation-io-mcp/.github/workflows/mpak-release.yml@refs/tags/$release_tag"
-release_commit=$(gh api "repos/IPGeolocation/ipgeolocation-io-mcp/commits/$release_tag" --jq .sha)
+release_commit=$(gh api "repos/IPGeolocation/ipgeolocation-io-mcp/commits/refs%2Ftags%2F$release_tag" --jq .sha)
 
 gh release download "$release_tag" \
   --repo IPGeolocation/ipgeolocation-io-mcp \

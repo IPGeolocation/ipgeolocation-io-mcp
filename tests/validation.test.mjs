@@ -100,9 +100,22 @@ test("validateElevation enforces documented range", async () => {
   assert.equal(validateElevation(undefined, "elevation"), null);
   assert.equal(validateElevation("0", "elevation"), null);
   assert.equal(validateElevation("10000", "elevation"), null);
-  assert.match(validateElevation("-1", "elevation"), /between 0 and 10000/);
-  assert.match(validateElevation("10001", "elevation"), /between 0 and 10000/);
-  assert.match(validateElevation("abc", "elevation"), /between 0 and 10000/);
+  for (const value of ["-1", "-0.5", "-1e200"]) assert.equal(validateElevation(value, "elevation"), null);
+  for (const value of ["10001", "abc", "Infinity", "-Infinity", "NaN"]) {
+    assert.match(validateElevation(value, "elevation"), /finite number no greater than 10000/);
+  }
+});
+
+test("negative finite elevations normalize to the same request value as zero", async () => {
+  const { normalizeLookupArguments } = await import(validationModuleUrl());
+  for (const value of ["-1", " -0.5 ", "-1e200", "-5e-324"]) {
+    const args = { elevation: value };
+    assert.equal(normalizeLookupArguments(args).elevation, "0");
+    assert.equal(args.elevation, value);
+  }
+  for (const value of ["0", "0.5", "10000", "1e3", "-Infinity", "NaN"]) {
+    assert.equal(normalizeLookupArguments({ elevation: value }).elevation, value);
+  }
 });
 
 test("validateTimezoneConversionTime enforces documented formats", async () => {

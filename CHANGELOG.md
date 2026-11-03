@@ -6,6 +6,7 @@ Changes in development appear under Unreleased. Published release details are av
 
 Planned version: 2.0.3.
 
+- List Standard Arabic (`ar`) among the `lang` values in the IP geolocation tool descriptions. The API already accepts it, and the server already passes it through.
 - Bound serialized arguments, upstream bodies, JSON depth and shared cache storage, with structured local errors and credit-aware retry guidance.
 - Reject blank selectors and invalid dates or coordinate pairs before an API request. Keep cancellation and shared in-flight requests isolated between callers.
 - Keep successful refreshes from leaving older cached views behind when a newer overlapping refresh fails or is cancelled.
@@ -16,6 +17,11 @@ Planned version: 2.0.3.
 - Recover interrupted mpak uploads from verified retained files and retry announcements from published bundle bytes, without rebuilding, signing or replacing assets.
 - Skip dependency symlinks and junctions while pruning, reject escaped workspace paths in SBOM data, and remove rejected scanner output.
 - Remove unused Corepack launchers and modules from the runtime image.
+
+- Show a clear error for invalid API keys. If a successful response is interrupted, tell clients not to retry automatically and risk using credits again.
+- Keep sharing a lookup if a refresh is cancelled. Older results cannot replace newer ones.
+- Speed up API key masking in large responses. Treat negative astronomy elevation as zero and fix startup through linked paths.
+- Remove old build files before creating the npm package. Check the release tag and filenames before uploading.
 
 ## [2.0.2](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.2) - 2026-10-27
 

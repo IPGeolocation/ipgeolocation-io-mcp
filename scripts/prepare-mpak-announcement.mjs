@@ -35,7 +35,7 @@ export function releaseContext(releaseTag) {
 
 export function readRelease(context) {
   const endpoint = `repos/${context.repository}`;
-  const commit = JSON.parse(run("gh", ["api", `${endpoint}/commits/${encodeURIComponent(context.releaseTag)}`]));
+  const commit = JSON.parse(run("gh", ["api", `${endpoint}/commits/${encodeURIComponent(context.sourceRef)}`]));
   if (commit.sha !== context.sourceDigest) throw new Error("The current release tag does not match this workflow's source commit.");
   const release = JSON.parse(run("gh", ["api", `${endpoint}/releases/tags/${encodeURIComponent(context.releaseTag)}`]));
   if (release.tag_name !== context.releaseTag || release.draft !== false || typeof release.prerelease !== "boolean" || !Array.isArray(release.assets)) {

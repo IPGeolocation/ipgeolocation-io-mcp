@@ -44,7 +44,7 @@ export function registerAstronomyTools(server: McpServer) {
 
 Returns { location, astronomy } plus ip for IP/server-address lookups. astronomy includes date/current_time, sunrise/sunset, moonrise/moonset, twilight blocks, day_length, sun/moon position, distance, status, moon_phase, moon_illumination_percentage, and moon_angle.
 
-Selector priority is lat/long, location, ip, then the server's public egress IP when no selector is provided. lat and long must be provided together; date must be YYYY-MM-DD; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include full dates. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans.`,
+Selector priority is lat/long, location, ip, then the server's public egress IP when no selector is provided. lat and long must be provided together; date must be YYYY-MM-DD; elevation is in meters, with a maximum of 10000; negative values are treated as 0. time_zone changes timestamp formatting to include full dates. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans.`,
       inputSchema: {
         lat: z
           .string()
@@ -74,7 +74,7 @@ Selector priority is lat/long, location, ip, then the server's public egress IP 
           .string()
           .optional()
           .describe(
-            "Elevation in meters above sea level (0-10000). Affects sunrise/sunset calculations for higher accuracy."
+            "Elevation in meters above sea level. Maximum 10000; negative values are treated as 0. Affects sunrise/sunset calculations for higher accuracy."
           ),
         time_zone: z
           .string()
@@ -145,7 +145,7 @@ Selector priority is lat/long, location, ip, then the server's public egress IP 
 
 Returns { location, astronomy: [...] } with one daily item per date containing sunrise/sunset, moonrise/moonset, twilight blocks, day_length, sun/moon status, and moon_phase. Selector priority is lat/long, location, ip, then the server's public egress IP when no selector is provided.
 
-dateStart and dateEnd are required YYYY-MM-DD values with a maximum 90-day span. lat and long must be provided together; elevation must be 0-10000 meters. time_zone changes timestamp formatting to include full dates. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
+dateStart and dateEnd are required YYYY-MM-DD values with a maximum 90-day span. lat and long must be provided together; elevation is in meters, with a maximum of 10000; negative values are treated as 0. time_zone changes timestamp formatting to include full dates. lang only changes location fields; non-English lang is paid-only and returns 401 on free plans. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
       inputSchema: {
         lat: z
           .string()
@@ -181,7 +181,7 @@ dateStart and dateEnd are required YYYY-MM-DD values with a maximum 90-day span.
           .string()
           .optional()
           .describe(
-            "Elevation in meters above sea level (0-10000). Affects sunrise/sunset calculations."
+            "Elevation in meters above sea level. Maximum 10000; negative values are treated as 0. Affects sunrise/sunset calculations."
           ),
         time_zone: z
           .string()

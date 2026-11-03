@@ -55,6 +55,32 @@ test('cancelled superseding force cannot abort a live refresh or preserve pre-re
  assert.equal((await call(full)).structuredContent.data.generation,4);assert.equal(requests.length,4);
 });
 
+for (const toolName of ['lookup_ip', 'bulk_security_check']) {
+ test(`${toolName} reuses the original pending lookup after a forced refresh is cancelled`, async t => {
+  const original=deferred(),refresh=deferred(),originalStarted=deferred(),refreshStarted=deferred();
+  t.after(()=>{original.resolve();refresh.resolve()});
+  let originalSignal,refreshSignal;
+  const {session,requests}=await setup(t,async(request,count)=>{
+   if(count===1){originalSignal=request.options.signal;originalStarted.resolve();await original.promise;}
+   if(count===2){refreshSignal=request.options.signal;refreshStarted.resolve();await refresh.promise;}
+   const value={ip:'8.8.8.8',security:{threat_score:count}};
+   return toolName==='bulk_security_check'?[value]:value;
+  },toolName);
+  const {call,client}=await session(),args=toolName==='bulk_security_check'?{ips:['8.8.8.8']}:{ip:'8.8.8.8',include:'security'};
+  const first=call(args);await originalStarted.promise;
+  const controller=new AbortController(),forced=call({...args,force_refresh:true},{signal:controller.signal}),outcome=Promise.allSettled([forced]);
+  await refreshStarted.promise;controller.abort();assert.equal((await outcome)[0].status,'rejected');
+  await client.ping();await turn();
+  assert.equal(refreshSignal.aborted,true);assert.equal(originalSignal.aborted,false);
+  const joined=call(args);await client.ping();assert.equal(requests.length,2);
+  original.resolve();const firstResult=await first,joinedResult=await joined;
+  assert.deepEqual(joinedResult.structuredContent,firstResult.structuredContent);
+  refresh.resolve();await turn();
+  assert.deepEqual((await call(args)).structuredContent,firstResult.structuredContent);
+  assert.equal(requests.length,2,'joining and reading the cached result must not spend credits again');
+ });
+}
+
 test('an abandoned request that ignores abort cannot overwrite an immediate replacement',async t=>{
  const old=deferred(),started=deferred();t.after(()=>old.resolve());let oldSignal;
  const{session,requests}=await setup(t,async(request,count)=>{if(count===1){oldSignal=request.options.signal;started.resolve();await old.promise}return row(count,request)});

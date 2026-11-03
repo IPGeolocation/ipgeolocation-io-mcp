@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { localAssetMetadata, publishedAsset, readRelease, releaseContext, run, verifyLocalBundle } from "./prepare-mpak-announcement.mjs";
+import { localAssetMetadata, publishedAsset, readRelease, releaseContext, verifyLocalBundle } from "./prepare-mpak-announcement.mjs";
 
 const args = process.argv.slice(2);
 const mode = args[0]?.startsWith("--") ? args.shift() : "upload";
@@ -17,11 +17,10 @@ if (mode === "--preflight") {
   console.log("All five release filenames are available before building or signing.");
 } else {
   if (!assets.length) throw new Error("Supply the complete local asset set, or its directory with --resume.");
-  let files, release, metadata, repository;
+  const context = releaseContext(releaseTag);
+  let files, release, metadata;
   if (mode === "--resume") {
     if (assets.length !== 1) throw new Error("Resume accepts one directory containing the retained five-file asset set.");
-    const context = releaseContext(releaseTag);
-    repository = context.repository;
     release = readRelease(context);
     const verified = await verifyLocalBundle(context, path.resolve(assets[0]));
     metadata = verified.metadata;
@@ -34,15 +33,11 @@ if (mode === "--preflight") {
       if (metadata.has(name)) throw new Error("Release asset filenames must be unique.");
       metadata.set(name, await localAssetMetadata(file));
     }
-    const bundles = [...metadata.keys()].filter(name => name.endsWith(".mcpb"));
-    const required = bundles.length === 1 ? [`${bundles[0]}.sigstore.json`, `${bundles[0]}.provenance.sigstore.json`, "sbom.cdx.json", "server.json", bundles[0]] : [];
-    if (required.length !== 5 || metadata.size !== 5 || required.some(name => !metadata.has(name))) {
-      throw new Error("Supply one bundle, its signature and provenance, sbom.cdx.json and server.json together.");
+    if (metadata.size !== context.names.length || context.names.some(name => !metadata.has(name))) {
+      throw new Error("Release asset filenames must match the configured bundle name and release tag.");
     }
-    files.sort((left, right) => required.indexOf(path.basename(left)) - required.indexOf(path.basename(right)));
-    try { release = JSON.parse(run("gh", ["release", "view", releaseTag, "--json", "assets"])); }
-    catch (error) { throw new Error(`Unable to inspect release assets: ${error.message}`); }
-    if (!Array.isArray(release.assets)) throw new Error("Unable to inspect release assets.");
+    files.sort((left, right) => context.names.indexOf(path.basename(left)) - context.names.indexOf(path.basename(right)));
+    release = readRelease(context);
     const conflicts = [...metadata.keys()].filter(name => release.assets.some(asset => asset.name === name));
     if (conflicts.length) throw new Error(`Refusing to replace published release assets: ${conflicts.join(", ")}`);
   }
@@ -59,7 +54,7 @@ if (mode === "--preflight") {
   }
   // A discoverable bundle is uploaded only after every verification sidecar succeeds.
   for (const file of missing) {
-    const upload = spawnSync("gh", ["release", "upload", releaseTag, file, ...(repository ? ["--repo", repository] : [])], { stdio: "inherit" });
+    const upload = spawnSync("gh", ["release", "upload", releaseTag, file, "--repo", context.repository], { stdio: "inherit" });
     if (upload.error) throw upload.error;
     if (upload.status !== 0) process.exit(upload.status ?? 1);
   }

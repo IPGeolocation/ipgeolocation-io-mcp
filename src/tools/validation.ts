@@ -27,6 +27,10 @@ function normalizeLookupValue(value: unknown, name: string, label = name): strin
   const normalized = value.trim();
   if (name === "ip" || name === "lang") return normalized.toLowerCase();
   if (name === "asn") return normalized.toUpperCase();
+  if (name === "elevation") {
+    const elevation = parseNumber(normalized);
+    if (elevation !== null && elevation < 0) return "0";
+  }
   return normalized;
 }
 
@@ -199,8 +203,8 @@ export function validateElevation(
   }
 
   const parsed = parseNumber(value!);
-  if (parsed === null || parsed < 0 || parsed > 10000) {
-    return `${fieldName} must be a number between 0 and 10000.`;
+  if (parsed === null || parsed > 10000) {
+    return `${fieldName} must be a finite number no greater than 10000. Negative values are treated as 0.`;
   }
 
   return null;

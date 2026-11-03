@@ -11,7 +11,12 @@ const script = path.join(repo, "scripts/upload-mpak-release-assets.mjs");
 const releaseCliTest = (name, handler) => test(name, {
   skip: process.platform === "win32" ? "The release workflow runs on Linux; this CLI fixture uses a POSIX executable." : false,
 }, handler);
-const assetNames = ["server-2.0.2.mcpb", "server.json", "sbom.cdx.json", "server-2.0.2.mcpb.sigstore.json", "server-2.0.2.mcpb.provenance.sigstore.json"];
+const bundleFilename = "ipgeolocation-ipgeolocation-io-mcp-2.0.2.mcpb";
+const assetNames = [bundleFilename, "server.json", "sbom.cdx.json", `${bundleFilename}.sigstore.json`, `${bundleFilename}.provenance.sigstore.json`];
+const releaseInspection = [
+  ["api", "repos/IPGeolocation/ipgeolocation-io-mcp/commits/refs%2Ftags%2Fv2.0.2"],
+  ["api", "repos/IPGeolocation/ipgeolocation-io-mcp/releases/tags/v2.0.2"],
+];
 
 async function setup(t, options = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "release-assets-"));
@@ -23,19 +28,28 @@ async function setup(t, options = {}) {
 const fs = require('node:fs');
 const args = process.argv.slice(2);
 fs.appendFileSync(process.env.FAKE_GH_LOG, JSON.stringify(args) + '\\n');
-if (args[1] === 'view') {
+if (args[0] === 'api' && args[1].includes('/commits/')) {
+  process.stdout.write(JSON.stringify({ sha: process.env.FAKE_GH_TAG_SHA }));
+} else if (args[0] === 'api' && args[1].includes('/releases/tags/')) {
   if (process.env.FAKE_GH_VIEW_FAIL) { process.stderr.write('Cannot inspect release'); process.exit(7); }
+  process.stdout.write(JSON.stringify({ tag_name: 'v2.0.2', draft: false, prerelease: false, assets: JSON.parse(process.env.FAKE_GH_EXISTING) }));
+} else if (args[0] === 'release' && args[1] === 'view') {
   process.stdout.write(JSON.stringify({ assets: JSON.parse(process.env.FAKE_GH_EXISTING) }));
 } else if (args[1] === 'upload') {
   process.exit(Number(process.env.FAKE_GH_UPLOAD_STATUS || 0));
 } else process.exit(9);
 `, { mode: 0o755 });
-  const assets = assetNames.map(name => path.join(root, name));
+  const assets = (options.names ?? assetNames).map(name => path.join(root, name));
   await Promise.all(assets.map(asset => writeFile(asset, "fixture")));
   const env = {
     ...process.env,
     PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+    GITHUB_REPOSITORY: "IPGeolocation/ipgeolocation-io-mcp",
+    GITHUB_SHA: "a".repeat(40),
+    GITHUB_REF: "refs/tags/v2.0.2",
+    SOURCE_REF: "v2.0.2",
     FAKE_GH_LOG: log,
+    FAKE_GH_TAG_SHA: options.tagSha ?? "a".repeat(40),
     FAKE_GH_EXISTING: JSON.stringify((options.existing ?? []).map(name => ({ name }))),
     FAKE_GH_VIEW_FAIL: options.viewFail ? "1" : "",
     FAKE_GH_UPLOAD_STATUS: String(options.uploadStatus ?? 0),
@@ -55,8 +69,8 @@ releaseCliTest("release assets are preflighted together and the bundle is upload
   const result = fixture.run();
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(await fixture.calls(), [
-    ["release", "view", "v2.0.2", "--json", "assets"],
-    ...[3, 4, 2, 1, 0].map(index => ["release", "upload", "v2.0.2", fixture.assets[index]]),
+    ...releaseInspection,
+    ...[3, 4, 2, 1, 0].map(index => ["release", "upload", "v2.0.2", fixture.assets[index], "--repo", "IPGeolocation/ipgeolocation-io-mcp"]),
   ]);
 });
 
@@ -68,7 +82,7 @@ releaseCliTest("a collision in any of the five asset names prevents every upload
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /Refusing to replace published release assets/);
       assert.ok(result.stderr.includes(name));
-      assert.deepEqual(await fixture.calls(), [["release", "view", "v2.0.2", "--json", "assets"]]);
+      assert.deepEqual(await fixture.calls(), releaseInspection);
     });
   }
 });
@@ -77,8 +91,25 @@ releaseCliTest("failed asset inspection cannot fall through to upload", async t 
   const fixture = await setup(t, { viewFail: true });
   const result = fixture.run();
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Unable to inspect release assets/);
-  assert.equal((await fixture.calls()).length, 1);
+  assert.match(result.stderr, /Cannot inspect release/);
+  assert.deepEqual(await fixture.calls(), releaseInspection);
+});
+
+releaseCliTest("a tag moved after preflight is rejected before any asset upload", async t => {
+  const fixture = await setup(t, { tagSha: "b".repeat(40) });
+  const result = fixture.run();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /release tag does not match this workflow's source commit/);
+  assert.deepEqual(await fixture.calls(), [releaseInspection[0]]);
+});
+
+releaseCliTest("a complete asset set with unexpected bundle filenames is rejected before any release request", async t => {
+  const names = assetNames.map(name => name.replace("2.0.2.mcpb", "2.0.2-any-any.mcpb"));
+  const fixture = await setup(t, { names });
+  const result = fixture.run();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /filenames must match the configured bundle name and release tag/);
+  assert.deepEqual(await fixture.calls(), []);
 });
 
 releaseCliTest("all local files must exist before querying or uploading", async t => {
@@ -103,7 +134,7 @@ releaseCliTest("duplicate destination filenames are rejected before any release 
 releaseCliTest("an upload failure is propagated without retrying or replacing assets", async t => {
   const fixture = await setup(t, { uploadStatus: 23 });
   assert.equal(fixture.run().status, 23);
-  assert.equal((await fixture.calls()).length, 2);
+  assert.equal((await fixture.calls()).length, 3);
 });
 
 test("release workflow uses the guarded upload and has no overwrite flag", async () => {

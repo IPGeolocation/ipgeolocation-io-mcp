@@ -38,14 +38,108 @@ function setup(t) {
   });
 }
 
-async function session(t) {
-  const server = serverModule.createMcpServer({ apiKey: syntheticKey });
+async function session(t, apiKey = syntheticKey) {
+  const server = serverModule.createMcpServer({ apiKey });
   const client = new Client({ name: 'transport-hardening', version: '1' });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(b); await client.connect(a); await client.listTools();
   t.after(async () => { await client.close(); await server.close(); });
   return (name, args = {}, options) => client.callTool({ name, arguments: args }, undefined, options);
 }
+
+for (const [name, args] of [
+  ['check_security', { ip: '8.8.8.8' }], ['bulk_security_check', { ips: ['8.8.8.8'] }],
+]) {
+  for (const mode of ['stall', 'cut']) {
+    test(`${name} does not mark an interrupted successful ${mode} response retryable`, async t => {
+      setup(t); let requests = 0;
+      const upstream = createServer((request, response) => {
+        requests++; request.resume(); response.writeHead(200, { 'content-type': 'application/json' });
+        response.write(name.startsWith('bulk_') ? '[' : '{');
+        if (mode === 'cut') {
+          const timer = setTimeout(() => response.destroy(), 25);
+          response.on('close', () => clearTimeout(timer));
+        }
+      });
+      await new Promise(resolveListen => upstream.listen(0, '127.0.0.1', resolveListen));
+      t.after(async () => { upstream.closeAllConnections(); await new Promise(resolveClose => upstream.close(resolveClose)); });
+      globalThis.fetch = (_url, options) => nativeFetch(`http://127.0.0.1:${upstream.address().port}`, options);
+      const call = await session(t), result = await call(name, args), error = result.structuredContent.error;
+      assert.equal(result.isError, true);
+      assert.equal(error.source, 'mcp_server');
+      assert.equal(error.category, mode === 'stall' ? 'timeout' : 'upstream_request');
+      assert.equal(error.status, mode === 'stall' ? 504 : 502);
+      assert.equal(error.retryable, false);
+      assert.match(error.message, /API returned a success status/);
+      assert.match(error.message, /credits again/);
+      assert.match(error.guidance, /Do not retry automatically.*approval/);
+      assert.equal(requests, 1);
+    });
+  }
+}
+
+test('a deadline before HTTP headers retains retry guidance without claiming success', async t => {
+  setup(t); let requests = 0;
+  const upstream = createServer(request => { requests++; request.resume(); });
+  await new Promise(resolveListen => upstream.listen(0, '127.0.0.1', resolveListen));
+  t.after(async () => { upstream.closeAllConnections(); await new Promise(resolveClose => upstream.close(resolveClose)); });
+  globalThis.fetch = (_url, options) => nativeFetch(`http://127.0.0.1:${upstream.address().port}`, options);
+  const call = await session(t), result = await call('check_security', { ip: '8.8.8.8' });
+  assert.equal(result.structuredContent.error.category, 'timeout');
+  assert.equal(result.structuredContent.error.retryable, true);
+  assert.match(result.structuredContent.error.guidance, /only with approval/);
+  assert.doesNotMatch(result.structuredContent.error.message, /success status/);
+  assert.equal(requests, 1);
+});
+
+test('invalid credential characters fail locally without exposing character details or blocking keyless tools', async t => {
+  setup(t); let requests = 0, fetchCalls = 0;
+  const upstream = createServer((request, response) => {
+    requests++; request.resume();
+    assert.equal(request.headers['x-ipgeolocation-api-key'], undefined);
+    response.setHeader('content-type', 'application/json'); response.end('{"ip":"198.51.100.7"}');
+  });
+  await new Promise(resolveListen => upstream.listen(0, '127.0.0.1', resolveListen));
+  t.after(async () => { upstream.closeAllConnections(); await new Promise(resolveClose => upstream.close(resolveClose)); });
+  globalThis.fetch = (_url, options) => { fetchCalls++; return nativeFetch(`http://127.0.0.1:${upstream.address().port}`, options); };
+  const redaction = await load('redaction.js');
+  const keys = ['synthetic\u043akey', 'synthetic\u007fkey', 'synthetic\rkey', 'synthetic\nkey', 'synthetic\u0000key',
+    'synthetic\tkey', 'synthetic\u200bkey', 'synthetic\ufeffkey', 'synthetic\u00e9key', 'synthetic key', 'synthetic\ud800key'];
+  for (const key of keys) {
+    const call = await session(t, key), result = await call('check_security', { ip: '8.8.8.8' });
+    const error = result.structuredContent.error;
+    assert.equal(error.source, 'mcp_server');
+    assert.equal(error.category, 'configuration');
+    assert.equal(error.status, 400);
+    assert.equal(error.retryable, false);
+    assert.equal(error.message, 'API key must contain only printable ASCII characters without spaces. Update IPGEOLOCATION_API_KEY. No API request was sent.');
+    assert.doesNotMatch(JSON.stringify(result), /character at index|value of \d|ByteString|fetch failed/);
+    assert.equal(config.withRuntimeConfig({ apiKey: key }, () => redaction.redactKnownSecrets(key)), '[REDACTED_API_KEY]');
+  }
+  assert.equal(fetchCalls, 0);
+  assert.equal(requests, 0);
+  const call = await session(t, keys[0]), result = await call('get_my_ip');
+  assert.equal(result.isError, undefined);
+  assert.equal(result.structuredContent.ip, '198.51.100.7');
+  assert.equal(requests, 1);
+});
+
+test('valid printable API keys retain their exact normalized header value', async t => {
+  setup(t); let requests = 0, expected;
+  const upstream = createServer((request, response) => {
+    requests++; request.resume();
+    assert.equal(request.headers['x-ipgeolocation-api-key'], expected);
+    response.setHeader('content-type', 'application/json'); response.end('{"ip":"8.8.8.8","security":{}}');
+  });
+  await new Promise(resolveListen => upstream.listen(0, '127.0.0.1', resolveListen));
+  t.after(async () => { upstream.closeAllConnections(); await new Promise(resolveClose => upstream.close(resolveClose)); });
+  globalThis.fetch = (_url, options) => nativeFetch(`http://127.0.0.1:${upstream.address().port}`, options);
+  for (const key of ['  synthetic-ASCII-key-42  ', '0123456789abcdef0123456789abcdef', 'synthetic/key+with=symbols']) {
+    expected = key.trim();
+    assert.deepEqual(await config.withRuntimeConfig({ apiKey: key }, () => api.getSecurity({ ip: '8.8.8.8' })), { ip: '8.8.8.8', security: {} });
+  }
+  assert.equal(requests, 3);
+});
 
 for (const status of [401, 429]) {
   for (const [name, args] of [
@@ -100,12 +194,12 @@ test('explicit cancellation wins even when the deadline signal aborted first', a
   assert.equal(requests, 1);
 });
 
-test('explicit cancellation closes a native slow HTTP error body without retrying', async t => {
+for (const status of [200, 429]) test(`explicit cancellation closes a native slow HTTP ${status} body without retrying`, async t => {
   setup(t);
   const started = Promise.withResolvers();
   let requests = 0;
   const upstream = createServer((request, response) => {
-    requests++; request.resume(); response.writeHead(429); response.flushHeaders(); started.resolve();
+    requests++; request.resume(); response.writeHead(status); response.flushHeaders(); started.resolve();
   });
   await new Promise(resolveListen => upstream.listen(0, '127.0.0.1', resolveListen));
   t.after(async () => { upstream.closeAllConnections(); await new Promise(resolveClose => upstream.close(resolveClose)); });

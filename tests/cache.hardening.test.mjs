@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpServer } from "../dist/index.js";
-import { withRuntimeConfig } from "../dist/config.js";
+import { getRequestSignal, withRequestSignal, withRuntimeConfig } from "../dist/config.js";
 import { clearToolCacheForTests, getCachedOrFetchValue, getCachedValue } from "../dist/tools/cache.js";
 import { shouldCacheBulkResult, withStructuredContent } from "../dist/tools/response.js";
 
@@ -40,6 +41,18 @@ function setup(t) {
 
 const fetchCached = (key, fetchValue, force = false) => getCachedOrFetchValue(key, fetchValue, force, shouldCacheBulkResult);
 const deferred = () => Promise.withResolvers();
+function pendingLookup(t, key, family, force = false) {
+  const gate = deferred(), controller = new AbortController();
+  const request = { gate, controller, calls: 0, signal: undefined, promise: undefined };
+  request.promise = withRequestSignal(controller.signal, () => getCachedOrFetchValue(key, () => {
+    request.calls++;
+    request.signal = getRequestSignal();
+    return gate.promise;
+  }, force, () => true, family));
+  request.promise.catch(() => {});
+  t.after(() => gate.resolve({ cleanup: true }));
+  return request;
+}
 function structuredItem(item) {
   return withStructuredContent("bulk_lookup_ip", { ips: ["8.8.8.8"] }, {
     content: [{ type: "text", text: JSON.stringify([item]) }],
@@ -159,6 +172,200 @@ test("concurrent identical transient lookups share pending work and later explic
   await fetchCached("pending", async () => { calls++; return success; });
   await fetchCached("pending", fetchValue);
   assert.equal(calls, 2);
+});
+
+for (const family of [undefined, "cancelled-refresh-family"]) {
+  const label = family ? "family" : "single key";
+  test(`cancelled refresh restores an active normal request and caches its result (${label})`, async t => {
+    setup(t);
+    const normal = pendingLookup(t, "restore", family);
+    const refresh = pendingLookup(t, "restore", family, true);
+    refresh.controller.abort();
+    await assert.rejects(refresh.promise, /cancelled/i);
+    const joined = pendingLookup(t, "restore", family);
+    assert.equal(normal.calls + refresh.calls + joined.calls, 2);
+    assert.equal(normal.signal.aborted, false);
+    assert.equal(refresh.signal.aborted, true);
+    normal.gate.resolve(success);
+    assert.equal(await normal.promise, success);
+    assert.equal(await joined.promise, success);
+    refresh.gate.resolve([{ stale: true }]);
+    await Promise.resolve();
+    assert.equal(getCachedValue("restore"), success);
+    for (const request of [normal, refresh, joined]) assert.equal(getEventListeners(request.controller.signal, "abort").length, 0);
+  });
+
+  for (const cancelNewestFirst of [false, true]) {
+    test(`nested refresh cancellations restore only live work (${label}, newest ${cancelNewestFirst ? "first" : "last"})`, async t => {
+      setup(t);
+      const normal = pendingLookup(t, "nested", family);
+      const older = pendingLookup(t, "nested", family, true);
+      const newer = pendingLookup(t, "nested", family, true);
+      for (const request of cancelNewestFirst ? [newer, older] : [older, newer]) {
+        request.controller.abort();
+        await assert.rejects(request.promise, /cancelled/i);
+      }
+      const joined = pendingLookup(t, "nested", family);
+      assert.equal(normal.calls + older.calls + newer.calls + joined.calls, 3);
+      normal.gate.resolve(success);
+      assert.equal(await normal.promise, success);
+      assert.equal(await joined.promise, success);
+      assert.equal(getCachedValue("nested"), success);
+    });
+  }
+
+  test(`a cancelled refresh subscriber cannot displace its remaining live subscribers (${label})`, async t => {
+    setup(t);
+    const normal = pendingLookup(t, "subscribers", family);
+    const refresh = pendingLookup(t, "subscribers", family, true);
+    const peer = pendingLookup(t, "subscribers", family);
+    refresh.controller.abort();
+    await assert.rejects(refresh.promise, /cancelled/i);
+    assert.equal(refresh.signal.aborted, false);
+    const joined = pendingLookup(t, "subscribers", family);
+    assert.equal(peer.calls + joined.calls, 0);
+    peer.controller.abort();
+    await assert.rejects(peer.promise, /cancelled/i);
+    assert.equal(refresh.signal.aborted, false);
+    joined.controller.abort();
+    await assert.rejects(joined.promise, /cancelled/i);
+    assert.equal(refresh.signal.aborted, true);
+    const restored = pendingLookup(t, "subscribers", family);
+    assert.equal(restored.calls, 0);
+    normal.gate.resolve(success);
+    assert.equal(await restored.promise, success);
+    await normal.promise;
+    for (const request of [normal, refresh, peer, joined, restored]) assert.equal(getEventListeners(request.controller.signal, "abort").length, 0);
+  });
+
+  for (const predecessorCompletes of [false, true]) {
+    test(`cancelled refresh does not restore a ${predecessorCompletes ? "completed" : "cancelled"} predecessor (${label})`, async t => {
+      setup(t);
+      const normal = pendingLookup(t, "finished", family);
+      const refresh = pendingLookup(t, "finished", family, true);
+      if (predecessorCompletes) { normal.gate.resolve(success); await normal.promise; }
+      else { normal.controller.abort(); await assert.rejects(normal.promise, /cancelled/i); }
+      refresh.controller.abort();
+      await assert.rejects(refresh.promise, /cancelled/i);
+      const replacement = pendingLookup(t, "finished", family);
+      assert.equal(replacement.calls, 1);
+      assert.equal(getCachedValue("finished"), undefined);
+      replacement.gate.resolve(success);
+      assert.equal(await replacement.promise, success);
+    });
+  }
+
+  test(`a superseded newer success prevents restoration of older data (${label})`, async t => {
+    setup(t);
+    const normal = pendingLookup(t, "successful-refresh", family);
+    const older = pendingLookup(t, "successful-refresh", family, true);
+    const newer = pendingLookup(t, "successful-refresh", family, true);
+    older.gate.resolve([{ generation: 2 }]);
+    await older.promise;
+    newer.controller.abort();
+    await assert.rejects(newer.promise, /cancelled/i);
+    const replacement = pendingLookup(t, "successful-refresh", family);
+    assert.equal(replacement.calls, 1);
+    replacement.gate.resolve(success);
+    await replacement.promise;
+    normal.gate.resolve([{ stale: true }]);
+    await normal.promise;
+    assert.equal(getCachedValue("successful-refresh"), success);
+  });
+
+  test(`repeated cancelled refreshes retain the one active lookup (${label})`, async t => {
+    setup(t);
+    const normal = pendingLookup(t, "repeated", family);
+    for (let i = 0; i < 128; i++) {
+      const refresh = pendingLookup(t, "repeated", family, true);
+      refresh.controller.abort();
+      await assert.rejects(refresh.promise, /cancelled/i);
+      refresh.gate.resolve([{ ignored: i }]);
+      await Promise.resolve();
+      assert.equal(getEventListeners(refresh.controller.signal, "abort").length, 0);
+    }
+    const joined = pendingLookup(t, "repeated", family);
+    assert.equal(joined.calls, 0);
+    normal.gate.resolve(success);
+    assert.equal(await normal.promise, success);
+    assert.equal(await joined.promise, success);
+    assert.equal(getCachedValue("repeated"), success);
+  });
+}
+
+for (const successAfterRestoration of [false, true]) {
+  test(`newer sibling success prevents restored old work from being joined or cached (${successAfterRestoration ? "after" : "before"} cancellation)`, async t => {
+    setup(t);
+    const normal = pendingLookup(t, "full", "siblings");
+    const refresh = pendingLookup(t, "full", "siblings", true);
+    if (successAfterRestoration) {
+      refresh.controller.abort();
+      await assert.rejects(refresh.promise, /cancelled/i);
+    }
+    const sibling = [{ generation: "new sibling" }];
+    await getCachedOrFetchValue("projection", async () => sibling, false, () => true, "siblings");
+    if (!successAfterRestoration) {
+      refresh.controller.abort();
+      await assert.rejects(refresh.promise, /cancelled/i);
+    }
+    const replacement = pendingLookup(t, "full", "siblings");
+    assert.equal(replacement.calls, 1);
+    normal.gate.resolve([{ stale: true }]);
+    await normal.promise;
+    assert.equal(getCachedValue("full"), undefined);
+    assert.equal(getCachedValue("projection"), sibling);
+    replacement.gate.resolve(success);
+    assert.equal(await replacement.promise, success);
+    assert.equal(getCachedValue("full"), success);
+  });
+}
+
+test("a newer sibling refresh remains a barrier when an older same-key refresh is cancelled", async t => {
+  setup(t);
+  const normal = pendingLookup(t, "full", "siblings");
+  const refresh = pendingLookup(t, "full", "siblings", true);
+  const sibling = pendingLookup(t, "projection", "siblings", true);
+  refresh.controller.abort();
+  await assert.rejects(refresh.promise, /cancelled/i);
+  const replacement = pendingLookup(t, "full", "siblings");
+  assert.equal(replacement.calls, 1);
+  normal.gate.resolve([{ stale: true }]);
+  await normal.promise;
+  assert.equal(getCachedValue("full"), undefined);
+  sibling.gate.resolve([{ generation: "new sibling" }]);
+  await sibling.promise;
+  replacement.gate.resolve(success);
+  await replacement.promise;
+  assert.equal(getCachedValue("full"), success);
+});
+
+test("clearing pending work aborts every superseded active request and preserves later replacements", async t => {
+  setup(t);
+  const requests = [pendingLookup(t, "clear", "family"), pendingLookup(t, "clear", "family", true), pendingLookup(t, "clear", "family", true)];
+  clearToolCacheForTests();
+  assert.ok(requests.every(request => request.signal.aborted));
+  await getCachedOrFetchValue("clear", async () => success, false, () => true, "family");
+  for (const request of requests) { request.gate.resolve([{ stale: true }]); await request.promise; }
+  assert.equal(getCachedValue("clear"), success);
+});
+
+test("cancelled-refresh restoration remains isolated by API key and cache key", async t => {
+  setup(t);
+  const tenant = (name, fn) => withRuntimeConfig({ apiKey: `synthetic-cancel-tenant-${name}` }, fn);
+  const first = tenant("a", () => pendingLookup(t, "shared", "family"));
+  const refresh = tenant("a", () => pendingLookup(t, "shared", "family", true));
+  const otherTenant = tenant("b", () => pendingLookup(t, "shared", "family"));
+  const otherKey = tenant("a", () => pendingLookup(t, "other", "other-family"));
+  refresh.controller.abort();
+  await assert.rejects(refresh.promise, /cancelled/i);
+  const restored = tenant("a", () => pendingLookup(t, "shared", "family"));
+  const joinedTenant = tenant("b", () => pendingLookup(t, "shared", "family"));
+  const joinedKey = tenant("a", () => pendingLookup(t, "other", "other-family"));
+  assert.equal(restored.calls + joinedTenant.calls + joinedKey.calls, 0);
+  for (const [request, value] of [[first, "a"], [otherTenant, "b"], [otherKey, "other"]]) request.gate.resolve({ value });
+  assert.deepEqual(await restored.promise, { value: "a" });
+  assert.deepEqual(await joinedTenant.promise, { value: "b" });
+  assert.deepEqual(await joinedKey.promise, { value: "other" });
 });
 
 for (const olderTransient of [false, true]) {
