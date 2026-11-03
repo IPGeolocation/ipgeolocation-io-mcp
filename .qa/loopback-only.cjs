@@ -1,3 +1,18 @@
+const traceFs = require('node:fs');
+const traceAppend = traceFs.appendFileSync;
+traceFs.appendFileSync = function (file, data, ...options) {
+  if (file === process.env.IPGEO_QA_NETWORK_BLOCK_LOG && typeof data === 'string') {
+    try {
+      const event = JSON.parse(data);
+      if (event.reason === 'external network access prevented') {
+        event.processFile = require('node:path').basename(process.argv[1] || '');
+        event.stackFrames = String(new Error().stack).split('\n').slice(1, 10);
+        data = JSON.stringify(event) + '\n';
+      }
+    } catch {}
+  }
+  return traceAppend.call(this, file, data, ...options);
+};
 // Offline tests may use local HTTP fixtures; unexpected external calls must fail before I/O.
 const net = require('node:net');
 const tls = require('node:tls');

@@ -100,7 +100,7 @@
   "qaFiles": {
     ".qa/verify-source.mjs": "ec1dc193f85dc09c0c1066b38ac90ed6eda490a598fd3a8e463c73ce024d4410",
     ".qa/windows-package-smoke.mjs": "49b2b6c26abae322ca4017fb6a1c4e4eb5a0cf339333ba4aa3ed7222993db949",
-    ".qa/loopback-only.cjs": "5c058506337bb7cff06e92a14372daed9a7a66f91a7d16ea588876e22225142d",
+    ".qa/loopback-only.cjs": "a5f4938a63d71cf6e2e0033db9966dce78846dfbe0cf9873cf25c7b7a1a855b3",
     ".github/workflows/windows-platform-qa.yml": "e5408f6839672f35a7a12bcbba18da9d4952c885dde23eb2d343e37b1b364daa"
   }
 }
