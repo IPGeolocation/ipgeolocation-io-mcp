@@ -6,7 +6,7 @@ import {
 import { RequestCancelledError } from "../errors.js";
 
 type CacheEntry = { value: unknown; expiresAt: number; bytes: number; version: number; family?: string };
-type Family = { generation: number; inFlight: number; lastSuccess: number };
+type Family = { generation: number; inFlight: number; refreshes: number; lastSuccess: number };
 type Pending = {
   promise: Promise<unknown>; controller: AbortController; users: number;
   family?: Family; generation: number; version: number; forceRefresh: boolean; restored?: boolean;
@@ -76,7 +76,7 @@ export function setCachedValue(key: string, value: unknown, valueBytes?: number)
 }
 
 function removePending(key: string, group: PendingGroup, entry: Pending, restore: false | "cancelled" | "failed" = false): void {
-  group.entries.delete(entry);
+  if (group.entries.delete(entry) && entry.forceRefresh && entry.family) entry.family.refreshes--;
   if (group.latest === entry) {
     group.latest = undefined;
     if (restore && (!entry.family || entry.generation === entry.family.generation)) {
@@ -164,10 +164,11 @@ export async function getCachedOrFetchValue(
   }
   const versionAtStart = ++cacheVersion;
   if (familyKey !== undefined) {
-    if (!state) { state = { generation: 0, inFlight: 0, lastSuccess: 0 }; families.set(familyKey, state); }
-    if (forceRefresh) state.generation++;
+    if (!state) { state = { generation: 0, inFlight: 0, refreshes: 0, lastSuccess: 0 }; families.set(familyKey, state); }
+    if (forceRefresh) { state.generation++; state.refreshes++; }
     state.inFlight++;
   }
+  const refresh = forceRefresh || (state?.refreshes ?? 0) > 0;
   const generationAtStart = state?.generation ?? 0;
   const group: PendingGroup = pending.get(namespacedKey) ?? { entries: new Set<Pending>(), lastSuccess: 0 };
   const entry: Pending = { promise: undefined!, controller: new AbortController(), users: 0, family: state, generation: generationAtStart, version: versionAtStart, forceRefresh };
@@ -178,7 +179,6 @@ export async function getCachedOrFetchValue(
     try {
       const value = await withRequestSignal(entry.controller.signal, fetchValue);
       const active = !entry.controller.signal.aborted;
-      const refresh = forceRefresh || generationAtStart > 0;
       if (active) group.lastSuccess = Math.max(group.lastSuccess, versionAtStart);
       if (active && state) state.lastSuccess = Math.max(state.lastSuccess, versionAtStart);
       const latest = active && pending.get(namespacedKey) === group && group.latest === entry && (!state || entry.generation === state.generation)

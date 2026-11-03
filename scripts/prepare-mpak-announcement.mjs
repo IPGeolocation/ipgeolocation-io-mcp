@@ -73,7 +73,7 @@ export function parseBundleManifest(bytes, context) {
   if (bytes.length > MAX_MANIFEST_BYTES) throw new Error("The bundle manifest exceeds the 1 MiB limit.");
   let manifest;
   try {
-    manifest = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    manifest = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes));
   } catch {
     throw new Error("The bundle manifest must contain a valid JSON object.");
   }

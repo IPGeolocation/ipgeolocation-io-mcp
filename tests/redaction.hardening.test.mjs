@@ -355,3 +355,86 @@ test('invalid percent-encoded data survives cold, warm and cached-page MCP resul
   }
   assert.equal(count(), 1);
 });
+
+test('short-key boundaries recognize double-encoded Unicode neighbours', () => {
+  const percent = value => Array.from(Buffer.from(value), byte => `%${byte.toString(16).padStart(2, '0')}`).join('');
+  const marker = '[REDACTED_API_KEY]';
+  const neighbours = [
+    ...['A', '7', '_', 'é', '漢', '𐐀', '\u0301', '١'].map(value => [value, false]),
+    ...[' ', '\t', '\0', '\u00a0', '/', '😀', '\u{10ffff}'].map(value => [value, true]),
+  ];
+  for (const secret of ['a', 'ab', 'ab1', 'é', '漢', '🚀', '𐐀𐐁', 'aé1', 'a b', 'a/b', "a'", '%2F']) {
+    const json = Array.from({ length: secret.length }, (_, index) => index % 2 ? secret[index] : `\\u${secret.charCodeAt(index).toString(16).padStart(4, '0')}`).join('');
+    const form = new URLSearchParams({ key: secret }).toString().slice(4);
+    const echoes = new Set([secret, json, encodeURI(secret), encodeURIComponent(secret), form, percent(secret), ...[encodeURI(secret), encodeURIComponent(secret), form, percent(secret)].map(encodeURIComponent)]);
+    for (const echo of echoes) {
+      for (const [value, masks] of neighbours) {
+        const encoded = encodeURIComponent(percent(value));
+        for (const neighbour of new Set([encoded, encoded.toLowerCase()])) {
+          const replacement = masks ? marker : echo;
+          for (const [text, expected] of [
+            [`${neighbour}${echo} `, `${neighbour}${replacement} `],
+            [` ${echo}${neighbour}`, ` ${replacement}${neighbour}`],
+            [`${neighbour}${echo}${neighbour}`, `${neighbour}${replacement}${neighbour}`],
+          ]) {
+            assert.equal(scoped(secret, () => redaction.redactKnownSecrets(text)), expected, text);
+            assert.equal(scoped(secret, () => redaction.redactSensitiveText(text)), expected, text);
+            assert.equal(scoped(secret, () => redaction.redactSensitiveValue(text)), expected, text);
+          }
+        }
+      }
+    }
+  }
+});
+
+test('double-encoded short-key boundaries preserve malformed bytes and literal percent data', () => {
+  const marker = '[REDACTED_API_KEY]';
+  for (const neighbour of ['%2580', '%25BF', '%25C0%25AF', '%25ED%25A0%2580', '%25F4%2590%2580%2580', '%25C2', '%25E2%2582', '%25F0%259F%2598', '%25GG', '%2G20', '%252']) {
+    for (const echo of ['ab1', '%61%62%31', '%2561%2562%2531']) {
+      assert.equal(scoped('ab1', () => redaction.redactKnownSecrets(`${neighbour}${echo} `)), `${neighbour}${echo} `);
+      assert.equal(scoped('ab1', () => redaction.redactKnownSecrets(` ${echo}${neighbour}`)), ` ${marker}${neighbour}`);
+    }
+  }
+  for (const text of ['%2561ab1', 'ab1%2561', '%25C3%25A9ab1', 'ab1%25F0%2590%2590%2580']) {
+    assert.equal(scoped('ab1', () => redaction.redactKnownSecrets(text)), text);
+  }
+  for (const secret of ['abcd', key]) {
+    assert.equal(scoped(secret, () => redaction.redactKnownSecrets(`%2561${secret}%2561`)), `%2561${marker}%2561`);
+  }
+});
+
+test('double-encoded short-key echoes stay masked in cold, warm and cached-page MCP results', async t => {
+  const echo = '%2520%2561%2562%2531%2520';
+  const payload = { ...ordinary, note: echo, filler: 'ordinary content '.repeat(20000) };
+  const { client, count } = await session(t, 'ab1', payload);
+  for (let i = 0; i < 2; i++) {
+    const first = await client.callTool({ name: 'lookup_ip', arguments: { ip: '8.8.8.8' } });
+    assert.equal(first.isError, undefined);
+    assert.ok(first.structuredContent.page);
+    const recovered = await recover(client, first);
+    assert.equal(recovered.data.note, '%2520[REDACTED_API_KEY]%2520');
+    assert.deepEqual({ ...recovered.data, note: payload.note }, payload);
+  }
+  assert.equal(count(), 1);
+});
+
+test('keyless tool diagnostics mask a configured short key without changing keyless startup', async t => {
+  const { client } = await session(t, 'ab1', {});
+  const echo = '%2520%2561%2562%2531%2520';
+  let calls = 0;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(new URL(url).href, 'https://api.ipgeolocation.io/v3/getip');
+    assert.equal(new Headers(options.headers).has('x-ipgeolocation-api-key'), false);
+    if (++calls === 1) throw new Error(`Local synthetic failure ${echo}`);
+    return new Response(JSON.stringify({ ip: '8.8.8.8' }));
+  };
+  const failed = await client.callTool({ name: 'get_my_ip', arguments: {} });
+  assert.equal(failed.isError, true);
+  assert.equal(failed.structuredContent.error.category, 'upstream_request');
+  assert.ok(failed.structuredContent.error.message.includes('%2520[REDACTED_API_KEY]%2520'));
+  assert.ok(!JSON.stringify(failed).includes(echo));
+  const success = await client.callTool({ name: 'get_my_ip', arguments: {} });
+  assert.equal(success.isError, undefined);
+  assert.equal(success.structuredContent.ip, '8.8.8.8');
+  assert.equal(calls, 2);
+});

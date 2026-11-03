@@ -6,9 +6,8 @@ Changes in development appear under Unreleased. Published release details are av
 
 Planned version: 2.0.3.
 
-- Invalid successful API responses now return `upstream_response` with `retryable: false`, instead of `upstream_request` with `retryable: true`. New local error categories are `configuration`, `resource_limit` and `cancelled`.
-- Add network guards to offline tests so unexpected requests fail locally.
-
+- Return `upstream_response` with `retryable: false` when an API request succeeds but its data cannot be used. For bulk results with the wrong number of items, this replaces `tool_error`.
+- Add clear errors for invalid settings (`configuration`), exceeded limits (`resource_limit`) and cancelled requests (`cancelled`).
 - List Standard Arabic (`ar`) among the `lang` values in the IP geolocation tool descriptions. The API already accepts it, and the server already passes it through.
 - Limit request size, API response size, JSON nesting and cache memory. Return clear local errors and explain when retrying may use credits.
 - Reject blank selectors and invalid dates or coordinate pairs before an API request. Keep cancellation and shared in-flight requests isolated between callers.
@@ -21,14 +20,19 @@ Planned version: 2.0.3.
 - Skip dependency symlinks and junctions while pruning, reject escaped workspace paths in SBOM data, and remove rejected scanner output.
 - Remove unused Corepack launchers and modules from the runtime image.
 - Reject API keys containing spaces, backslashes, control characters or non-ASCII characters before sending a request.
-- Mark an error as non-retryable when a response stops after the API reports success. A new request may use credits again.
-- Reuse an eligible lookup that is still running when a forced refresh of the same or a related view fails or is cancelled.
+- Set `retryable: false` for `timeout` and `upstream_request` errors if the API reports success but the response does not finish. Retrying may use API credits again.
+- Avoid unnecessary repeat requests after a forced refresh fails or is cancelled.
+- Prevent normal lookups started after a refresh ends from clearing other cached results for the same IP.
 - Speed up API key masking in large responses.
+- Mask short API keys even when they appear in text encoded twice for a URL.
 - Treat a negative astronomy `elevation` as 0, as the API does.
 - Fix startup when the server is launched through a symbolic link.
 - Remove old build output before creating an npm package or preparing an mpak bundle.
 - Check the bundle’s name and version, and verify that `server.json` and `sbom.cdx.json` match the copies inside it, before signing or uploading release files.
+- Reject bundle manifests with a hidden UTF-8 marker at the start that can break JSON parsing.
+- Check scanned bundles against the selected source version, even when the workflow uses a different version.
 - Recheck the release tag and filenames before uploading.
+- Add network guards to offline tests so unexpected requests fail locally.
 
 ## [2.0.2](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.2) - 2026-10-27
 

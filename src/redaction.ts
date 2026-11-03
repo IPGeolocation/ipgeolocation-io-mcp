@@ -44,13 +44,15 @@ function normalizeEscapes(text: string, variant: SecretVariant): string {
 
 function adjacentCharacter(text: string, position: number, before: boolean): string {
   // Compare encoded neighbours without changing the returned data or decoding its tree.
-  for (const size of [3, 6, 9, 12]) {
-    const part = before ? text.slice(Math.max(0, position - size), position) : text.slice(position, position + size);
-    if (part.length !== size || !/^(?:%[\da-f]{2})+$/i.test(part)) continue;
-    const bytes = Buffer.from(part.replaceAll("%", ""), "hex");
-    if (!isUtf8(bytes)) continue;
-    const decoded = bytes.toString("utf8");
-    if (Array.from(decoded).length === 1) return decoded;
+  for (const [width, pattern, escape] of [[5, /^(?:%25[\da-f]{2})+$/i, "%25"], [3, /^(?:%[\da-f]{2})+$/i, "%"]] as const) {
+    for (let size = width; size <= width * 4; size += width) {
+      const part = before ? text.slice(Math.max(0, position - size), position) : text.slice(position, position + size);
+      if (part.length !== size || !pattern.test(part)) continue;
+      const bytes = Buffer.from(part.replaceAll(escape, ""), "hex");
+      if (!isUtf8(bytes)) continue;
+      const decoded = bytes.toString("utf8");
+      if (Array.from(decoded).length === 1) return decoded;
+    }
   }
   // A surrogate pair is one neighbour; check it before either escaped half.
   for (const size of [2, 12, 6]) {

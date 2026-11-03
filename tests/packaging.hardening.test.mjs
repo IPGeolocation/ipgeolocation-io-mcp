@@ -618,6 +618,7 @@ const invalidManifests = [
   ["null", "null"],
   ["array", JSON.stringify([{ name: bundleName, version }])],
   ["invalid UTF-8", Buffer.concat([Buffer.from(JSON.stringify({ name: bundleName, version }).slice(0, -1) + ',"note":"'), Buffer.from([0xff]), Buffer.from('"}')])],
+  ["UTF-8 BOM", Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(JSON.stringify({ name: bundleName, version }))])],
   ["oversized", JSON.stringify({ name: bundleName, version, note: "x".repeat(1024 * 1024) })],
   ["missing", undefined],
   ["duplicate", JSON.stringify({ name: bundleName, version })],
@@ -697,6 +698,47 @@ onReleasePlatform("finalization verifies the explicitly selected source version"
   const result = f.run("finalize-mpak-bundle.mjs", [f.bundle, f.staging], { MPAK_SOURCE_DIR: source });
   assert.equal(result.status, 0, result.stderr);
 });
+
+for (const sourceVersion of ["2.0.1", "2.0.3"]) {
+  onReleasePlatform(`scan prepares and finalizes source ${sourceVersion} with tooling ${version}`, async t => {
+    const workflow = (await readFile(path.join(repo, ".github/workflows/mpak-scan.yml"), "utf8")).replace(/\r\n/g, "\n");
+    const steps = workflow.split(/^      - /m);
+    const stepEnvironment = command => {
+      const step = steps.find(value => value.includes(`node scripts/${command}`));
+      assert.ok(step, `Missing workflow step for ${command}`);
+      assert.match(step, /^        working-directory: tooling$/m);
+      const source = step.match(/^          MPAK_SOURCE_DIR: (.+)$/m)?.[1];
+      return source ? { MPAK_SOURCE_DIR: source } : {};
+    };
+    const f = await fixture(t), source = path.join(f.root, "source");
+    await cp(f.repository, source, { recursive: true });
+    const packagePath = path.join(source, "package.json"), pkg = JSON.parse(await readFile(packagePath, "utf8"));
+    await writeFile(packagePath, JSON.stringify({ ...pkg, version: sourceVersion }));
+    await writeFile(path.join(source, "icon.png"), "fixture icon");
+    const npmCli = path.join(f.root, "npm fixture.mjs");
+    await writeFile(npmCli, `import fs from 'node:fs';
+if(process.argv[2]==='run'){fs.mkdirSync('dist',{recursive:true});fs.writeFileSync('dist/cli.js','// selected source '+JSON.parse(fs.readFileSync('package.json')).version);}
+`);
+    const prepared = f.run("prepare-mpak-package.mjs", [], {
+      ...stepEnvironment("prepare-mpak-package.mjs"), npm_execpath: npmCli, MPAK_STAGING_DIR: f.staging,
+    });
+    assert.equal(prepared.status, 0, prepared.stderr);
+    assert.equal(JSON.parse(await readFile(path.join(f.staging, "manifest.json"))).version, sourceVersion);
+    assert.equal(await readFile(path.join(f.staging, "dist/cli.js"), "utf8"), `// selected source ${sourceVersion}`);
+    await writeFile(path.join(f.staging, "sbom.cdx.json"), "fixture SBOM");
+    const entries = {};
+    for (const entry of await readdir(f.staging, { recursive: true, withFileTypes: true })) {
+      if (entry.isFile()) {
+        const file = path.join(entry.parentPath ?? entry.path, entry.name);
+        entries[path.relative(f.staging, file).split(path.sep).join("/")] = await readFile(file);
+      }
+    }
+    const bundle = path.join(f.root, "scanned source.mcpb");
+    await writeFile(bundle, fixtureArchive(entries));
+    const result = f.run("finalize-mpak-bundle.mjs", [bundle, f.staging], stepEnvironment("finalize-mpak-bundle.mjs"));
+    assert.equal(result.status, 0, result.stderr);
+  });
+}
 
 onReleasePlatform("a valid manifest at the size limit passes finalization and every publication path", async t => {
   const f = await bundleFixture(t);

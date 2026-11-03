@@ -18,6 +18,36 @@ async function setup(t,responder,toolName='lookup_ip'){
  return{session,requests};
 }
 const orders=[[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]];
+for (const toolName of ['lookup_ip', 'bulk_lookup_ip', 'bulk_security_check']) for (const outcome of ['success', 'failed', 'cancelled']) {
+ test(`${toolName} keeps its cached view after a ${outcome} refresh while another view is pending`, async t => {
+  const background=deferred(),backgroundStarted=deferred(),refresh=deferred(),refreshStarted=deferred();
+  t.after(()=>{background.resolve();refresh.resolve()});
+  const {session,requests}=await setup(t,async(request,count)=>{
+   if(count===2){backgroundStarted.resolve();await background.promise;}
+   if(count===3){
+    refreshStarted.resolve();
+    if(outcome==='cancelled')await refresh.promise;
+    if(outcome==='failed')return new Response(JSON.stringify({message:'Synthetic refresh unavailable'}),{status:503});
+   }
+   const value={ip:'8.8.8.8',security:{threat_score:count,is_vpn:true,is_proxy:false}};
+   return toolName==='lookup_ip'?value:[value];
+  },toolName);
+  const {call,client}=await session(),base=toolName==='lookup_ip'?{ip:'8.8.8.8',include:'security'}:{ips:['8.8.8.8'],...(toolName==='bulk_lookup_ip'?{include:'security'}:{})};
+  const args={...base,fields:'security.threat_score'},initial=await call(args);
+  const backgroundCall=call({...base,fields:'security.is_proxy'});await backgroundStarted.promise;
+  const controller=new AbortController(),forced=call({...args,force_refresh:true},{signal:controller.signal}),forcedOutcome=Promise.allSettled([forced]);
+  await refreshStarted.promise;
+  if(outcome==='cancelled'){controller.abort();await forcedOutcome;await client.ping();await turn();assert.equal(requests[2].options.signal.aborted,true);}
+  const settled=(await forcedOutcome)[0];
+  if(outcome==='failed')assert.equal(settled.value.isError,true);
+  if(outcome==='success')assert.equal(settled.value.isError,undefined);
+  assert.equal((await call({...base,fields:'security.is_vpn'})).isError,undefined);
+  const cached=await call(args),expected=outcome==='success'?settled.value:initial;
+  assert.deepEqual(cached.structuredContent,expected.structuredContent);
+  assert.equal(requests.length,4,'the cached view must not require a fifth request');
+  background.resolve();await backgroundCall;
+ });
+}
 for(const latestFull of[false,true])for(const order of orders){
  test(`three competing variants, latest ${latestFull?'full':'target'}, completion ${order.join('-')}`,async t=>{
   const gates=[deferred(),deferred(),deferred()],started=gates.map(()=>deferred());t.after(()=>gates.forEach(g=>g.resolve()));

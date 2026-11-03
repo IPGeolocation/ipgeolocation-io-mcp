@@ -423,6 +423,89 @@ async function stopRefresh(request, outcome) {
   await assert.rejects(request.promise, outcome === "failed" ? /Synthetic related refresh failure/ : /cancelled/i);
 }
 
+async function finishRefresh(request, outcome, value = { refreshed: true }) {
+  if (outcome === "success") {
+    request.gate.resolve(value);
+    assert.equal(await request.promise, value);
+  } else await stopRefresh(request, outcome);
+}
+
+for (const outcome of ["success", "failed", "cancelled"]) for (const backgroundFirst of [false, true]) {
+  test(`a ${outcome} refresh stops affecting new views while ${backgroundFirst ? "earlier" : "later"} normal work remains pending`, async t => {
+    setup(t);
+    const family = "refresh-window", initial = { generation: "initial" }, fresh = { generation: "fresh" };
+    await getCachedOrFetchValue("a", async () => initial, false, () => true, family);
+    let background;
+    if (backgroundFirst) background = pendingLookup(t, "c", family);
+    const refresh = pendingLookup(t, "a", family, true);
+    if (!backgroundFirst) background = pendingLookup(t, "c", family);
+    await finishRefresh(refresh, outcome, fresh);
+    const expected = outcome === "success" ? fresh : initial;
+    assert.equal(getCachedValue("a"), expected);
+    await getCachedOrFetchValue("b", async () => ({ view: "b" }), false, () => true, family);
+    let repeated = 0;
+    assert.equal(await getCachedOrFetchValue("a", async () => { repeated++; return { repeated: true }; }, false, () => true, family), expected);
+    assert.equal(repeated, 0, "a finished refresh must not cause another paid lookup");
+    if (outcome === "cancelled") assert.equal(refresh.signal.aborted, true);
+    assert.equal(background.signal.aborted, false);
+  });
+}
+
+for (const first of ["success", "failed", "cancelled"]) for (const last of ["success", "failed", "cancelled"]) for (const newerFirst of [false, true]) {
+  test(`overlapping refreshes close their window once each (${first}/${last}, newest ${newerFirst ? "first" : "last"})`, async t => {
+    setup(t);
+    const family = "overlapping-window";
+    pendingLookup(t, "background", family);
+    const older = pendingLookup(t, "older", family, true), newer = pendingLookup(t, "newer", family, true);
+    const [one, two] = newerFirst ? [newer, older] : [older, newer];
+    await finishRefresh(one, first);
+    const during = { view: "during" };
+    await getCachedOrFetchValue("during", async () => during, false, () => true, family);
+    await finishRefresh(two, last);
+    assert.equal(getCachedValue("during"), during, "an older completion cannot evict a newer result");
+    await getCachedOrFetchValue("after", async () => ({ view: "after" }), false, () => true, family);
+    assert.equal(getCachedValue("during"), during, "no completed refresh may extend the refresh window");
+  });
+}
+
+test("a shared refresh stays active until its last subscriber cancels", async t => {
+  setup(t);
+  const family = "shared-window", initial = { view: "initial" };
+  await getCachedOrFetchValue("initial", async () => initial, false, () => true, family);
+  pendingLookup(t, "background", family);
+  const refresh = pendingLookup(t, "refresh", family, true), peer = pendingLookup(t, "refresh", family);
+  refresh.controller.abort();
+  await assert.rejects(refresh.promise, /cancelled/i);
+  assert.equal(refresh.signal.aborted, false);
+  const during = { view: "during" };
+  await getCachedOrFetchValue("during", async () => during, false, () => true, family);
+  assert.equal(getCachedValue("initial"), undefined, "the remaining refresh subscriber keeps the window open");
+  peer.controller.abort();
+  await assert.rejects(peer.promise, /cancelled/i);
+  assert.equal(refresh.signal.aborted, true);
+  await getCachedOrFetchValue("after", async () => ({ view: "after" }), false, () => true, family);
+  assert.equal(getCachedValue("during"), during, "last-subscriber cancellation closes the window before the fetch settles");
+});
+
+test("a cancelled fetch settling late cannot close a newer refresh window", async t => {
+  setup(t);
+  const family = "late-window";
+  pendingLookup(t, "background", family);
+  const abandoned = pendingLookup(t, "abandoned", family, true);
+  await stopRefresh(abandoned, "cancelled");
+  const normal = { view: "normal" };
+  await getCachedOrFetchValue("normal", async () => normal, false, () => true, family);
+  const current = pendingLookup(t, "current", family, true);
+  abandoned.gate.resolve({ ignored: true });
+  await new Promise(resolve => setImmediate(resolve));
+  const during = { view: "during" };
+  await getCachedOrFetchValue("during", async () => during, false, () => true, family);
+  assert.equal(getCachedValue("normal"), undefined, "the current refresh must remain active");
+  await stopRefresh(current, "cancelled");
+  await getCachedOrFetchValue("after", async () => ({ view: "after" }), false, () => true, family);
+  assert.equal(getCachedValue("during"), during);
+});
+
 for (const outcome of ["failed", "cancelled"]) {
   test(`${outcome} related refresh restores the original view without another request`, async t => {
     setup(t);
