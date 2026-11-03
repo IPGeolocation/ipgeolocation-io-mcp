@@ -87,7 +87,7 @@
     "tests/redaction.hardening.test.mjs": "2f72c17542bb7fcd38042fb9e877ca5dba5371590a9f79ff19244274c24f044f",
     "tests/redteam.security.test.mjs": "276d0e74af1de2b56681165319eb5123d99cc025ece456806362407897963df4",
     "tests/release-assets.test.mjs": "08adabe648d39f1aeeede7b0261a737dbeb1a3b449dd38080503fbb48e86df7b",
-    "tests/reliability.regression.test.mjs": "dc349115757a6f09e1635ecb35a28ac7a7d5da05a3856c43ec6c6c8b438771cf",
+    "tests/reliability.regression.test.mjs": "b6404797e984cc811a776412449ffafaab749161c8808923bd390aedc122cf56",
     "tests/response.test.mjs": "0123b738d931d31c6ac1b0b5837652bf49705dea0d228f2fe4fb81e93309b10d",
     "tests/server.hardening.test.mjs": "e79fce56ebc83a2358eb0155b340be3c1c04021fa4a3c4c817a27b4b995a2d31",
     "tests/tools.integration.test.mjs": "4cf02c71e3061446f6eed02e3c43a5afd24f24ee79e1b39dd29ecf5edc73b561",

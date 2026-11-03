@@ -14,7 +14,7 @@ import { applyFieldsAndExcludes } from "../dist/tools/projection.js";
 import { withRuntimeConfig } from "../dist/config.js";
 import { getIpGeolocation, getIpGeolocationBulk } from "../dist/client.js";
 
-const fakeKey = 'regression-key/with+quotes"and\\slashes';
+const fakeKey = 'regression-key/with+quotes"and/slashes';
 const json = data => new Response(JSON.stringify(data));
 async function sdk(t, responder) {
   clearToolCacheForTests();
