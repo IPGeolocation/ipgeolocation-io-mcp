@@ -158,6 +158,37 @@ test('quote-heavy JSON below the cache budget is retained and fully recovered',t
  });
 });
 
+for(const cancelled of [false,true]) test(`large restored results remain cached and pageable after a related refresh ${cancelled?'is cancelled':'fails'}`,async t=>{
+ setup(t);
+ await scope(async()=>{
+  const original=deferred(),refresh=deferred(),controller=new AbortController();
+  const value={security:{notes:'Synthetic "security" data. '.repeat(1200)}};
+  t.after(()=>{original.resolve(value);refresh.resolve({ignored:true})});
+  let calls=0;
+  const fetchOriginal=()=>{calls++;return original.promise};
+  const first=cache.getCachedOrFetchValue('security-view',fetchOriginal,false,()=>true,'family');
+  const forced=config.withRequestSignal(controller.signal,()=>cache.getCachedOrFetchValue('location-view',()=>{calls++;return refresh.promise},true,()=>true,'family'));
+  const failed=assert.rejects(forced,cancelled?/cancelled/i:/Synthetic refresh failure/);
+  if(cancelled)controller.abort();else refresh.reject(new Error('Synthetic refresh failure'));
+  await failed;
+  const joined=cache.getCachedOrFetchValue('security-view',fetchOriginal,false,()=>true,'family');
+  assert.equal(calls,2);
+  original.resolve(value);
+  assert.equal(await first,value);assert.equal(await joined,value);
+  const structuredContent={data:value},expected=JSON.stringify(structuredContent),fragments=[];
+  let result=pagination.paginateToolResult('lookup_ip',{content:[{type:'text',text:expected}],structuredContent});
+  for(let pages=0;;pages++){
+   assert.ok(pages<100);
+   const page=result.structuredContent.page;fragments.push(page.json_fragment);
+   if(!page.next_cursor)break;
+   result=pagination.readCachedResultPage(page.next_cursor);
+  }
+  assert.ok(fragments.length>1);assert.equal(fragments.join(''),expected);
+  assert.equal(await cache.getCachedOrFetchValue('security-view',fetchOriginal,false,()=>true,'family'),value);
+  assert.equal(calls,2);
+ });
+});
+
 test('page reads refresh TTL without serializing the complete cached snapshot',t=>{
  setup(t);
  scope(()=>{

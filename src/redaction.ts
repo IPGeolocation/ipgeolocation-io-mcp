@@ -1,3 +1,4 @@
+import { isUtf8 } from "node:buffer";
 import { getConfiguredApiKey } from "./config.js";
 
 const REDACTED_API_KEY = "[REDACTED_API_KEY]";
@@ -46,7 +47,10 @@ function adjacentCharacter(text: string, position: number, before: boolean): str
   for (const size of [3, 6, 9, 12]) {
     const part = before ? text.slice(Math.max(0, position - size), position) : text.slice(position, position + size);
     if (part.length !== size || !/^(?:%[\da-f]{2})+$/i.test(part)) continue;
-    try { const decoded = decodeURIComponent(part); if (Array.from(decoded).length === 1) return decoded; } catch { /* Check the complete UTF-8 sequence next. */ }
+    const bytes = Buffer.from(part.replaceAll("%", ""), "hex");
+    if (!isUtf8(bytes)) continue;
+    const decoded = bytes.toString("utf8");
+    if (Array.from(decoded).length === 1) return decoded;
   }
   // A surrogate pair is one neighbour; check it before either escaped half.
   for (const size of [2, 12, 6]) {

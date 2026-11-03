@@ -417,6 +417,196 @@ for (const failed of [false, true]) for (const successAfterRestoration of [false
   });
 }
 
+async function stopRefresh(request, outcome) {
+  if (outcome === "failed") request.gate.reject(new Error("Synthetic related refresh failure"));
+  else request.controller.abort();
+  await assert.rejects(request.promise, outcome === "failed" ? /Synthetic related refresh failure/ : /cancelled/i);
+}
+
+for (const outcome of ["failed", "cancelled"]) {
+  test(`${outcome} related refresh restores the original view without another request`, async t => {
+    setup(t);
+    const normal = pendingLookup(t, "security-score", "related-views");
+    const refresh = pendingLookup(t, "location-city", "related-views", true);
+    await stopRefresh(refresh, outcome);
+    const joined = pendingLookup(t, "security-score", "related-views");
+    assert.equal(normal.calls + refresh.calls + joined.calls, 2);
+    assert.equal(normal.signal.aborted, false);
+    normal.gate.resolve(success);
+    assert.equal(await normal.promise, success);
+    assert.equal(await joined.promise, success);
+    assert.equal(getCachedValue("security-score"), success);
+    refresh.gate.resolve([{ stale: true }]);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(getCachedValue("security-score"), success);
+    for (const request of [normal, refresh, joined]) assert.equal(getEventListeners(request.controller.signal, "abort").length, 0);
+  });
+
+  for (const olderFirst of [false, true]) test(`${outcome} related refresh restores all live views while keeping newer-success barriers (${olderFirst ? "older" : "newer"} finishes first)`, async t => {
+    setup(t);
+    const older = pendingLookup(t, "first-view", "related-views");
+    const newer = pendingLookup(t, "second-view", "related-views");
+    const refresh = pendingLookup(t, "third-view", "related-views", true);
+    await stopRefresh(refresh, outcome);
+    const firstPeer = pendingLookup(t, "first-view", "related-views");
+    const secondPeer = pendingLookup(t, "second-view", "related-views");
+    assert.equal(firstPeer.calls + secondPeer.calls, 0);
+    for (const request of olderFirst ? [older, newer] : [newer, older]) { request.gate.resolve(success); await request.promise; }
+    assert.equal(await firstPeer.promise, success);
+    assert.equal(await secondPeer.promise, success);
+    assert.equal(getCachedValue("second-view"), success);
+    assert.equal(getCachedValue("first-view"), olderFirst ? success : undefined);
+    for (const request of [older, newer, refresh, firstPeer, secondPeer]) assert.equal(getEventListeners(request.controller.signal, "abort").length, 0);
+  });
+
+  for (const finished of ["completed", "failed", "cancelled"]) test(`${outcome} related refresh never revives ${finished} normal work`, async t => {
+    setup(t);
+    const normal = pendingLookup(t, "finished-view", "related-views");
+    const refresh = pendingLookup(t, "other-view", "related-views", true);
+    if (finished === "completed") { normal.gate.resolve(success); await normal.promise; }
+    else if (finished === "failed") { normal.gate.reject(new Error("Synthetic normal failure")); await assert.rejects(normal.promise); }
+    else { normal.controller.abort(); await assert.rejects(normal.promise, /cancelled/i); }
+    await stopRefresh(refresh, outcome);
+    const replacement = pendingLookup(t, "finished-view", "related-views");
+    assert.equal(replacement.calls, 1);
+    assert.equal(getCachedValue("finished-view"), undefined);
+    replacement.gate.resolve(success);
+    assert.equal(await replacement.promise, success);
+  });
+
+  test(`${outcome} related refresh does not restore an older forced request`, async t => {
+    setup(t);
+    const older = pendingLookup(t, "forced-view", "related-views", true);
+    const newer = pendingLookup(t, "other-view", "related-views", true);
+    await stopRefresh(newer, outcome);
+    const replacement = pendingLookup(t, "forced-view", "related-views");
+    assert.equal(replacement.calls, 1);
+    replacement.gate.resolve(success);
+    assert.equal(await replacement.promise, success);
+    older.gate.resolve([{ stale: true }]);
+    await older.promise;
+    assert.equal(getCachedValue("forced-view"), success);
+  });
+
+  for (const newerSuccessFirst of [false, true]) test(`a newer success blocks old related work ${newerSuccessFirst ? "before" : "after"} ${outcome} refresh restoration`, async t => {
+    setup(t);
+    const normal = pendingLookup(t, "old-view", "related-views");
+    const older = pendingLookup(t, "successful-view", "related-views", true);
+    const newer = pendingLookup(t, "failed-view", "related-views", true);
+    if (!newerSuccessFirst) await stopRefresh(newer, outcome);
+    older.gate.resolve([{ generation: "newer success" }]);
+    await older.promise;
+    if (newerSuccessFirst) await stopRefresh(newer, outcome);
+    const replacement = pendingLookup(t, "old-view", "related-views");
+    assert.equal(replacement.calls, 1);
+    normal.gate.resolve([{ stale: true }]);
+    await normal.promise;
+    assert.equal(getCachedValue("old-view"), undefined);
+    replacement.gate.resolve(success);
+    assert.equal(await replacement.promise, success);
+    assert.equal(getCachedValue("old-view"), success);
+  });
+
+  test(`${outcome} related refresh preserves shared normal subscribers and removes their listeners`, async t => {
+    setup(t);
+    const normal = pendingLookup(t, "shared-view", "related-views");
+    const peer = pendingLookup(t, "shared-view", "related-views");
+    const refresh = pendingLookup(t, "other-view", "related-views", true);
+    normal.controller.abort();
+    await assert.rejects(normal.promise, /cancelled/i);
+    await stopRefresh(refresh, outcome);
+    const joined = pendingLookup(t, "shared-view", "related-views");
+    assert.equal(normal.calls + peer.calls + refresh.calls + joined.calls, 2);
+    assert.equal(normal.signal.aborted, false);
+    peer.controller.abort();
+    await assert.rejects(peer.promise, /cancelled/i);
+    assert.equal(normal.signal.aborted, false);
+    normal.gate.resolve(success);
+    assert.equal(await joined.promise, success);
+    assert.equal(getCachedValue("shared-view"), success);
+    for (const request of [normal, peer, refresh, joined]) assert.equal(getEventListeners(request.controller.signal, "abort").length, 0);
+  });
+
+  test(`${outcome} related refresh does not cross API-key or family boundaries`, async t => {
+    setup(t);
+    const tenant = (name, fn) => withRuntimeConfig({ apiKey: `synthetic-related-${name}` }, fn);
+    const normal = tenant("a", () => pendingLookup(t, "original", "family"));
+    const refresh = tenant("a", () => pendingLookup(t, "projection", "family", true));
+    const otherTenant = tenant("b", () => pendingLookup(t, "original", "family"));
+    const tenantRefresh = tenant("b", () => pendingLookup(t, "projection", "family", true));
+    const otherFamily = tenant("a", () => pendingLookup(t, "unrelated", "other-family"));
+    const familyRefresh = tenant("a", () => pendingLookup(t, "unrelated-projection", "other-family", true));
+    await stopRefresh(refresh, outcome);
+    const joined = tenant("a", () => pendingLookup(t, "original", "family"));
+    const tenantReplacement = tenant("b", () => pendingLookup(t, "original", "family"));
+    const familyReplacement = tenant("a", () => pendingLookup(t, "unrelated", "other-family"));
+    assert.deepEqual([joined.calls, tenantReplacement.calls, familyReplacement.calls], [0, 1, 1]);
+    for (const request of [normal, otherTenant, tenantRefresh, otherFamily, familyRefresh, tenantReplacement, familyReplacement]) request.gate.resolve({ own: request.calls });
+    await Promise.all([normal.promise, joined.promise, otherTenant.promise, tenantRefresh.promise, otherFamily.promise, familyRefresh.promise, tenantReplacement.promise, familyReplacement.promise]);
+    assert.deepEqual(tenant("a", () => getCachedValue("original")), { own: 1 });
+  });
+}
+
+for (const olderOutcome of ["failed", "cancelled"]) for (const newerOutcome of ["failed", "cancelled"]) for (const newerFirst of [false, true]) {
+  test(`related refreshes restore live normal work with ${olderOutcome}/${newerOutcome}, newest ${newerFirst ? "first" : "last"}`, async t => {
+    setup(t);
+    const normal = pendingLookup(t, "original", "related-views");
+    const older = pendingLookup(t, "original", "related-views", true);
+    const newer = pendingLookup(t, "projection", "related-views", true);
+    for (const [request, outcome] of newerFirst ? [[newer, newerOutcome], [older, olderOutcome]] : [[older, olderOutcome], [newer, newerOutcome]]) await stopRefresh(request, outcome);
+    const joined = pendingLookup(t, "original", "related-views");
+    assert.equal(normal.calls + older.calls + newer.calls + joined.calls, 3);
+    normal.gate.resolve(success);
+    assert.equal(await normal.promise, success);
+    assert.equal(await joined.promise, success);
+    assert.equal(getCachedValue("original"), success);
+  });
+}
+
+test("cancelling one related refresh subscriber waits for its remaining subscribers", async t => {
+  setup(t);
+  const normal = pendingLookup(t, "original", "related-views");
+  const refresh = pendingLookup(t, "projection", "related-views", true);
+  const peer = pendingLookup(t, "projection", "related-views");
+  refresh.controller.abort();
+  await assert.rejects(refresh.promise, /cancelled/i);
+  assert.equal(refresh.signal.aborted, false);
+  const peer2 = pendingLookup(t, "projection", "related-views");
+  assert.equal(peer2.calls, 0);
+  peer.controller.abort();
+  await assert.rejects(peer.promise, /cancelled/i);
+  assert.equal(refresh.signal.aborted, false);
+  peer2.controller.abort();
+  await assert.rejects(peer2.promise, /cancelled/i);
+  assert.equal(refresh.signal.aborted, true);
+  const joined = pendingLookup(t, "original", "related-views");
+  assert.equal(joined.calls, 0);
+  normal.gate.resolve(success);
+  assert.equal(await normal.promise, success);
+  assert.equal(await joined.promise, success);
+  for (const request of [normal, refresh, peer, peer2, joined]) assert.equal(getEventListeners(request.controller.signal, "abort").length, 0);
+});
+
+test("repeated related refresh failures and cancellations keep sharing the live original", async t => {
+  setup(t);
+  const normal = pendingLookup(t, "original", "related-views");
+  for (let i = 0; i < 128; i++) {
+    const refresh = pendingLookup(t, `projection-${i % 3}`, "related-views", true);
+    await stopRefresh(refresh, i % 2 ? "failed" : "cancelled");
+    refresh.gate.resolve([{ ignored: i }]);
+    await new Promise(resolve => setImmediate(resolve));
+    const peer = pendingLookup(t, "original", "related-views");
+    assert.equal(peer.calls, 0);
+    peer.controller.abort();
+    await assert.rejects(peer.promise, /cancelled/i);
+    assert.equal(normal.signal.aborted, false);
+    assert.equal(getEventListeners(peer.controller.signal, "abort").length, 0);
+  }
+  normal.gate.resolve(success);
+  assert.equal(await normal.promise, success);
+  assert.equal(getCachedValue("original"), success);
+});
+
 for (const failed of [false, true]) test(`a newer sibling refresh remains a barrier when an older same-key refresh ${failed ? "fails" : "is cancelled"}`, async t => {
   setup(t);
   const normal = pendingLookup(t, "full", "siblings");

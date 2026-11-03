@@ -61,6 +61,41 @@ export function publishedAsset(release, name, required = true) {
   return matches[0];
 }
 
+export const MAX_MANIFEST_BYTES = 1024 * 1024;
+
+export function parseBundleManifest(bytes, context) {
+  if (!/^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(context.bundleName ?? "") ||
+      context.bundleName !== context.bundleName?.trim() ||
+      !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(context.version ?? "") ||
+      context.version !== context.version?.trim()) {
+    throw new Error("Manifest verification requires the configured scoped package name and source version.");
+  }
+  if (bytes.length > MAX_MANIFEST_BYTES) throw new Error("The bundle manifest exceeds the 1 MiB limit.");
+  let manifest;
+  try {
+    manifest = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    throw new Error("The bundle manifest must contain a valid JSON object.");
+  }
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    throw new Error("The bundle manifest must contain a valid JSON object.");
+  }
+  if (manifest.name !== context.bundleName || manifest.version !== context.version) {
+    throw new Error("The bundle manifest does not match the configured package name and source version.");
+  }
+  return manifest;
+}
+
+export function verifyBundleManifest(bundlePath, context) {
+  const entries = run("unzip", ["-Z1", bundlePath, "manifest.json"], "utf8", 4096).split(/\r?\n/u).filter(Boolean);
+  if (entries.filter(name => name === "manifest.json").length !== 1) {
+    throw new Error("The bundle must contain exactly one manifest.json.");
+  }
+  const embedded = spawnSync("unzip", ["-p", bundlePath, "manifest.json"], { maxBuffer: MAX_MANIFEST_BYTES });
+  if (embedded.error || embedded.status !== 0) throw new Error("Unable to read the bundle manifest within the 1 MiB limit.");
+  return parseBundleManifest(embedded.stdout, context);
+}
+
 export function verifyBundleMetadata(bundlePath, sidecars) {
   const names = ["server.json", "sbom.cdx.json"];
   const entries = run("unzip", ["-Z1", bundlePath, ...names], "utf8", 4096).split(/\r?\n/u).filter(Boolean);
@@ -82,10 +117,7 @@ export async function verifyLocalBundle(context, directory) {
   const identity = `https://github.com/${context.repository}/.github/workflows/mpak-release.yml@${context.sourceRef}`;
   run("cosign", ["verify-blob", "--bundle", `${bundlePath}.sigstore.json`, "--certificate-oidc-issuer", "https://token.actions.githubusercontent.com", "--certificate-identity", identity, bundlePath]);
   run("gh", ["attestation", "verify", bundlePath, "--repo", context.repository, "--bundle", `${bundlePath}.provenance.sigstore.json`, "--cert-identity", identity, "--source-ref", context.sourceRef, "--source-digest", context.sourceDigest]);
-  const manifest = JSON.parse(run("unzip", ["-p", bundlePath, "manifest.json"]));
-  if (manifest.name !== context.bundleName || manifest.version !== context.version) {
-    throw new Error("The published bundle manifest does not match the package name and release version.");
-  }
+  const manifest = verifyBundleManifest(bundlePath, context);
   verifyBundleMetadata(bundlePath, { "server.json": path.join(directory, "server.json"), "sbom.cdx.json": path.join(directory, "sbom.cdx.json") });
   return { manifest, metadata };
 }

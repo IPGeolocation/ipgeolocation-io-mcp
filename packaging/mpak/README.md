@@ -6,7 +6,9 @@ Version **2.0.2**. See the [release checklist](../../RELEASING.md) for publicati
 
 ## Prepare and Publish
 
-1. Run `npm run prepare:mpak` to build the selected source and prepare a local staging package, then `npm run sbom:mpak` to generate its CycloneDX SBOM. These commands write build artifacts; they do not publish a version.
+Install Node.js 22 or later and npm, then run `npm ci --ignore-scripts` in the selected source directory. `npm run sbom:mpak` also needs Syft: put `syft` on `PATH`, or set `SYFT_BIN` to its executable. Bundle finalization needs `unzip`.
+
+1. Run `npm run prepare:mpak` to build the source in `MPAK_SOURCE_DIR` (the repository root by default) and prepare a local staging package, then `npm run sbom:mpak` to generate its CycloneDX SBOM. These commands write build artifacts; they do not publish a version.
 2. Complete source and consumer verification, then create the matching Git tag and GitHub release as part of an authorized release.
 3. For a new authorized release, dispatch **mpak Release** from its tag with `operation: publish`. Set both `source_ref` and `release_tag` to that tag. The workflow checks all five target filenames before building or signing and stops if any already exists.
 4. Confirm that the release contains the `.mcpb`, `.mcpb.sigstore.json`, `.mcpb.provenance.sigstore.json`, `sbom.cdx.json`, and `server.json` assets. The workflow retains the exact signed files before uploading the signature, provenance and metadata, then uploads the bundle last. The separate announcement job verifies all five published files before announcing the bundle.

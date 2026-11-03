@@ -80,6 +80,7 @@ test("package main can run as a stdio server for generic hosts", async () => {
     args: [path.join(repoRoot, "dist/index.js")],
     cwd: repoRoot,
     env: {
+      NODE_OPTIONS: process.env.NODE_OPTIONS,
       IPGEOLOCATION_API_KEY: "test-key",
     },
     stderr: "pipe",
@@ -109,7 +110,7 @@ test("package main starts through a linked directory and discovers all tools", a
     command: process.execPath,
     args: [path.join(linked, "index.js")],
     cwd: temporary,
-    env: { IPGEOLOCATION_API_KEY: "" },
+    env: { IPGEOLOCATION_API_KEY: "", NODE_OPTIONS: process.env.NODE_OPTIONS },
     stderr: "pipe",
   });
   const client = new Client({ name: "linked-entry-test", version: "1.0.0" });

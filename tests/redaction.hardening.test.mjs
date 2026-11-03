@@ -291,3 +291,67 @@ test('short-key boundaries recognize a complete JSON-escaped Unicode letter or e
     assert.equal(scoped('ab', () => redaction.redactKnownSecrets(`${whitespace}ab${whitespace}`)), `${whitespace}[REDACTED_API_KEY]${whitespace}`);
   }
 });
+
+test('invalid percent-encoded neighbours do not throw decoding exceptions for each short-key match', t => {
+  const decode = globalThis.decodeURIComponent;
+  let decodingErrors = 0;
+  t.mock.method(globalThis, 'decodeURIComponent', (...args) => {
+    try { return decode(...args); } catch (error) { decodingErrors++; throw error; }
+  });
+  const invalid = '%ff%ff%ff%ff';
+  const before = `${invalid}ab1 `.repeat(10000);
+  const after = ` ab1${invalid}`.repeat(10000);
+  assert.equal(scoped('ab1', () => redaction.redactKnownSecrets(before)), before);
+  assert.equal(scoped('ab1', () => redaction.redactKnownSecrets(after)), ` [REDACTED_API_KEY]${invalid}`.repeat(10000));
+  assert.equal(decodingErrors, 0, 'invalid UTF-8 must not use exceptions to find a token boundary');
+});
+
+test('percent-encoded short-key neighbours preserve Unicode boundaries and malformed bytes', () => {
+  const marker = '[REDACTED_API_KEY]';
+  const cases = [
+    ...['A', '7', '_', 'é', '漢', '𐐀', '\u0301', '١'].map(value => [value, false]),
+    ...[' ', '\t', '\0', '\u00a0', '/', '😀', '\u{10ffff}'].map(value => [value, true]),
+  ];
+  for (const echo of ['ab1', String.raw`\u0061b1`, '%61%62%31']) {
+    for (const [value, masks] of cases) {
+      const encoded = Array.from(Buffer.from(value), byte => `%${byte.toString(16).padStart(2, '0')}`).join('');
+      for (const neighbour of new Set([encoded, encoded.toUpperCase()])) {
+        for (const [text, expected] of [
+          [`${neighbour}${echo} `, `${neighbour}${masks ? marker : echo} `],
+          [` ${echo}${neighbour}`, ` ${masks ? marker : echo}${neighbour}`],
+        ]) {
+          assert.equal(scoped('ab1', () => redaction.redactKnownSecrets(text)), expected, text);
+        }
+      }
+    }
+    // Invalid UTF-8 keeps the previous raw-character fallback. A trailing hex
+    // character is part of a word, while a leading percent sign is a boundary.
+    for (const neighbour of ['%80', '%BF', '%C0%AF', '%C1%BF', '%E0%80%AF', '%ED%A0%80', '%ED%BF%BF', '%F0%80%80%AF', '%F4%90%80%80', '%F5%80%80%80', '%FF', '%C2', '%E2%82', '%F0%9F%98', '%GG']) {
+      for (const spelling of new Set([neighbour, neighbour.toLowerCase()])) {
+        const before = `${spelling}${echo} `;
+        assert.equal(scoped('ab1', () => redaction.redactKnownSecrets(before)), before, before);
+        assert.equal(scoped('ab1', () => redaction.redactKnownSecrets(` ${echo}${spelling}`)), ` ${marker}${spelling}`);
+      }
+    }
+  }
+});
+
+test('encoded-looking company text remains data with short and ordinary API keys', () => {
+  const payload = { ...ordinary, company: { name: 'Arab Networks Ltd', domain: 'company.example', type: 'isp' }, authorization_note: 'Bearer Networks is the company name', note: '%ff%ff%ff%ffab1 another%80value', names: ['Montr%C3%A9al', '%F0%90%90%80ab1'] };
+  for (const secret of ['ab1', 'a', '0123456789abcdef0123456789abcdef']) {
+    assert.deepEqual(scoped(secret, () => redaction.redactSensitiveValue(payload)), payload);
+    assert.equal(scoped(secret, () => redaction.redactKnownSecrets(` %ff${secret}%ff `)), secret.length < 4 ? ` %ff${secret}%ff ` : ' %ff[REDACTED_API_KEY]%ff ');
+  }
+});
+
+test('invalid percent-encoded data survives cold, warm and cached-page MCP results', async t => {
+  const payload = { ...ordinary, note: '%ff%ff%ff%ffab1 '.repeat(20000) };
+  const { client, count } = await session(t, 'ab1', payload);
+  for (let i = 0; i < 2; i++) {
+    const first = await client.callTool({ name: 'lookup_ip', arguments: { ip: '8.8.8.8' } });
+    assert.equal(first.isError, undefined);
+    assert.ok(first.structuredContent.page);
+    assert.deepEqual((await recover(client, first)).data, payload);
+  }
+  assert.equal(count(), 1);
+});

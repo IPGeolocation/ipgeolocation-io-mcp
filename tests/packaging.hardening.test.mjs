@@ -153,7 +153,7 @@ if(process.argv.includes('--source-name')&&process.argv.includes('--output')){
   return {
     ...f,
     generate: () => f.run("generate-mpak-sbom.mjs", [f.staging], {
-      SYFT_BIN: process.execPath, NODE_OPTIONS: `--import=${pathToFileURL(preload).href}`,
+      SYFT_BIN: process.execPath, NODE_OPTIONS: [f.env.NODE_OPTIONS, `--import=${pathToFileURL(preload).href}`].filter(Boolean).join(" "),
       FIXTURE_SYFT_MODE: mode, FIXTURE_REPOSITORY: f.repository,
     }),
   };
@@ -183,7 +183,7 @@ for (const mode of ["backslash", "forward", "file-url", "key", "dot-exit", "dot-
 
 async function announcementFixture(t, manifest = { name: bundleName, version }) {
   const f = await fixture(t);
-  const bin = path.join(f.root, "bin"), published = path.join(f.root, "published"), local = path.join(f.root, "local-assets");
+  const bin = path.join(f.root, "bin"), published = path.join(f.root, "published"), local = path.join(f.root, "local assets %20");
   await Promise.all([bin, published, local].map(directory => mkdir(directory)));
   const log = path.join(f.root, "calls.jsonl"), metadata = path.join(f.root, "release.json"), runMetadata = path.join(f.root, "run.json");
   await writeFile(metadata, JSON.stringify({ tag_name: tag, draft: false, prerelease: false, assets: [] }));
@@ -251,6 +251,16 @@ const fs=require('node:fs'),args=process.argv.slice(2),index=args[0]==='-r'?1:0,
   };
 }
 
+async function seedPublishedAssets(f) {
+  const release = JSON.parse(await readFile(f.metadata, "utf8"));
+  for (const name of f.assets) {
+    const data = await readFile(path.join(f.local, name));
+    await writeFile(path.join(f.published, name), data);
+    release.assets.push({ name, size: data.length, digest: `sha256:${createHash("sha256").update(data).digest("hex")}`, state: "uploaded" });
+  }
+  await writeFile(f.metadata, JSON.stringify(release));
+}
+
 test("announcement is a separate read-only job with no build, signing or immutable uploads", async () => {
   const workflow = (await readFile(path.join(repo, ".github/workflows/mpak-release.yml"), "utf8")).replace(/\r\n/g, "\n");
   const [publish, announce] = workflow.split("\n  announce:\n");
@@ -286,13 +296,18 @@ onReleasePlatform("failed announcement reruns from the same published assets wit
 });
 
 for (const manifest of [{ name: "@other/server", version }, { name: bundleName, version: "9.9.9" }]) {
-  onReleasePlatform(`published manifest mismatch is rejected: ${JSON.stringify(manifest)}`, async t => {
+  onReleasePlatform(`manifest mismatch is rejected before publication and after download: ${JSON.stringify(manifest)}`, async t => {
     const f = await announcementFixture(t, manifest);
-    assert.equal(f.upload().status, 0);
+    const upload = f.upload();
+    assert.notEqual(upload.status, 0);
+    assert.match(upload.stderr, /bundle manifest does not match/);
+    assert.deepEqual(await f.calls(), []);
+    await seedPublishedAssets(f);
     const output = path.join(f.root, "download");
     const result = f.prepare(output);
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /published bundle manifest does not match/);
+    assert.match(result.stderr, /bundle manifest does not match/);
+    assert.equal(uploadCalls(await f.calls()).length, 0);
     await assert.rejects(readFile(path.join(output, "announcement.json")), { code: "ENOENT" });
   });
 }
@@ -584,14 +599,121 @@ test("staging retains the README's Kiro guide and both existing configuration fi
 async function bundleFixture(t) {
   const f = await fixture(t), entries = {};
   for (const name of ["LICENSE", "README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md", "packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json", "icon.png", "manifest.json", "package-lock.json", "package.json", "sbom.cdx.json", "server.json"]) {
-    entries[name] = "fixture";
+    entries[name] = name === "manifest.json" ? JSON.stringify({ name: bundleName, version }) : "fixture";
     await mkdir(path.dirname(path.join(f.staging, name)), { recursive: true });
     await writeFile(path.join(f.staging, name), entries[name]);
   }
-  const bundle = path.join(f.root, "bundle.mcpb");
+  const bundle = path.join(f.root, "bundle with spaces %20.mcpb");
   await writeFile(bundle, fixtureArchive(entries));
   return { ...f, entries, bundle, finalize: () => f.run("finalize-mpak-bundle.mjs", [bundle, f.staging]) };
 }
+
+const invalidManifests = [
+  ["wrong package name", JSON.stringify({ name: "@other/server", version })],
+  ["unscoped package name", JSON.stringify({ name: "ipgeolocation-io-mcp", version })],
+  ["wrong version", JSON.stringify({ name: bundleName, version: "9.9.9" })],
+  ["non-string version", JSON.stringify({ name: bundleName, version: 2 })],
+  ["malformed JSON", "not JSON"],
+  ["truncated JSON", '{"name":'],
+  ["null", "null"],
+  ["array", JSON.stringify([{ name: bundleName, version }])],
+  ["invalid UTF-8", Buffer.concat([Buffer.from(JSON.stringify({ name: bundleName, version }).slice(0, -1) + ',"note":"'), Buffer.from([0xff]), Buffer.from('"}')])],
+  ["oversized", JSON.stringify({ name: bundleName, version, note: "x".repeat(1024 * 1024) })],
+  ["missing", undefined],
+  ["duplicate", JSON.stringify({ name: bundleName, version })],
+];
+
+function manifestEntries(entries, mode, contents) {
+  const result = Object.entries(entries).filter(([name]) => name !== "manifest.json");
+  if (mode !== "missing") result.push(["manifest.json", contents]);
+  if (mode === "duplicate") result.push(["manifest.json", ""]);
+  return result;
+}
+
+for (const [mode, contents] of invalidManifests) {
+  onReleasePlatform(`all release paths reject a ${mode} manifest`, async t => {
+    await t.test("finalization before signing", async t => {
+      const f = await bundleFixture(t);
+      await writeFile(f.bundle, fixtureArchive(manifestEntries(f.entries, mode, contents)));
+      const before = await readFile(path.join(f.staging, "manifest.json"));
+      const result = f.finalize();
+      assert.notEqual(result.status, 0, result.stdout);
+      assert.match(result.stderr, /manifest/i);
+      assert.deepEqual(await readFile(path.join(f.staging, "manifest.json")), before);
+    });
+    await t.test("upload, resume, restore and announcement", async t => {
+      const f = await announcementFixture(t);
+      const entries = {};
+      for (const name of ["server.json", "sbom.cdx.json"]) entries[name] = await readFile(path.join(f.local, name));
+      await writeFile(path.join(f.local, filename), fixtureArchive(manifestEntries(entries, mode, contents)));
+      const upload = f.upload();
+      assert.notEqual(upload.status, 0, upload.stdout);
+      assert.match(upload.stderr, /manifest/i);
+      assert.deepEqual(await f.calls(), [], "Normal upload must reject the manifest before calling GitHub");
+      for (const result of [f.resume(), f.restore(path.join(f.root, "restored"))]) {
+        assert.notEqual(result.status, 0, result.stdout);
+        assert.match(result.stderr, /manifest/i);
+      }
+      await seedPublishedAssets(f);
+      const output = path.join(f.root, "download"), announcement = f.prepare(output);
+      assert.notEqual(announcement.status, 0, announcement.stdout);
+      assert.match(announcement.stderr, /manifest/i);
+      assert.equal(uploadCalls(await f.calls()).length, 0);
+      await assert.rejects(readFile(path.join(output, "announcement.json")), { code: "ENOENT" });
+    });
+  });
+}
+
+for (const [mode, contents] of invalidManifests.filter(([mode]) => !["missing", "duplicate"].includes(mode))) {
+  onReleasePlatform(`finalization rejects ${mode} staging even when the archive is valid`, async t => {
+    const f = await bundleFixture(t);
+    await writeFile(path.join(f.staging, "manifest.json"), contents);
+    const result = f.finalize();
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stderr, /manifest/i);
+  });
+}
+
+onReleasePlatform("matching tampered manifests cannot replace the canonical package identity", async t => {
+  for (const manifest of [{ name: "@other/server", version }, { name: bundleName, version: "9.9.9" }]) {
+    const f = await bundleFixture(t);
+    f.entries["manifest.json"] = JSON.stringify(manifest);
+    await writeFile(path.join(f.staging, "manifest.json"), f.entries["manifest.json"]);
+    await writeFile(f.bundle, fixtureArchive(f.entries));
+    const result = f.finalize();
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /bundle manifest does not match/);
+  }
+});
+
+onReleasePlatform("finalization verifies the explicitly selected source version", async t => {
+  const f = await bundleFixture(t), source = path.join(f.root, "selected source %20");
+  await mkdir(source);
+  await writeFile(path.join(source, "package.json"), JSON.stringify({ version: "3.0.0" }));
+  f.entries["manifest.json"] = JSON.stringify({ name: bundleName, version: "3.0.0" });
+  await writeFile(path.join(f.staging, "manifest.json"), f.entries["manifest.json"]);
+  await writeFile(f.bundle, fixtureArchive(f.entries));
+  assert.notEqual(f.finalize().status, 0, "The tooling package version must not accept a different manifest");
+  const result = f.run("finalize-mpak-bundle.mjs", [f.bundle, f.staging], { MPAK_SOURCE_DIR: source });
+  assert.equal(result.status, 0, result.stderr);
+});
+
+onReleasePlatform("a valid manifest at the size limit passes finalization and every publication path", async t => {
+  const f = await bundleFixture(t);
+  const manifest = JSON.stringify({ name: bundleName, version }).padEnd(1024 * 1024, " ");
+  f.entries["manifest.json"] = manifest;
+  await writeFile(path.join(f.staging, "manifest.json"), manifest);
+  await writeFile(f.bundle, fixtureArchive(f.entries));
+  const finalization = f.finalize();
+  assert.equal(finalization.status, 0, finalization.stderr);
+  const release = await announcementFixture(t), entries = { "manifest.json": manifest };
+  for (const name of ["server.json", "sbom.cdx.json"]) entries[name] = await readFile(path.join(release.local, name));
+  await writeFile(path.join(release.local, filename), fixtureArchive(entries));
+  for (const result of [release.upload(), release.resume(), release.restore(path.join(release.root, "restored")), release.prepare(path.join(release.root, "download"))]) {
+    assert.equal(result.status, 0, result.stderr);
+  }
+  assert.equal(uploadCalls(await release.calls()).length, 5, "Resume must not replace published assets");
+});
 
 onReleasePlatform("bundle finalization rejects a missing Kiro file in staging or inside the archive", async t => {
   const f = await bundleFixture(t), { entries, bundle } = f;
@@ -685,7 +807,7 @@ onReleasePlatform("normal upload rejects duplicate metadata entries before any u
 onReleasePlatform("normal upload rejects successful extraction with truncated metadata", async t => {
   const f = await announcementFixture(t), bin = path.join(f.root, "truncated-tool");
   await mkdir(bin);
-  await writeFile(path.join(bin, "unzip"), `#!${process.execPath}\nprocess.stdout.write(process.argv[2] === '-Z1' ? 'server.json\\nsbom.cdx.json\\n' : '{');\n`, { mode: 0o755 });
+  await writeFile(path.join(bin, "unzip"), `#!${process.execPath}\nconst manifest=process.argv.at(-1)==='manifest.json';process.stdout.write(process.argv[2] === '-Z1' ? (manifest?'manifest.json\\n':'server.json\\nsbom.cdx.json\\n') : (manifest?${JSON.stringify(JSON.stringify({ name: bundleName, version }))}:'{'));\n`, { mode: 0o755 });
   const result = f.upload({ PATH: `${bin}${path.delimiter}${f.env.PATH}` });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Release metadata does not match the bundle/);

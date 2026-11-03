@@ -26,7 +26,7 @@ Open an issue describing the task you need to complete and your current workarou
 1. Open an issue first to discuss the change.
 2. Fork the repo and branch off `main`.
 3. Make your changes.
-4. Run `npm ci --ignore-scripts` and `npm test`. Add regression coverage for behavior changes. Live API checks are separate and consume credits; use private environment variables if they are needed.
+4. Install Node.js 22 or later and npm. Mac and Linux also need `unzip` and Bash. Run `npm ci --ignore-scripts`, then `npm test`. Add tests for any behavior you change. Run the full suite on Linux before a release because Windows skips some tests. Tests that call the real API run separately and may use credits. Keep their API keys in private environment variables.
 5. Open a pull request that references the issue.
 
 Follow the TypeScript patterns in `src/` and discuss new dependencies first. Keep unrelated edits and existing client configuration out of the change. For documentation edits, check examples, links, and version qualifications against the implementation.
@@ -43,7 +43,7 @@ Cached API data and its pagination snapshot both use this budget. If they do not
 
 The server limits successful API bodies to 8 MiB by default after decompression, error bodies to 64 KiB and upstream JSON to 64 nesting levels. These bounds do not limit total heap or resident memory.
 
-Size a memory-limited runtime for the expected response shapes, cache settings and concurrent calls. The tested object-heavy workloads completed with a 512 MiB V8 heap, but this is not a guarantee for every response. The container also needs memory for Buffers and other allocations outside that heap. Test available memory before raising response or cache limits.
+Large responses can use much more memory after JavaScript reads them. Keeping several responses with millions of small objects can exhaust a 512 MiB JavaScript heap, even within the default response and cache limits. These workloads may need a larger heap. Test repeated requests and requests running at the same time with your chosen settings. Containers also need extra memory beyond the JavaScript heap.
 
 A local fields/excludes projection cannot reduce bytes already downloaded. ASN fields can enable optional upstream include datasets. Check request-specific error guidance before changing the request.
 

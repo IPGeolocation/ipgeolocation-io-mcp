@@ -260,7 +260,7 @@ test("raw stdio rejects prototype keys, null, primitives and nested invalid argu
   const preload = `globalThis.fetch = async () => { console.error('REGRESSION_UPSTREAM_CALL'); return new Response('{"ip":"9.9.9.9"}'); };`;
   const transport = new StdioClientTransport({
     command: process.execPath, args: [fileURLToPath(new URL("../dist/cli.js", import.meta.url))],
-    env: { IPGEOLOCATION_API_KEY: "stdio-dummy-key", NODE_OPTIONS: `--import=data:text/javascript,${encodeURIComponent(preload)}` },
+    env: { IPGEOLOCATION_API_KEY: "stdio-dummy-key", NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --import=data:text/javascript,${encodeURIComponent(preload)}` },
     stderr: "pipe",
   });
   let stderr = "";

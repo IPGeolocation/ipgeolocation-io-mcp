@@ -1,7 +1,8 @@
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { verifyBundleMetadata } from "./prepare-mpak-announcement.mjs";
+import { fileURLToPath } from "node:url";
+import { MAX_MANIFEST_BYTES, parseBundleManifest, verifyBundleManifest, verifyBundleMetadata } from "./prepare-mpak-announcement.mjs";
 
 const [, , bundlePathArg, stagingDirArg] = process.argv;
 
@@ -11,6 +12,11 @@ if (!bundlePathArg || !stagingDirArg) {
 
 const bundlePath = path.resolve(bundlePathArg);
 const stagingDir = path.resolve(stagingDirArg);
+const repoRoot = fileURLToPath(new URL("../", import.meta.url));
+const sourceDir = process.env.MPAK_SOURCE_DIR ? path.resolve(repoRoot, process.env.MPAK_SOURCE_DIR) : repoRoot;
+const { version } = JSON.parse(readFileSync(path.join(sourceDir, "package.json"), "utf8"));
+const { bundleName } = JSON.parse(readFileSync(path.join(repoRoot, "packaging/mpak/config.json"), "utf8"));
+const context = { bundleName, version };
 
 if (!existsSync(bundlePath)) {
   throw new Error(`Bundle not found: ${bundlePath}`);
@@ -45,6 +51,13 @@ for (const entry of requiredStagingEntries) {
   }
 }
 
+const manifestPath = path.join(stagingDir, "manifest.json");
+const manifestStats = lstatSync(manifestPath);
+if (!manifestStats.isFile() || manifestStats.size > MAX_MANIFEST_BYTES) {
+  throw new Error("The staged manifest must be a regular file within the 1 MiB limit.");
+}
+parseBundleManifest(readFileSync(manifestPath), context);
+
 const listing = spawnSync("unzip", ["-Z1", bundlePath], {
   encoding: "utf8",
 });
@@ -69,6 +82,7 @@ for (const entry of requiredStagingEntries) {
   }
 }
 
+verifyBundleManifest(bundlePath, context);
 verifyBundleMetadata(bundlePath, { "server.json": path.join(stagingDir, "server.json"), "sbom.cdx.json": path.join(stagingDir, "sbom.cdx.json") });
 
 console.log(`Verified ${requiredStagingEntries.length} required mpak bundle entries.`);

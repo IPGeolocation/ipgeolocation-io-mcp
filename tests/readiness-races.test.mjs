@@ -108,6 +108,61 @@ for (const toolName of ['lookup_ip', 'check_security', 'bulk_security_check']) f
  });
 }
 
+const cachedCallers = [
+ ['lookup_ip', {ip:'8.8.8.8'}, {}],
+ ['lookup_ip', {ip:'8.8.8.8',include:'security',fields:'security.threat_score'}, {fields:'location.city'}],
+ ['bulk_lookup_ip', {ips:['8.8.8.8'],include:'security',fields:'security.threat_score'}, {fields:'location.city'}],
+ ['bulk_security_check', {ips:['8.8.8.8'],fields:'security.threat_score'}, {fields:'security.is_vpn'}],
+ ['check_security', {ip:'8.8.8.8',fields:'security.threat_score'}, {fields:'security.is_vpn'}],
+ ['lookup_company', {ip:'8.8.8.8'}, {}],
+ ['lookup_currency', {ip:'8.8.8.8'}, {}],
+ ['lookup_network', {ip:'8.8.8.8'}, {}],
+ ['lookup_asn', {asn:'AS13335',fields:'asn.as_number'}, {fields:'asn.organization'}],
+ ['get_abuse_contact', {ip:'8.8.8.8'}, {}],
+ ['parse_user_agent', {uaString:'Synthetic-UA'}, {}],
+ ['bulk_parse_user_agent', {uaStrings:['Synthetic-UA']}, {}],
+ ['get_astronomy_time_series', {lat:'31.5',long:'74.3',dateStart:'2026-01-01',dateEnd:'2026-01-02'}, {}],
+];
+for (const [toolName,args,otherView] of cachedCallers) for (const outcome of ['http','connection','cancelled']) {
+ test(`${toolName} ${args.fields?'projected':'base'} cache shares normal work after a ${outcome} refresh`, {timeout:5000}, async t => {
+  const original=deferred(),refresh=deferred(),originalStarted=deferred(),refreshStarted=deferred();
+  t.after(()=>{original.resolve();refresh.resolve()});
+  let originalSignal,refreshSignal;
+  const {session,requests}=await setup(t,async(request,count)=>{
+   if(count===1){originalSignal=request.options.signal;originalStarted.resolve();await original.promise;}
+   if(count===2){
+    refreshSignal=request.options.signal;refreshStarted.resolve();
+    if(outcome==='cancelled')await refresh.promise;
+    else if(outcome==='connection')throw new Error('Synthetic related refresh connection failure');
+    else return new Response(JSON.stringify({message:'Synthetic related refresh unavailable'}),{status:503});
+   }
+   const value={ip:'8.8.8.8',location:{city:'Synthetic City'},security:{threat_score:count,is_vpn:false},
+    company:{name:'Synthetic Company'},asn:{as_number:'AS13335',organization:'Synthetic Network'},
+    network:{route:'8.8.8.0/24'},currency:{code:'USD'},country_metadata:{tld:'.us'},
+    abuse:{name:'Synthetic Abuse Contact'},name:'Synthetic User Agent'};
+   return toolName.startsWith('bulk_')?[value]:value;
+  },toolName);
+  const {call,client}=await session(),first=call(args);await originalStarted.promise;
+  const controller=new AbortController(),forced=call({...args,...otherView,force_refresh:true},{signal:controller.signal});
+  const forcedOutcome=Promise.allSettled([forced]);await refreshStarted.promise;
+  if(outcome==='cancelled'){
+   controller.abort();assert.equal((await forcedOutcome)[0].status,'rejected');
+   await client.ping();await turn();assert.equal(refreshSignal.aborted,true);
+  }else{
+   const result=(await forcedOutcome)[0];assert.equal(result.status,'fulfilled');
+   assert.equal(result.value.isError,true);assert.equal(result.value.structuredContent.error.status,outcome==='http'?503:502);
+  }
+  assert.equal(originalSignal.aborted,false);
+  const joined=call(args);await client.ping();assert.equal(requests.length,2,'the normal lookup must still be shared');
+  original.resolve();const firstResult=await first,joinedResult=await joined;
+  assert.equal(firstResult.isError,undefined);
+  assert.deepEqual(joinedResult.structuredContent,firstResult.structuredContent);
+  refresh.resolve();await turn();
+  assert.deepEqual((await call(args)).structuredContent,firstResult.structuredContent);
+  assert.equal(requests.length,2,'the original result must remain cached');
+ });
+}
+
 test('an abandoned request that ignores abort cannot overwrite an immediate replacement',async t=>{
  const old=deferred(),started=deferred();t.after(()=>old.resolve());let oldSignal;
  const{session,requests}=await setup(t,async(request,count)=>{if(count===1){oldSignal=request.options.signal;started.resolve();await old.promise}return row(count,request)});

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { localAssetMetadata, publishedAsset, readRelease, releaseContext, verifyBundleMetadata, verifyLocalBundle } from "./prepare-mpak-announcement.mjs";
+import { localAssetMetadata, publishedAsset, readRelease, releaseContext, verifyBundleManifest, verifyBundleMetadata, verifyLocalBundle } from "./prepare-mpak-announcement.mjs";
 
 const args = process.argv.slice(2);
 const mode = args[0]?.startsWith("--") ? args.shift() : "upload";
@@ -37,6 +37,7 @@ if (mode === "--preflight") {
       throw new Error("Release asset filenames must match the configured bundle name and release tag.");
     }
     const localPaths = Object.fromEntries(files.map(file => [path.basename(file), file]));
+    verifyBundleManifest(localPaths[context.filename], context);
     verifyBundleMetadata(localPaths[context.filename], localPaths);
     files.sort((left, right) => context.names.indexOf(path.basename(left)) - context.names.indexOf(path.basename(right)));
     release = readRelease(context);

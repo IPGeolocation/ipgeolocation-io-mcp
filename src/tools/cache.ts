@@ -93,6 +93,24 @@ function removePending(key: string, group: PendingGroup, entry: Pending, restore
       }
     }
   }
+  if (restore && entry.forceRefresh && entry.family && entry.generation === entry.family.generation) {
+    for (const related of pending.values()) {
+      if (related === group || (related.latest && !related.latest.controller.signal.aborted
+        && related.latest.generation === entry.family.generation)) continue;
+      let replacement: Pending | undefined;
+      for (const candidate of related.entries) {
+        if (!candidate.forceRefresh && candidate.family === entry.family && candidate.users > 0
+          && !candidate.controller.signal.aborted && related.lastSuccess <= candidate.version
+          && entry.family.lastSuccess <= candidate.version) replacement = candidate;
+      }
+      // Failed refreshes do not make live normal work in other views obsolete.
+      if (replacement) {
+        related.latest = replacement;
+        replacement.restored = true;
+        replacement.generation = entry.family.generation;
+      }
+    }
+  }
   if (group.entries.size === 0 && pending.get(key) === group) pending.delete(key);
 }
 

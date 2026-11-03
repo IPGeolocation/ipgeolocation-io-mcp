@@ -41,7 +41,10 @@ if (args[0] === 'api' && args[1].includes('/commits/')) {
 } else process.exit(9);
 `, { mode: 0o755 });
   const assets = (options.names ?? assetNames).map(name => path.join(root, name));
-  await Promise.all(assets.map(asset => writeFile(asset, path.extname(asset) === ".mcpb" ? fixtureArchive({ "server.json": "fixture", "sbom.cdx.json": "fixture" }) : "fixture")));
+  await Promise.all(assets.map(asset => writeFile(asset, path.extname(asset) === ".mcpb" ? fixtureArchive({
+    "manifest.json": JSON.stringify({ name: "@ipgeolocation/ipgeolocation-io-mcp", version: "2.0.2" }),
+    "server.json": "fixture", "sbom.cdx.json": "fixture",
+  }) : "fixture")));
   const env = {
     ...process.env,
     PATH: `${bin}${path.delimiter}${process.env.PATH}`,
@@ -141,6 +144,8 @@ releaseCliTest("an upload failure is propagated without retrying or replacing as
 test("release workflow uses the guarded upload and has no overwrite flag", async () => {
   const workflow = (await readFile(path.join(repo, ".github/workflows/mpak-release.yml"), "utf8")).replace(/\r\n/g, "\n");
   assert.match(workflow, /node scripts\/upload-mpak-release-assets\.mjs/);
+  const finalization = workflow.indexOf("node scripts/finalize-mpak-bundle.mjs");
+  assert.ok(finalization >= 0 && finalization < workflow.indexOf("cosign sign-blob"), "Manifest verification must complete before signing");
   assert.doesNotMatch(workflow, /--clobber|gh release upload/);
   assert.match(workflow, /^concurrency:\n  group: mpak-release-\$\{\{ inputs\.release_tag \}\}\n  cancel-in-progress: false$/m);
 });
