@@ -217,7 +217,7 @@ Listed costs apply to successful upstream requests. Cache hits and cached-page r
 
 | Tool | Credits | What it does |
 |------|---------|--------------|
-| `lookup_ip` | 1 | Location, timezone, currency, ASN for one IP |
+| `lookup_ip` | 1 | Location, time zone, currency, ASN for one IP |
 | `get_my_ip` | 0 | Public IP of the machine running the server |
 | `lookup_currency` | 1 | Currency and country metadata for one IP |
 | `get_timezone` | 1 | Timezone by name, location, IP, airport code, or UN/LOCODE |
@@ -266,9 +266,9 @@ Coordinates, including conversion selectors, and `elevation` take string values,
 
 Single IP or domain lookup through the [IP Geolocation API](https://ipgeolocation.io/documentation/ip-location-api.html). **Free and paid. 1 credit for base IP data.**
 
-Use this when you need location, timezone, currency, or ASN for one IP address. On paid plans you can add `include` modules to pull security, abuse, or hostname data in the same call, which avoids extra requests.
+Use this when you need location, time zone, currency, or ASN for one IP address. On paid plans you can add `include` modules to pull security, abuse, or hostname data in the same call, which avoids extra requests.
 
-Free plan returns base location, country metadata, currency, timezone, and basic ASN. Paid plans add `network`, `company`, extended ASN, and the `include` parameter. Note that domain lookups require a paid plan.
+Free plan returns base location, country metadata, currency, time zone, and basic ASN. Paid plans add `network`, `company`, extended ASN, and the `include` parameter. Note that domain lookups require a paid plan.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -340,9 +340,9 @@ Batch version of `check_security`. **Paid. 2 credits per IP.** Accepts up to 250
 
 ### get_timezone
 
-Current time and timezone details for a location through the [Time Zone API](https://ipgeolocation.io/documentation/timezone-api.html). **Free and paid. 1 credit.**
+Current time and time zone details for a location through the [Time Zone API](https://ipgeolocation.io/documentation/timezone-api.html). **Free and paid. 1 credit.**
 
-Accepts IANA timezone names, coordinates, IP addresses, airport codes (IATA/ICAO), or UN/LOCODEs. The response includes timezone offsets, date/datetime variants, `current_time`, `current_time_unix`, `time_24`, `time_12`, `week`, `month`, `year`, timezone abbreviations, and DST transition details.
+Accepts IANA time zone names, coordinates, IP addresses, airport codes (IATA/ICAO), or UN/LOCODEs. The response includes time zone offsets, date/datetime variants, `current_time`, `current_time_unix`, `time_24`, `time_12`, `week`, `month`, `year`, time zone abbreviations, and DST transition details.
 
 With no selector, the API uses the server machine's public egress IP, which can differ from your IP.
 
@@ -350,7 +350,7 @@ Always hits the network (not cached) because it returns the current time.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `tz` | No | IANA timezone name (e.g., `America/New_York`) |
+| `tz` | No | IANA time zone name (e.g., `America/New_York`) |
 | `lat` + `long` | No | Latitude and longitude |
 | `location` | No | City or address string |
 | `ip` | No | IP address |
@@ -368,7 +368,7 @@ Provide one source selector and one destination selector using an IANA time zone
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `time` | No | `yyyy-MM-dd HH:mm` or `yyyy-MM-dd HH:mm:ss`. Defaults to now. |
-| `tz_from` / `tz_to` | No | IANA timezone names |
+| `tz_from` / `tz_to` | No | IANA time zone names |
 | `lat_from` + `long_from` | No | Source coordinates |
 | `lat_to` + `long_to` | No | Destination coordinates |
 | `location_from` / `location_to` | No | City/address strings |
@@ -440,7 +440,7 @@ Takes up to 250 strings per request by default. The batch limit is the lower of 
 
 Company details and ASN ownership for one IP. **Company details require paid; free plans return basic ASN only. 1 credit.**
 
-Returns `company` and `asn` objects. `lookup_ip` returns the same data plus location, timezone, and more. Use this when the company/ASN pair is all you need and you want a smaller response.
+Returns `company` and `asn` objects. `lookup_ip` returns the same data plus location, time zone, and more. Use this when the company/ASN pair is all you need and you want a smaller response.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -563,7 +563,7 @@ The text answers below are illustrative; exact wording depends on the model. JSO
 
 **Prompt:** Locate 91.128.103.196 and give me the country, city, ASN, and local time.
 
-**Example answer:** 91.128.103.196 is in Stockholm, Sweden. ASN is AS1257, operated by Tele2 Sverige AB. Timezone is Europe/Stockholm, local time was 2026-02-12 18:36:54.
+**Example answer:** 91.128.103.196 is in Stockholm, Sweden. ASN is AS1257, operated by Tele2 Sverige AB. Time zone is Europe/Stockholm, local time was 2026-02-12 18:36:54.
 
 ```json
 {
