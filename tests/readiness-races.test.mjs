@@ -81,6 +81,33 @@ for (const toolName of ['lookup_ip', 'bulk_security_check']) {
  });
 }
 
+for (const toolName of ['lookup_ip', 'check_security', 'bulk_security_check']) for (const failure of ['http', 'connection']) {
+ test(`${toolName} reuses a live normal lookup after a forced ${failure} failure`, async t => {
+  const original=deferred(),originalStarted=deferred();t.after(()=>original.resolve());
+  let originalSignal;
+  const {session,requests}=await setup(t,async(request,count)=>{
+   if(count===1){originalSignal=request.options.signal;originalStarted.resolve();await original.promise;}
+   if(count===2){
+    if(failure==='connection')throw new Error('Synthetic refresh connection failure');
+    return new Response(JSON.stringify({message:'Synthetic refresh unavailable'}),{status:503});
+   }
+   const value={ip:'8.8.8.8',security:{threat_score:count}};
+   return toolName==='bulk_security_check'?[value]:value;
+  },toolName);
+  const {call,client}=await session(),args=toolName==='bulk_security_check'?{ips:['8.8.8.8']}:toolName==='lookup_ip'?{ip:'8.8.8.8',include:'security'}:{ip:'8.8.8.8'};
+  const first=call(args);await originalStarted.promise;
+  const failed=await call({...args,force_refresh:true});
+  assert.equal(failed.isError,true);
+  assert.equal(failed.structuredContent.error.status,failure==='http'?503:502);
+  assert.equal(originalSignal.aborted,false);
+  const joined=call(args);await client.ping();assert.equal(requests.length,2);
+  original.resolve();const firstResult=await first,joinedResult=await joined;
+  assert.deepEqual(joinedResult.structuredContent,firstResult.structuredContent);
+  assert.deepEqual((await call(args)).structuredContent,firstResult.structuredContent);
+  assert.equal(requests.length,2,'sharing and caching the original lookup must avoid a third request');
+ });
+}
+
 test('an abandoned request that ignores abort cannot overwrite an immediate replacement',async t=>{
  const old=deferred(),started=deferred();t.after(()=>old.resolve());let oldSignal;
  const{session,requests}=await setup(t,async(request,count)=>{if(count===1){oldSignal=request.options.signal;started.resolve();await old.promise}return row(count,request)});

@@ -633,7 +633,8 @@ Tool failures return `isError: true`, readable text, and `structuredContent.erro
 | HTTP error response received from the API | `source: "ipgeolocation_api"`; `status` is the received HTTP status |
 | Registered-schema rejection: wrong field type, missing required field, unknown parameter, or oversized batch | `source: "mcp_server"`, `category: "validation"`, `retryable: false`; rejected before an API call |
 | Handler validation (such as dates or coordinate pairs), missing API key, or unavailable cached result | `source: "mcp_server"`, `category: "tool_error"`, `retryable: false`; no HTTP status is invented |
-| Local request timeout | `source: "mcp_server"`, `category: "timeout"`, local `status: 504`, `retryable: true` |
+| API key contains unsupported characters | `source: "mcp_server"`, `category: "configuration"`, local `status: 400`, `retryable: false`; rejected before an API call |
+| Local request timeout | `source: "mcp_server"`, `category: "timeout"`, local `status: 504`; `retryable: false` if the API returned a success status before the timeout; otherwise `retryable: true` |
 | Connection failure | `source: "mcp_server"`, `category: "upstream_request"`, local `status: 502`; follow the returned retry guidance |
 | Invalid upstream JSON, UTF-8, payload shape, or nesting above 64 levels | `source: "mcp_server"`, `category: "upstream_response"`, local `status: 502`, `retryable: false`; the API may already have processed the request |
 | Tool arguments, upstream success body, or required pagination snapshot exceeds a resource limit | Local `resource_limit`, `retryable: false`; argument rejection precedes the API request, while body/snapshot rejection can happen after credits were used |

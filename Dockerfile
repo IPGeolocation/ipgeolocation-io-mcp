@@ -16,6 +16,7 @@ RUN apk add --no-cache bash unzip
 
 COPY tests ./tests
 COPY scripts ./scripts
+COPY packaging/mpak/config.json ./packaging/mpak/config.json
 COPY .github/workflows/mpak-release.yml ./.github/workflows/mpak-release.yml
 COPY Dockerfile README.md .dockerignore ./
 RUN --network=none npm test

@@ -176,6 +176,101 @@ test("concurrent identical transient lookups share pending work and later explic
 
 for (const family of [undefined, "cancelled-refresh-family"]) {
   const label = family ? "family" : "single key";
+  for (const failure of [new Error("Synthetic refresh failure"), new DOMException("Synthetic upstream abort", "AbortError")]) {
+    test(`failed refresh restores a shared normal lookup (${label}, ${failure.name})`, async t => {
+      setup(t);
+      const normal = pendingLookup(t, "failed-refresh", family);
+      const refresh = pendingLookup(t, "failed-refresh", family, true);
+      const refreshPeer = pendingLookup(t, "failed-refresh", family);
+      refresh.gate.reject(failure);
+      await assert.rejects(refresh.promise, error => error === failure);
+      await assert.rejects(refreshPeer.promise, error => error === failure);
+      const joined = pendingLookup(t, "failed-refresh", family);
+      assert.equal(normal.calls + refresh.calls + refreshPeer.calls + joined.calls, 2);
+      assert.equal(normal.signal.aborted, false);
+      normal.gate.resolve(success);
+      assert.equal(await normal.promise, success);
+      assert.equal(await joined.promise, success);
+      assert.equal(getCachedValue("failed-refresh"), success);
+      for (const request of [normal, refresh, refreshPeer, joined]) assert.equal(getEventListeners(request.controller.signal, "abort").length, 0);
+    });
+  }
+
+  for (const newestFirst of [false, true]) {
+    test(`nested refresh failures restore the normal lookup (${label}, newest ${newestFirst ? "first" : "last"})`, async t => {
+      setup(t);
+      const normal = pendingLookup(t, "nested-failure", family);
+      const older = pendingLookup(t, "nested-failure", family, true);
+      const newer = pendingLookup(t, "nested-failure", family, true);
+      for (const request of newestFirst ? [newer, older] : [older, newer]) {
+        request.gate.reject(new Error("Synthetic refresh failure"));
+        await assert.rejects(request.promise, /Synthetic refresh failure/);
+      }
+      const joined = pendingLookup(t, "nested-failure", family);
+      assert.equal(normal.calls + older.calls + newer.calls + joined.calls, 3);
+      normal.gate.resolve(success);
+      assert.equal(await normal.promise, success);
+      assert.equal(await joined.promise, success);
+      assert.equal(getCachedValue("nested-failure"), success);
+    });
+  }
+
+  for (const normalFinishesFirst of [false, true]) test(`a superseded refresh success prevents restored normal work from being ${normalFinishesFirst ? "cached" : "joined"} (${label})`, async t => {
+    setup(t);
+    const normal = pendingLookup(t, "late-refresh-success", family);
+    const older = pendingLookup(t, "late-refresh-success", family, true);
+    const newer = pendingLookup(t, "late-refresh-success", family, true);
+    newer.gate.reject(new Error("Synthetic newest refresh failure"));
+    await assert.rejects(newer.promise, /Synthetic newest refresh failure/);
+    older.gate.resolve([{ generation: "newer than the normal lookup" }]);
+    await older.promise;
+    if (normalFinishesFirst) { normal.gate.resolve([{ stale: true }]); await normal.promise; }
+    const replacement = pendingLookup(t, "late-refresh-success", family);
+    assert.equal(replacement.calls, 1);
+    if (!normalFinishesFirst) { normal.gate.resolve([{ stale: true }]); await normal.promise; }
+    assert.equal(getCachedValue("late-refresh-success"), undefined);
+    replacement.gate.resolve(success);
+    assert.equal(await replacement.promise, success);
+    assert.equal(getCachedValue("late-refresh-success"), success);
+  });
+
+  for (const finished of ["completed", "failed", "cancelled"]) {
+    test(`failed refresh does not restore a ${finished} normal lookup (${label})`, async t => {
+      setup(t);
+      const normal = pendingLookup(t, "finished-normal", family);
+      const refresh = pendingLookup(t, "finished-normal", family, true);
+      if (finished === "completed") { normal.gate.resolve(success); await normal.promise; }
+      else if (finished === "failed") { normal.gate.reject(new Error("Synthetic normal failure")); await assert.rejects(normal.promise); }
+      else { normal.controller.abort(); await assert.rejects(normal.promise, /cancelled/i); }
+      refresh.gate.reject(new Error("Synthetic refresh failure"));
+      await assert.rejects(refresh.promise, /Synthetic refresh failure/);
+      const replacement = pendingLookup(t, "finished-normal", family);
+      assert.equal(replacement.calls, 1);
+      replacement.gate.resolve(success);
+      assert.equal(await replacement.promise, success);
+    });
+  }
+
+  test(`a failed refresh restores normal work after one refresh subscriber cancels (${label})`, async t => {
+    setup(t);
+    const normal = pendingLookup(t, "failed-shared-refresh", family);
+    const refresh = pendingLookup(t, "failed-shared-refresh", family, true);
+    const peer = pendingLookup(t, "failed-shared-refresh", family);
+    refresh.controller.abort();
+    await assert.rejects(refresh.promise, /cancelled/i);
+    assert.equal(refresh.signal.aborted, false);
+    refresh.gate.reject(new Error("Synthetic shared refresh failure"));
+    await assert.rejects(peer.promise, /Synthetic shared refresh failure/);
+    const joined = pendingLookup(t, "failed-shared-refresh", family);
+    assert.equal(joined.calls, 0);
+    normal.controller.abort();
+    await assert.rejects(normal.promise, /cancelled/i);
+    assert.equal(normal.signal.aborted, false);
+    normal.gate.resolve(success);
+    assert.equal(await joined.promise, success);
+    assert.equal(getCachedValue("failed-shared-refresh"), success);
+  });
+
   test(`cancelled refresh restores an active normal request and caches its result (${label})`, async t => {
     setup(t);
     const normal = pendingLookup(t, "restore", family);
@@ -293,20 +388,22 @@ for (const family of [undefined, "cancelled-refresh-family"]) {
   });
 }
 
-for (const successAfterRestoration of [false, true]) {
-  test(`newer sibling success prevents restored old work from being joined or cached (${successAfterRestoration ? "after" : "before"} cancellation)`, async t => {
+for (const failed of [false, true]) for (const successAfterRestoration of [false, true]) {
+  test(`newer sibling success prevents restored old work from being joined or cached (${successAfterRestoration ? "after" : "before"} ${failed ? "failure" : "cancellation"})`, async t => {
     setup(t);
     const normal = pendingLookup(t, "full", "siblings");
     const refresh = pendingLookup(t, "full", "siblings", true);
     if (successAfterRestoration) {
-      refresh.controller.abort();
-      await assert.rejects(refresh.promise, /cancelled/i);
+      if (failed) refresh.gate.reject(new Error("Synthetic refresh failure"));
+      else refresh.controller.abort();
+      await assert.rejects(refresh.promise, failed ? /Synthetic refresh failure/ : /cancelled/i);
     }
     const sibling = [{ generation: "new sibling" }];
     await getCachedOrFetchValue("projection", async () => sibling, false, () => true, "siblings");
     if (!successAfterRestoration) {
-      refresh.controller.abort();
-      await assert.rejects(refresh.promise, /cancelled/i);
+      if (failed) refresh.gate.reject(new Error("Synthetic refresh failure"));
+      else refresh.controller.abort();
+      await assert.rejects(refresh.promise, failed ? /Synthetic refresh failure/ : /cancelled/i);
     }
     const replacement = pendingLookup(t, "full", "siblings");
     assert.equal(replacement.calls, 1);
@@ -320,13 +417,14 @@ for (const successAfterRestoration of [false, true]) {
   });
 }
 
-test("a newer sibling refresh remains a barrier when an older same-key refresh is cancelled", async t => {
+for (const failed of [false, true]) test(`a newer sibling refresh remains a barrier when an older same-key refresh ${failed ? "fails" : "is cancelled"}`, async t => {
   setup(t);
   const normal = pendingLookup(t, "full", "siblings");
   const refresh = pendingLookup(t, "full", "siblings", true);
   const sibling = pendingLookup(t, "projection", "siblings", true);
-  refresh.controller.abort();
-  await assert.rejects(refresh.promise, /cancelled/i);
+  if (failed) refresh.gate.reject(new Error("Synthetic refresh failure"));
+  else refresh.controller.abort();
+  await assert.rejects(refresh.promise, failed ? /Synthetic refresh failure/ : /cancelled/i);
   const replacement = pendingLookup(t, "full", "siblings");
   assert.equal(replacement.calls, 1);
   normal.gate.resolve([{ stale: true }]);
@@ -349,15 +447,16 @@ test("clearing pending work aborts every superseded active request and preserves
   assert.equal(getCachedValue("clear"), success);
 });
 
-test("cancelled-refresh restoration remains isolated by API key and cache key", async t => {
+for (const failed of [false, true]) test(`${failed ? "failed" : "cancelled"}-refresh restoration remains isolated by API key and cache key`, async t => {
   setup(t);
   const tenant = (name, fn) => withRuntimeConfig({ apiKey: `synthetic-cancel-tenant-${name}` }, fn);
   const first = tenant("a", () => pendingLookup(t, "shared", "family"));
   const refresh = tenant("a", () => pendingLookup(t, "shared", "family", true));
   const otherTenant = tenant("b", () => pendingLookup(t, "shared", "family"));
   const otherKey = tenant("a", () => pendingLookup(t, "other", "other-family"));
-  refresh.controller.abort();
-  await assert.rejects(refresh.promise, /cancelled/i);
+  if (failed) refresh.gate.reject(new Error("Synthetic refresh failure"));
+  else refresh.controller.abort();
+  await assert.rejects(refresh.promise, failed ? /Synthetic refresh failure/ : /cancelled/i);
   const restored = tenant("a", () => pendingLookup(t, "shared", "family"));
   const joinedTenant = tenant("b", () => pendingLookup(t, "shared", "family"));
   const joinedKey = tenant("a", () => pendingLookup(t, "other", "other-family"));

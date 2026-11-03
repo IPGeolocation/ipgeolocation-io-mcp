@@ -9,7 +9,7 @@ type CacheEntry = { value: unknown; expiresAt: number; bytes: number; version: n
 type Family = { generation: number; inFlight: number; lastSuccess: number };
 type Pending = {
   promise: Promise<unknown>; controller: AbortController; users: number;
-  family?: Family; generation: number; version: number; restored?: boolean;
+  family?: Family; generation: number; version: number; forceRefresh: boolean; restored?: boolean;
 };
 type PendingGroup = { entries: Set<Pending>; latest?: Pending; lastSuccess: number };
 const cache = new Map<string, CacheEntry>();
@@ -75,18 +75,18 @@ export function setCachedValue(key: string, value: unknown, valueBytes?: number)
   return setCacheEntry(scopedKey(key), value, undefined, valueBytes);
 }
 
-function removePending(key: string, group: PendingGroup, entry: Pending, restore = false): void {
+function removePending(key: string, group: PendingGroup, entry: Pending, restore: false | "cancelled" | "failed" = false): void {
   group.entries.delete(entry);
   if (group.latest === entry) {
     group.latest = undefined;
     if (restore && (!entry.family || entry.generation === entry.family.generation)) {
       for (const candidate of group.entries) {
-        if (candidate.users > 0 && !candidate.controller.signal.aborted && candidate.family === entry.family
+        if ((restore !== "failed" || !candidate.forceRefresh) && candidate.users > 0 && !candidate.controller.signal.aborted && candidate.family === entry.family
           && group.lastSuccess <= candidate.version && (!candidate.family || candidate.family.lastSuccess <= candidate.version)) {
           group.latest = candidate;
         }
       }
-      // Cancellation can restore live work, but must not roll back a family's refresh barrier.
+      // Restoration must not roll back a family's refresh barrier.
       if (group.latest) {
         group.latest.restored = true;
         if (group.latest.family) group.latest.generation = group.latest.family.generation;
@@ -98,7 +98,7 @@ function removePending(key: string, group: PendingGroup, entry: Pending, restore
 
 function subscribe(key: string, group: PendingGroup, entry: Pending, signal?: AbortSignal): Promise<unknown> {
   if (signal?.aborted) {
-    if (entry.users === 0) { entry.controller.abort(); removePending(key, group, entry, true); }
+    if (entry.users === 0) { entry.controller.abort(); removePending(key, group, entry, "cancelled"); }
     return Promise.reject(new RequestCancelledError());
   }
   entry.users++;
@@ -114,7 +114,7 @@ function subscribe(key: string, group: PendingGroup, entry: Pending, signal?: Ab
       release();
       if (entry.users === 0) {
         entry.controller.abort();
-        removePending(key, group, entry, true);
+        removePending(key, group, entry, "cancelled");
       }
       reject(new RequestCancelledError());
     };
@@ -140,7 +140,7 @@ export async function getCachedOrFetchValue(
     if (cached !== undefined) return cached;
     const group = pending.get(namespacedKey), existing = group?.latest;
     if (group && existing && !existing.controller.signal.aborted && (!existing.family || existing.generation === existing.family.generation)
-      && (!existing.restored || !existing.family || existing.family.lastSuccess <= existing.version)) {
+      && (!existing.restored || (group.lastSuccess <= existing.version && (!existing.family || existing.family.lastSuccess <= existing.version)))) {
       return subscribe(namespacedKey, group, existing, signal);
     }
   }
@@ -152,7 +152,7 @@ export async function getCachedOrFetchValue(
   }
   const generationAtStart = state?.generation ?? 0;
   const group: PendingGroup = pending.get(namespacedKey) ?? { entries: new Set<Pending>(), lastSuccess: 0 };
-  const entry: Pending = { promise: undefined!, controller: new AbortController(), users: 0, family: state, generation: generationAtStart, version: versionAtStart };
+  const entry: Pending = { promise: undefined!, controller: new AbortController(), users: 0, family: state, generation: generationAtStart, version: versionAtStart, forceRefresh };
   group.entries.add(entry);
   group.latest = entry;
   pending.set(namespacedKey, group);
@@ -164,6 +164,7 @@ export async function getCachedOrFetchValue(
       if (active) group.lastSuccess = Math.max(group.lastSuccess, versionAtStart);
       if (active && state) state.lastSuccess = Math.max(state.lastSuccess, versionAtStart);
       const latest = active && pending.get(namespacedKey) === group && group.latest === entry && (!state || entry.generation === state.generation)
+        && (!entry.restored || group.lastSuccess <= versionAtStart)
         && ((!refresh && !entry.restored) || !state || state.lastSuccess === versionAtStart);
       // A superseded success still invalidates data that predates its refresh.
       if (active && refresh) {
@@ -178,6 +179,9 @@ export async function getCachedOrFetchValue(
         else removeEntry(namespacedKey);
       }
       return value;
+    } catch (error) {
+      if (forceRefresh) removePending(namespacedKey, group, entry, "failed");
+      throw error;
     } finally {
       removePending(namespacedKey, group, entry);
       if (state && --state.inFlight === 0 && familyKey !== undefined && families.get(familyKey) === state) families.delete(familyKey);

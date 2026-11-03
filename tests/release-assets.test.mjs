@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { fixtureArchive } from "./fixtures/archive.fixture.mjs";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const script = path.join(repo, "scripts/upload-mpak-release-assets.mjs");
@@ -40,7 +41,7 @@ if (args[0] === 'api' && args[1].includes('/commits/')) {
 } else process.exit(9);
 `, { mode: 0o755 });
   const assets = (options.names ?? assetNames).map(name => path.join(root, name));
-  await Promise.all(assets.map(asset => writeFile(asset, "fixture")));
+  await Promise.all(assets.map(asset => writeFile(asset, path.extname(asset) === ".mcpb" ? fixtureArchive({ "server.json": "fixture", "sbom.cdx.json": "fixture" }) : "fixture")));
   const env = {
     ...process.env,
     PATH: `${bin}${path.delimiter}${process.env.PATH}`,
@@ -183,7 +184,7 @@ async function packagingFixture(t) {
   const log = path.join(root, "npm-call.json");
   await mkdir(bin, { recursive: true });
   const npmCli = path.join(root, "npm CLI fixture.mjs");
-  await writeFile(npmCli, `import fs from 'node:fs'; fs.writeFileSync(process.env.FAKE_NPM_LOG, JSON.stringify({ args: process.argv.slice(2), node: process.execPath, cwd: process.cwd() })); process.exit(Number(process.env.FAKE_NPM_STATUS || 0));`);
+  await writeFile(npmCli, `import fs from 'node:fs'; const args=process.argv.slice(2); fs.appendFileSync(process.env.FAKE_NPM_LOG, JSON.stringify({ args, node: process.execPath, cwd: process.cwd() })+'\\n'); if(args[0]==='run'){if(process.env.FAKE_NPM_BUILD_STATUS)process.exit(Number(process.env.FAKE_NPM_BUILD_STATUS));fs.mkdirSync('dist',{recursive:true});fs.writeFileSync('dist/cli.js','// fresh selected-source build\\n');}else process.exit(Number(process.env.FAKE_NPM_STATUS || 0));`);
   await writeFile(path.join(bin, "npm"), `#!${process.execPath}\nprocess.exit(93);\n`, { mode: 0o755 });
   await writeFile(path.join(bin, "npm.cmd"), "@exit /b 93\r\n");
   async function makeSource(destination) {
@@ -228,7 +229,8 @@ fs.writeFileSync(destination, JSON.stringify({bomFormat:'CycloneDX', specVersion
       env: { ...env, SYFT_BIN: syft, FAKE_SYFT_LOG: syftLog }, encoding: "utf8",
     }),
     syftCalls: async () => { try { return JSON.parse(await readFile(syftLog, "utf8")); } catch (error) { if (error.code === "ENOENT") return undefined; throw error; } },
-    npmCall: async () => { try { return JSON.parse(await readFile(log, "utf8")); } catch (error) { if (error.code === "ENOENT") return undefined; throw error; } },
+    npmCall: async () => { try { return (await readFile(log, "utf8")).trim().split("\n").map(JSON.parse).at(-1); } catch (error) { if (error.code === "ENOENT") return undefined; throw error; } },
+    npmCalls: async () => { try { return (await readFile(log, "utf8")).trim().split("\n").map(JSON.parse); } catch (error) { if (error.code === "ENOENT") return []; throw error; } },
   };
 }
 
@@ -240,6 +242,9 @@ test("mpak preparation invokes the npm JavaScript CLI through Node without a she
   assert.deepEqual(call.args, ["ci", "--omit=dev", "--ignore-scripts"]);
   assert.equal(call.node, process.execPath);
   assert.equal(call.cwd, fixture.output);
+  const calls = await fixture.npmCalls();
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0], { args: ["run", "build"], node: process.execPath, cwd: fixture.fixtureRepo });
   const staged = JSON.parse(await readFile(path.join(fixture.output, "package.json"), "utf8"));
   assert.equal(staged.private, true);
   assert.ok(await readFile(path.join(fixture.output, "dist/cli.js"), "utf8"));
@@ -250,6 +255,18 @@ test("failed npm staging stops the preparation with a useful error", async t => 
   const result = fixture.run({ FAKE_NPM_STATUS: "11" });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /npm ci failed while preparing the mpak package/);
+});
+
+test("a failed source build leaves the previous staging package untouched", async t => {
+  const fixture = await packagingFixture(t);
+  await mkdir(fixture.output, { recursive: true });
+  const sentinel = path.join(fixture.output, "keep.txt");
+  await writeFile(sentinel, "previous staging package");
+  const result = fixture.run({ FAKE_NPM_BUILD_STATUS: "17" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /npm run build failed while preparing the mpak package/);
+  assert.equal(await readFile(sentinel, "utf8"), "previous staging package");
+  assert.equal((await fixture.npmCalls()).length, 1);
 });
 
 test("mpak preparation refuses the artifacts root without deleting other artifacts", async t => {

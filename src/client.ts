@@ -33,8 +33,8 @@ export function getApiKey(): string {
       "API key not configured. Set the IPGEOLOCATION_API_KEY environment variable."
     );
   }
-  if (!/^[\x21-\x7e]+$/.test(apiKey)) {
-    throw new ApiError(400, "400: API key must contain only printable ASCII characters without spaces. Update IPGEOLOCATION_API_KEY. No API request was sent.", "mcp_server", "invalid_api_key");
+  if (!/^[\x21-\x7e]+$/.test(apiKey) || apiKey.includes("\\")) {
+    throw new ApiError(400, "400: API key must contain only printable ASCII characters without spaces or backslashes. Update IPGEOLOCATION_API_KEY. No API request was sent.", "mcp_server", "invalid_api_key");
   }
   return apiKey;
 }

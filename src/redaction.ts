@@ -4,6 +4,7 @@ const REDACTED_API_KEY = "[REDACTED_API_KEY]";
 const REDACTED_TOKEN = "[REDACTED_TOKEN]";
 const WORD_CHARACTER = /[\p{L}\p{N}\p{M}_]/u;
 const JSON_ESCAPE_CODE: Record<string, number> = { '"': 34, "\\": 92, "/": 47, b: 8, f: 12, n: 10, r: 13, t: 9 };
+const JSON_CHARACTER_ESCAPE = /^(?:\\["\\/bfnrt]|\\u[0-9a-fA-F]{4}|\\u[dD][89aAbB][0-9a-fA-F]{2}\\u[dD][c-fC-F][0-9a-fA-F]{2})$/;
 type SecretVariant = { value: string; percentDepth: 0 | 1 | 2 };
 type Secrets = { value: string; variants: SecretVariant[]; short: boolean; jsonPrefix?: Uint32Array };
 
@@ -47,10 +48,10 @@ function adjacentCharacter(text: string, position: number, before: boolean): str
     if (part.length !== size || !/^(?:%[\da-f]{2})+$/i.test(part)) continue;
     try { const decoded = decodeURIComponent(part); if (Array.from(decoded).length === 1) return decoded; } catch { /* Check the complete UTF-8 sequence next. */ }
   }
-  for (const size of [2, 6, 12]) {
+  // A surrogate pair is one neighbour; check it before either escaped half.
+  for (const size of [2, 12, 6]) {
     const part = before ? text.slice(Math.max(0, position - size), position) : text.slice(position, position + size);
-    if (part.length !== size || !part.startsWith("\\")) continue;
-    try { const decoded: unknown = JSON.parse(`"${part}"`); if (typeof decoded === "string" && Array.from(decoded).length === 1) return decoded; } catch { /* The neighbour is ordinary text. */ }
+    if (part.length === size && JSON_CHARACTER_ESCAPE.test(part)) return JSON.parse(`"${part}"`);
   }
   let index = before ? position - 1 : position;
   if (index < 0 || index >= text.length) return "";

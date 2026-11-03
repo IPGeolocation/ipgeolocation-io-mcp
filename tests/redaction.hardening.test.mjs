@@ -256,16 +256,38 @@ test('short values and percent-free text avoid unnecessary percent normalization
   assert.equal(scoped(key, () => redaction.redactKnownSecrets(encoded)), '[REDACTED_API_KEY]');
 });
 
-test('literal backslash credentials and their JSON encodings remain masked without decoding the configured key', () => {
-  for (const secret of [String.raw`ab\ncd1234`, String.raw`ab\tcd1234`, String.raw`ab\u0061cd1234`, String.raw`ab\\cd1234`]) {
+test('rejected backslash credentials remain masked in literal and encoded diagnostics', () => {
+  for (const secret of [String.raw`ab\ncd1234`, String.raw`ab\tcd1234`, String.raw`ab\"cd1234`, String.raw`ab\u0061cd1234`, String.raw`ab\\cd1234`]) {
     const escaped = JSON.stringify(secret).slice(1, -1);
     for (const echo of [secret, escaped, JSON.stringify(escaped).slice(1, -1)]) {
       assert.equal(scoped(secret, () => redaction.redactKnownSecrets(echo)), '[REDACTED_API_KEY]');
+      const data = scoped(secret, () => response.formatToolResult({ note: echo, apiKey: echo }));
+      assert.deepEqual(JSON.parse(data), { note: '[REDACTED_API_KEY]', apiKey: '[REDACTED_API_KEY]' });
+      assert.ok(!data.includes(secret));
     }
-    const decoded = JSON.parse(`"${secret}"`);
-    assert.notEqual(decoded, secret);
-    assert.deepEqual(scoped(secret, () => redaction.redactSensitiveValue({ ordinary: decoded, apiKey: decoded })), {
-      ordinary: decoded, apiKey: '[REDACTED_API_KEY]',
-    });
+  }
+});
+
+test('short-key neighbours skip JSON parsing for invalid escape syntax', t => {
+  let parseCalls = 0;
+  const parse = JSON.parse;
+  t.mock.method(JSON, 'parse', (...args) => { parseCalls++; return parse(...args); });
+  for (const prefix of [String.raw`\q`, String.raw`\U0061`, String.raw`\u00G1`, String.raw`\x20`]) {
+    const text = `${prefix}ab1`.repeat(20000);
+    assert.equal(scoped('ab1', () => redaction.redactKnownSecrets(text)), text);
+  }
+  assert.equal(parseCalls, 0, 'invalid escape neighbours must not use exceptions for matching');
+});
+
+test('short-key boundaries recognize a complete JSON-escaped Unicode letter or emoji', () => {
+  for (const letter of [String.raw`\uD801\uDC00`, String.raw`\ud801\udc00`]) {
+    for (const text of [`${letter}ab`, `ab${letter}`]) {
+      assert.equal(scoped('ab', () => redaction.redactKnownSecrets(text)), text);
+    }
+  }
+  const emoji = String.raw`\uD83D\uDE00`;
+  assert.equal(scoped('ab', () => redaction.redactKnownSecrets(`${emoji}ab${emoji}`)), `${emoji}[REDACTED_API_KEY]${emoji}`);
+  for (const whitespace of [String.raw`\n`, String.raw`\t`, String.raw`\u0020`]) {
+    assert.equal(scoped('ab', () => redaction.redactKnownSecrets(`${whitespace}ab${whitespace}`)), `${whitespace}[REDACTED_API_KEY]${whitespace}`);
   }
 });

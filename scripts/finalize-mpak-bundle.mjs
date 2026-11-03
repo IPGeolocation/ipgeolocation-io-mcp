@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import { verifyBundleMetadata } from "./prepare-mpak-announcement.mjs";
 
 const [, , bundlePathArg, stagingDirArg] = process.argv;
 
@@ -58,11 +59,16 @@ if (listing.status !== 0) {
   );
 }
 
-const bundleEntries = new Set(listing.stdout.split(/\r?\n/u).filter(Boolean));
+const bundleEntries = listing.stdout.split(/\r?\n/u).filter(Boolean);
 for (const entry of requiredStagingEntries) {
-  if (!bundleEntries.has(entry)) {
+  if (!bundleEntries.includes(entry)) {
     throw new Error(`Required file is missing from the mpak bundle: ${entry}`);
   }
+  if (bundleEntries.filter(name => name === entry).length !== 1) {
+    throw new Error(`Required file appears more than once in the mpak bundle: ${entry}`);
+  }
 }
+
+verifyBundleMetadata(bundlePath, { "server.json": path.join(stagingDir, "server.json"), "sbom.cdx.json": path.join(stagingDir, "sbom.cdx.json") });
 
 console.log(`Verified ${requiredStagingEntries.length} required mpak bundle entries.`);

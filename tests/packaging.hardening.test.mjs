@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { fixtureArchive } from "./fixtures/archive.fixture.mjs";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const bundleName = "@ipgeolocation/ipgeolocation-io-mcp";
@@ -103,6 +104,7 @@ for (const rootLink of [false, true]) {
     await writeFile(path.join(outside, "README.md"), "protected outside README");
     const npmCli = path.join(f.root, "npm fixture.mjs");
     await writeFile(npmCli, `import {mkdir,writeFile,symlink} from 'node:fs/promises'; import path from 'node:path';
+if(process.argv[2]==='run'){await mkdir('dist',{recursive:true});await writeFile('dist/cli.js','// fresh fixture runtime');process.exit(0);}
 const modules=path.join(process.cwd(),'node_modules'), outside=process.env.FIXTURE_OUTSIDE, kind=process.platform==='win32'?'junction':'dir';
 if(process.env.FIXTURE_ROOT_LINK==='1') await symlink(outside,modules,kind);
 else {const pkg=path.join(modules,'fixture');await mkdir(path.join(pkg,'docs'),{recursive:true});await writeFile(path.join(pkg,'docs/remove.txt'),'remove');await writeFile(path.join(pkg,'README.md'),'remove');await writeFile(path.join(pkg,'LICENSE'),'keep license');await writeFile(path.join(pkg,'index.js'),'keep runtime');await symlink(outside,path.join(pkg,'linked'),kind);}
@@ -178,31 +180,6 @@ for (const mode of ["backslash", "forward", "file-url", "key", "dot-exit", "dot-
   });
 }
 
-function fixtureArchive(entries) {
-  const files = [], directory = [];
-  let offset = 0;
-  for (const [filename, content] of Object.entries(entries)) {
-    const name = Buffer.from(filename), data = Buffer.from(content);
-    let crc = 0xffffffff;
-    for (const byte of data) {
-      crc ^= byte;
-      for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
-    }
-    crc = (crc ^ 0xffffffff) >>> 0;
-    const local = Buffer.alloc(30), central = Buffer.alloc(46);
-    local.writeUInt32LE(0x04034b50); local.writeUInt16LE(20, 4); local.writeUInt32LE(crc, 14);
-    local.writeUInt32LE(data.length, 18); local.writeUInt32LE(data.length, 22); local.writeUInt16LE(name.length, 26);
-    central.writeUInt32LE(0x02014b50); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6);
-    central.writeUInt32LE(crc, 16); central.writeUInt32LE(data.length, 20); central.writeUInt32LE(data.length, 24); central.writeUInt16LE(name.length, 28);
-    central.writeUInt32LE(offset, 42);
-    files.push(local, name, data); directory.push(central, name);
-    offset += local.length + name.length + data.length;
-  }
-  const end = Buffer.alloc(22), count = Object.keys(entries).length;
-  end.writeUInt32LE(0x06054b50); end.writeUInt16LE(count, 8); end.writeUInt16LE(count, 10);
-  end.writeUInt32LE(Buffer.concat(directory).length, 12); end.writeUInt32LE(offset, 16);
-  return Buffer.concat([...files, ...directory, end]);
-}
 
 async function announcementFixture(t, manifest = { name: bundleName, version }) {
   const f = await fixture(t);
@@ -488,15 +465,25 @@ for (const mismatch of ["digest", "size", "state", "duplicate"]) {
 }
 
 for (const name of ["server.json", "sbom.cdx.json"]) {
-  onReleasePlatform(`unsigned ${name} must match its signed bundle entry before resume or announcement`, async t => {
+  onReleasePlatform(`unsigned ${name} must match its bundle entry before publish, resume or announcement`, async t => {
     const f = await announcementFixture(t);
+    const original = await readFile(path.join(f.local, name));
     await writeFile(path.join(f.local, name), "different metadata");
-    const result = f.resume();
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /Release metadata does not match the signed bundle/);
+    for (const result of [f.upload(), f.resume()]) {
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /Release metadata does not match the bundle/);
+    }
     assert.equal(uploadCalls(await f.calls()).length, 0);
+    await writeFile(path.join(f.local, name), original);
     assert.equal(f.upload().status, 0);
-    assert.notEqual(f.prepare(path.join(f.root, "announcement")).status, 0);
+    const changed = Buffer.from("different published metadata");
+    await writeFile(path.join(f.published, name), changed);
+    const release = JSON.parse(await readFile(f.metadata, "utf8"));
+    Object.assign(release.assets.find(asset => asset.name === name), { size: changed.length, digest: "sha256:" + createHash("sha256").update(changed).digest("hex") });
+    await writeFile(f.metadata, JSON.stringify(release));
+    const result = f.prepare(path.join(f.root, "announcement"));
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Release metadata does not match the bundle/);
   });
 }
 
@@ -509,8 +496,9 @@ onReleasePlatform("large signed SBOMs are compared without the command's default
     "server.json": await readFile(path.join(f.local, "server.json")),
     "sbom.cdx.json": sbom,
   }));
-  const result = f.resume();
+  const result = f.upload();
   assert.equal(result.status, 0, result.stderr);
+  assert.equal(f.resume().status, 0);
   assert.equal(f.prepare(path.join(f.root, "announcement")).status, 0);
 });
 
@@ -554,6 +542,7 @@ test("release dispatch retains default publish and supports fresh announcement w
   assert.match(workflow, /always\(\) && !cancelled\(\) && \(inputs\.operation == 'announce' \|\| needs\.publish\.result == 'success'\)/);
   assert.ok(workflow.indexOf('--preflight "$RELEASE_TAG"') < workflow.indexOf("      - name: Install root dependencies"));
   assert.ok(workflow.indexOf("      - name: Retain the exact signed asset set") < workflow.indexOf("      - name: Upload new mpak assets"));
+  assert.ok(workflow.indexOf("      - name: Finalize mpak bundle metadata") < workflow.indexOf("      - name: Sign mpak bundle with Sigstore keyless"));
   assert.match(workflow, /retention-days: 90/);
   const publishOnlySteps = ["Install root dependencies", "Run root test suite", "Build universal mpak bundle", "Sign mpak bundle with Sigstore keyless", "Generate build provenance attestation", "Retain the exact signed asset set before publication"];
   for (const step of publishOnlySteps) assert.ok(workflow.includes(`      - name: ${step}\n        if: inputs.operation == 'publish'`));
@@ -580,7 +569,7 @@ onReleasePlatform("the actual publication context step accepts only the selected
 
 test("staging retains the README's Kiro guide and both existing configuration files", async t => {
   const f = await fixture(t), npmCli = path.join(f.root, "npm fixture.mjs");
-  await writeFile(npmCli, "// No dependencies in this fixture.\n");
+  await writeFile(npmCli, "import {mkdirSync,writeFileSync} from 'node:fs'; if(process.argv[2]==='run'){mkdirSync('dist',{recursive:true});writeFileSync('dist/cli.js','// fresh fixture runtime');}\n");
   const result = f.run("prepare-mpak-package.mjs", [], { npm_execpath: npmCli, MPAK_STAGING_DIR: f.staging });
   assert.equal(result.status, 0, result.stderr);
   const pkg = JSON.parse(await readFile(path.join(repo, "package.json"), "utf8"));
@@ -592,7 +581,7 @@ test("staging retains the README's Kiro guide and both existing configuration fi
   assert.match(await readFile(path.join(repo, "Dockerfile"), "utf8"), /COPY packaging\/kiro\/ \.\/packaging\/kiro\//);
 });
 
-onReleasePlatform("bundle finalization rejects a missing Kiro file in staging or inside the archive", async t => {
+async function bundleFixture(t) {
   const f = await fixture(t), entries = {};
   for (const name of ["LICENSE", "README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md", "packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json", "icon.png", "manifest.json", "package-lock.json", "package.json", "sbom.cdx.json", "server.json"]) {
     entries[name] = "fixture";
@@ -601,7 +590,12 @@ onReleasePlatform("bundle finalization rejects a missing Kiro file in staging or
   }
   const bundle = path.join(f.root, "bundle.mcpb");
   await writeFile(bundle, fixtureArchive(entries));
-  assert.equal(f.run("finalize-mpak-bundle.mjs", [bundle, f.staging]).status, 0);
+  return { ...f, entries, bundle, finalize: () => f.run("finalize-mpak-bundle.mjs", [bundle, f.staging]) };
+}
+
+onReleasePlatform("bundle finalization rejects a missing Kiro file in staging or inside the archive", async t => {
+  const f = await bundleFixture(t), { entries, bundle } = f;
+  assert.equal(f.finalize().status, 0);
   for (const name of ["README.md", "mcp.json", "plugin.json"]) {
     const relative = `packaging/kiro/${name}`;
     await rm(path.join(f.staging, relative));
@@ -616,4 +610,124 @@ onReleasePlatform("bundle finalization rejects a missing Kiro file in staging or
     assert.match(missingArchive.stderr, /Required file is missing from the mpak bundle: packaging\/kiro\//);
     await writeFile(bundle, fixtureArchive(entries));
   }
+});
+
+for (const name of ["server.json", "sbom.cdx.json"]) {
+  onReleasePlatform(`bundle finalization compares exact ${name} bytes before signing`, async t => {
+    const f = await bundleFixture(t);
+    for (const changed of [Buffer.from("fixture\n"), Buffer.from([102, 105, 120, 116, 117, 114, 255])]) {
+      await writeFile(path.join(f.staging, name), changed);
+      const result = f.finalize();
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /Release metadata does not match the bundle/);
+    }
+  });
+
+  for (const mode of ["missing", "duplicate", "oversized"]) {
+    onReleasePlatform(`bundle finalization rejects ${mode} ${name} without changing staging`, async t => {
+      const f = await bundleFixture(t), before = await readFile(path.join(f.staging, name));
+      let entries = Object.entries(f.entries);
+      if (mode === "missing") entries = entries.filter(([entry]) => entry !== name);
+      if (mode === "duplicate") entries.push([name, ""]);
+      if (mode === "oversized") entries = entries.map(([entry, value]) => [entry, entry === name ? "fixture" + "x".repeat(2 * 1024 * 1024) : value]);
+      await writeFile(f.bundle, fixtureArchive(entries));
+      const result = f.finalize();
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, mode === "missing" ? /Required file is missing/ : mode === "duplicate" ? /appears more than once/ : /Unable to read bundled metadata/);
+      assert.deepEqual(await readFile(path.join(f.staging, name)), before);
+    });
+  }
+}
+
+onReleasePlatform("finalization accepts a matching SBOM beyond the default subprocess buffer", async t => {
+  const f = await bundleFixture(t);
+  f.entries["sbom.cdx.json"] = JSON.stringify({ components: [], fixture: "x".repeat(2 * 1024 * 1024) });
+  await writeFile(path.join(f.staging, "sbom.cdx.json"), f.entries["sbom.cdx.json"]);
+  await writeFile(f.bundle, fixtureArchive(f.entries));
+  const result = f.finalize();
+  assert.equal(result.status, 0, result.stderr);
+});
+
+onReleasePlatform("finalization refuses truncated archives", async t => {
+  const f = await bundleFixture(t);
+  await writeFile(f.bundle, (await readFile(f.bundle)).subarray(0, 100));
+  const result = f.finalize();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Unable to list mpak bundle contents/);
+});
+
+onReleasePlatform("normal upload verifies metadata supplied from different directories", async t => {
+  const f = await announcementFixture(t), files = [];
+  for (const [index, name] of f.assets.entries()) {
+    const directory = path.join(f.root, `asset ${index}`);
+    await mkdir(directory);
+    const file = path.join(directory, name);
+    await cp(path.join(f.local, name), file);
+    files.unshift(file);
+  }
+  const result = f.run("upload-mpak-release-assets.mjs", [tag, ...files], f.env);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(uploadCalls(await f.calls()).map(call => path.basename(call.args[3])), publicationOrder);
+});
+
+onReleasePlatform("normal upload rejects duplicate metadata entries before any upload", async t => {
+  const f = await announcementFixture(t);
+  const entries = [["manifest.json", JSON.stringify({ name: bundleName, version })]];
+  for (const name of ["server.json", "sbom.cdx.json"]) entries.push([name, await readFile(path.join(f.local, name))]);
+  entries.push(["server.json", ""]);
+  await writeFile(path.join(f.local, filename), fixtureArchive(entries));
+  const result = f.upload();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /must contain exactly one server.json/);
+  assert.equal(uploadCalls(await f.calls()).length, 0);
+});
+
+onReleasePlatform("normal upload rejects successful extraction with truncated metadata", async t => {
+  const f = await announcementFixture(t), bin = path.join(f.root, "truncated-tool");
+  await mkdir(bin);
+  await writeFile(path.join(bin, "unzip"), `#!${process.execPath}\nprocess.stdout.write(process.argv[2] === '-Z1' ? 'server.json\\nsbom.cdx.json\\n' : '{');\n`, { mode: 0o755 });
+  const result = f.upload({ PATH: `${bin}${path.delimiter}${f.env.PATH}` });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Release metadata does not match the bundle/);
+  assert.equal(uploadCalls(await f.calls()).length, 0);
+});
+
+for (const sourceKind of ["current", "sibling", "linked dist"]) {
+  test(`manual packaging builds fresh ${sourceKind} source instead of copying stale dist`, async t => {
+    const f = await fixture(t);
+    const source = sourceKind === "sibling" ? path.join(f.root, "selected source %20") : f.repository;
+    if (source !== f.repository) await cp(f.repository, source, { recursive: true });
+    const pkg = JSON.parse(await readFile(path.join(source, "package.json"), "utf8"));
+    pkg.scripts = { build: "node build.mjs" };
+    await writeFile(path.join(source, "package.json"), JSON.stringify(pkg));
+    await writeFile(path.join(source, "build.mjs"), "import {mkdirSync,writeFileSync} from 'node:fs';mkdirSync('dist',{recursive:true});writeFileSync('dist/cli.js','// current selected source\\n');");
+    let outside;
+    if (sourceKind === "linked dist") {
+      outside = path.join(f.root, "outside dist");
+      await mkdir(outside);
+      await writeFile(path.join(outside, "keep.txt"), "outside files must survive");
+      await rm(path.join(source, "dist"), { recursive: true });
+      await symlink(outside, path.join(source, "dist"), process.platform === "win32" ? "junction" : "dir");
+    } else await writeFile(path.join(source, "dist/stale.js"), "removed source must not ship");
+    const npmCli = process.env.npm_execpath || path.resolve(path.dirname(process.execPath), process.platform === "win32" ? "node_modules/npm/bin/npm-cli.js" : "../lib/node_modules/npm/bin/npm-cli.js");
+    const npmConfig = path.join(f.root, "empty.npmrc");
+    await writeFile(npmConfig, "");
+    const result = f.run("prepare-mpak-package.mjs", [], { npm_execpath: npmCli, MPAK_SOURCE_DIR: source, MPAK_STAGING_DIR: f.staging, npm_config_cache: path.join(f.root, "npm-cache"), npm_config_userconfig: npmConfig, npm_config_offline: "true", npm_config_audit: "false", npm_config_fund: "false" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(await readFile(path.join(f.staging, "dist/cli.js"), "utf8"), "// current selected source\n");
+    await assert.rejects(readFile(path.join(f.staging, "dist/stale.js")), { code: "ENOENT" });
+    if (source !== f.repository) assert.equal(await readFile(path.join(f.repository, "dist/cli.js"), "utf8"), "// Fixture runtime\n");
+    if (outside) assert.equal(await readFile(path.join(outside, "keep.txt"), "utf8"), "outside files must survive");
+  });
+}
+
+test("a build that creates no runtime cannot stage the old dist files", async t => {
+  const f = await fixture(t), npmCli = path.join(f.root, "empty build.mjs");
+  await writeFile(npmCli, "// Synthetic successful command with no build output.\n");
+  await writeFile(path.join(f.staging, "keep.txt"), "previous package");
+  const result = f.run("prepare-mpak-package.mjs", [], { npm_execpath: npmCli, MPAK_STAGING_DIR: f.staging });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /source build did not create dist/);
+  assert.equal(await readFile(path.join(f.staging, "keep.txt"), "utf8"), "previous package");
+  await assert.rejects(readFile(path.join(f.repository, "dist/cli.js")), { code: "ENOENT" });
 });

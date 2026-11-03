@@ -61,6 +61,20 @@ export function publishedAsset(release, name, required = true) {
   return matches[0];
 }
 
+export function verifyBundleMetadata(bundlePath, sidecars) {
+  const names = ["server.json", "sbom.cdx.json"];
+  const entries = run("unzip", ["-Z1", bundlePath, ...names], "utf8", 4096).split(/\r?\n/u).filter(Boolean);
+  for (const name of names) {
+    if (entries.filter(entry => entry === name).length !== 1) {
+      throw new Error(`The bundle must contain exactly one ${name}.`);
+    }
+    const expected = readFileSync(sidecars[name]);
+    const embedded = spawnSync("unzip", ["-p", bundlePath, name], { maxBuffer: Math.max(1024 * 1024, expected.length + 1) });
+    if (embedded.error || embedded.status !== 0) throw new Error(`Unable to read bundled metadata: ${name}.`);
+    if (!embedded.stdout.equals(expected)) throw new Error(`Release metadata does not match the bundle: ${name}.`);
+  }
+}
+
 export async function verifyLocalBundle(context, directory) {
   const metadata = new Map();
   for (const name of context.names) metadata.set(name, await localAssetMetadata(path.join(directory, name)));
@@ -72,11 +86,7 @@ export async function verifyLocalBundle(context, directory) {
   if (manifest.name !== context.bundleName || manifest.version !== context.version) {
     throw new Error("The published bundle manifest does not match the package name and release version.");
   }
-  for (const name of ["server.json", "sbom.cdx.json"]) {
-    const expected = readFileSync(path.join(directory, name));
-    const embedded = run("unzip", ["-p", bundlePath, name], null, Math.max(1024 * 1024, expected.length + 1));
-    if (!embedded.equals(expected)) throw new Error(`Release metadata does not match the signed bundle: ${name}`);
-  }
+  verifyBundleMetadata(bundlePath, { "server.json": path.join(directory, "server.json"), "sbom.cdx.json": path.join(directory, "sbom.cdx.json") });
   return { manifest, metadata };
 }
 

@@ -38,8 +38,8 @@ function setup(t) {
   });
 }
 
-async function session(t, apiKey = syntheticKey) {
-  const server = serverModule.createMcpServer({ apiKey });
+async function session(t, apiKey = syntheticKey, settings = { apiKey }) {
+  const server = serverModule.createMcpServer(settings);
   const client = new Client({ name: 'transport-hardening', version: '1' });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(b); await client.connect(a); await client.listTools();
@@ -104,7 +104,7 @@ test('invalid credential characters fail locally without exposing character deta
   globalThis.fetch = (_url, options) => { fetchCalls++; return nativeFetch(`http://127.0.0.1:${upstream.address().port}`, options); };
   const redaction = await load('redaction.js');
   const keys = ['synthetic\u043akey', 'synthetic\u007fkey', 'synthetic\rkey', 'synthetic\nkey', 'synthetic\u0000key',
-    'synthetic\tkey', 'synthetic\u200bkey', 'synthetic\ufeffkey', 'synthetic\u00e9key', 'synthetic key', 'synthetic\ud800key'];
+    'synthetic\tkey', 'synthetic\u200bkey', 'synthetic\ufeffkey', 'synthetic\u00e9key', 'synthetic key', 'synthetic\ud800key', String.raw`synthetic\nkey`];
   for (const key of keys) {
     const call = await session(t, key), result = await call('check_security', { ip: '8.8.8.8' });
     const error = result.structuredContent.error;
@@ -112,16 +112,53 @@ test('invalid credential characters fail locally without exposing character deta
     assert.equal(error.category, 'configuration');
     assert.equal(error.status, 400);
     assert.equal(error.retryable, false);
-    assert.equal(error.message, 'API key must contain only printable ASCII characters without spaces. Update IPGEOLOCATION_API_KEY. No API request was sent.');
+    assert.equal(error.message, 'API key must contain only printable ASCII characters without spaces or backslashes. Update IPGEOLOCATION_API_KEY. No API request was sent.');
     assert.doesNotMatch(JSON.stringify(result), /character at index|value of \d|ByteString|fetch failed/);
     assert.equal(config.withRuntimeConfig({ apiKey: key }, () => redaction.redactKnownSecrets(key)), '[REDACTED_API_KEY]');
   }
   assert.equal(fetchCalls, 0);
   assert.equal(requests, 0);
-  const call = await session(t, keys[0]), result = await call('get_my_ip');
+  const call = await session(t, keys.at(-1)), result = await call('get_my_ip');
   assert.equal(result.isError, undefined);
   assert.equal(result.structuredContent.ip, '198.51.100.7');
   assert.equal(requests, 1);
+});
+
+const escapedKeys = [String.raw`ab\n0123456789`, String.raw`ab\t0123456789`, String.raw`ab\"0123456789`, String.raw`ab\\0123456789`, String.raw`ab\u00610123456789`];
+for (const mode of ['session', 'environment']) test(`backslash ${mode} credentials cannot fetch, reuse another key's cache, or receive result pages`, async t => {
+  setup(t);
+  const priorKey = process.env.IPGEOLOCATION_API_KEY;
+  t.after(() => { if (priorKey === undefined) delete process.env.IPGEOLOCATION_API_KEY; else process.env.IPGEOLOCATION_API_KEY = priorKey; });
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests++;
+    return new Response(JSON.stringify({ ip: '8.8.8.8', note: 'safe paginated data '.repeat(20000) }));
+  };
+  const validCall = await session(t, '0123456789abcdef0123456789abcdef');
+  const first = await validCall('lookup_ip', { ip: '8.8.8.8' });
+  assert.ok(first.structuredContent.page);
+  for (const key of escapedKeys) {
+    process.env.IPGEOLOCATION_API_KEY = key;
+    const call = await session(t, key, mode === 'session' ? { apiKey: key } : {});
+    for (const [name, args] of [
+      ['lookup_ip', { ip: '8.8.8.8' }], ['lookup_ip', { ip: '8.8.8.8', force_refresh: true }],
+      ['check_security', { ip: '8.8.8.8', fields: 'security.is_vpn' }], ['bulk_lookup_ip', { ips: ['8.8.8.8'] }],
+    ]) {
+      const result = await call(name, args);
+      assert.equal(result.isError, true);
+      assert.equal(result.structuredContent.error.category, 'configuration');
+      assert.equal(result.structuredContent.error.retryable, false);
+      assert.equal(result.structuredContent.page, undefined);
+      assert.ok(!JSON.stringify(result).includes(key));
+      assert.ok(result.content.every(item => item.type !== 'text' || !item.text.includes(key)));
+    }
+    const page = await call('get_cached_result', { cursor: first.structuredContent.page.cursor });
+    assert.equal(page.isError, true);
+    assert.equal(page.structuredContent.page, undefined);
+    assert.ok(!JSON.stringify(page).includes(key));
+  }
+  assert.equal(requests, 1, 'only the valid key may fetch or create cached pages');
+  assert.deepEqual((await validCall('get_cached_result', { cursor: first.structuredContent.page.cursor })).structuredContent.page.json_fragment, first.structuredContent.page.json_fragment);
 });
 
 test('valid printable API keys retain their exact normalized header value', async t => {
@@ -278,6 +315,10 @@ globalThis.fetch = async (url, options = {}) => {
   trace('request');
   if (process.env.TRANSPORT_FIXTURE_MODE === 'framing') appendFileSync(process.env.TRANSPORT_FIXTURE_TRACE, JSON.stringify({event:'copy-count', copiedBytes, bodySha256:createHash('sha256').update(options.body).digest('hex')})+'\n');
   if (process.env.TRANSPORT_FIXTURE_UPSTREAM) return nativeFetch(process.env.TRANSPORT_FIXTURE_UPSTREAM, options);
+  if (new URL(url).pathname === '/v3/getip') {
+    if (new Headers(options.headers).has('x-ipgeolocation-api-key')) throw new Error('Keyless fixture request must omit authentication');
+    return new Response('{"ip":"198.51.100.7"}');
+  }
   if (new URL(url).pathname === '/v3/user-agent') return new Response(JSON.stringify({user_agent_string:'synthetic-framing-result'}));
   if (new URL(url).pathname === '/v3/user-agent-bulk') return new Response(JSON.stringify(JSON.parse(options.body).uaStrings.map(() => ({user_agent_string:'synthetic-framing-result'}))));
   return new Promise((resolve, reject) => {
@@ -296,10 +337,11 @@ globalThis.fetch = async (url, options = {}) => {
   Object.assign(env, { IPGEOLOCATION_API_KEY: syntheticKey, IPGEOLOCATION_MCP_MAX_ARGUMENT_BYTES: String(argumentLimit), ...settings });
   const child = spawn(process.execPath, ['--import', pathToFileURL(preload).href, join(runtimeRoot, 'cli.js')], { env, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdin.on('error', () => {});
-  let pending = '', stderr = '', exited;
+  let pending = '', stdout = '', stderr = '', exited;
   const replies = [], waiting = new Set();
   const changed = () => { for (const check of [...waiting]) check(); };
   child.stdout.on('data', bytes => {
+    stdout += bytes;
     pending += bytes;
     for (;;) {
       const index = pending.indexOf('\n'); if (index === -1) break;
@@ -330,8 +372,35 @@ globalThis.fetch = async (url, options = {}) => {
   assert.equal((await reply(0)).error, undefined);
   send({ jsonrpc: '2.0', method: 'notifications/initialized' });
   const trace = async () => (await readFile(tracePath, 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);
-  return { child, closed, reply, send, trace, stderr: () => stderr };
+  return { child, closed, reply, send, trace, stdout: () => stdout, stderr: () => stderr };
 }
+
+for (const [index, key] of escapedKeys.entries()) test(`stdio rejects backslash credential form ${index + 1} without leaking bytes or making an authenticated request`, { timeout: 10000 }, async t => {
+  const run = await cli(t, 'normal', { IPGEOLOCATION_API_KEY: key });
+  for (const [id, name, args] of [
+    [1, 'check_security', { ip: '8.8.8.8' }],
+    [2, 'lookup_ip', { ip: '8.8.8.8', force_refresh: true }],
+    [3, 'get_cached_result', { cursor: '00000000-0000-0000-0000-000000000000:0' }],
+  ]) {
+    run.send({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } });
+    const { result } = await run.reply(id);
+    assert.equal(result.isError, true);
+    assert.equal(result.structuredContent.page, undefined);
+    if (id !== 3) assert.equal(result.structuredContent.error.category, 'configuration');
+    assert.ok(result.content.every(item => item.type !== 'text' || !item.text.includes(key)));
+    assert.ok(!JSON.stringify(result).includes(key));
+  }
+  assert.deepEqual(await run.trace(), []);
+  run.send({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'get_my_ip', arguments: {} } });
+  const { result } = await run.reply(4);
+  assert.equal(result.isError, undefined);
+  assert.equal(result.structuredContent.ip, '198.51.100.7');
+  assert.deepEqual((await run.trace()).map(item => item.event), ['request']);
+  run.child.stdin.end();
+  assert.deepEqual(await run.closed, { code: 0, signal: null });
+  assert.ok(!run.stdout().includes(key));
+  assert.ok(!run.stderr().includes(key));
+});
 
 for (const [label, character, escaped] of [['literal DEL', '\u007f', false], ['escaped DEL', '\u007f', true], ['escaped ASCII', 'x', true]]) {
   test(`stdio admits a valid ${label} batch with one request`, { timeout: 10000 }, async t => {

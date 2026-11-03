@@ -94,23 +94,24 @@ function buildStagingServer(rootServerMetadata, rootManifest, version, bundleNam
   };
 }
 
-function installBundledDependencies(outputDir) {
+function runNpm(directory, args) {
   const npmCli = process.env.npm_execpath;
   if (process.platform === "win32" && !npmCli) {
     throw new Error("On Windows, run npm run prepare:mpak so npm_execpath identifies the npm JavaScript CLI.");
   }
   const result = spawnSync(
     npmCli ? process.execPath : "npm",
-    [...(npmCli ? [npmCli] : []), "ci", "--omit=dev", "--ignore-scripts"],
+    [...(npmCli ? [npmCli] : []), ...args],
     {
-      cwd: outputDir,
+      cwd: directory,
       encoding: "utf8",
     },
   );
 
   if (result.status !== 0) {
+    const command = args[0] === "run" ? `npm run ${args[1]}` : `npm ${args[0]}`;
     throw new Error(
-      `npm ci failed while preparing the mpak package.\n${result.error?.message || result.stderr || result.stdout}`,
+      `${command} failed while preparing the mpak package.\n${result.error?.message || result.stderr || result.stdout}`,
     );
   }
 }
@@ -193,9 +194,10 @@ if (path.relative(physicalOutput, physicalSource) === "" || isChild(physicalOutp
   throw new Error("MPAK_STAGING_DIR must not contain MPAK_SOURCE_DIR.");
 }
 
-if (!existsSync(distDir)) {
-  throw new Error("Missing dist/. Run npm run build before preparing the mpak package.");
-}
+// Build the selected source; a previous dist directory may contain removed files.
+rmSync(distDir, { recursive: true, force: true });
+runNpm(sourceDir, ["run", "build"]);
+if (!existsSync(distDir)) throw new Error("The source build did not create dist/. Nothing was staged.");
 
 rmSync(outputDir, { recursive: true, force: true });
 mkdirSync(outputDir, { recursive: true });
@@ -212,7 +214,7 @@ writeJson(
 );
 
 cpSync(distDir, path.join(outputDir, "dist"), { recursive: true });
-installBundledDependencies(outputDir);
+runNpm(outputDir, ["ci", "--omit=dev", "--ignore-scripts"]);
 pruneBundledDependencyNoise(outputDir);
 if (existsSync(licensePath)) {
   cpSync(licensePath, path.join(outputDir, "LICENSE"));
