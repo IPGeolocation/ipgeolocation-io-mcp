@@ -3,6 +3,7 @@
 !.github/workflows
 .github/workflows/*
 !.github/workflows/mpak-release.yml
+!.github/workflows/mpak-scan.yml
 .idea
 .vscode
 artifacts

@@ -4,7 +4,7 @@
   "version": "2.0.2",
   "files": {
     ".cursor-plugin/plugin.json": "b462cf15c18169dba1aac12b006baf1b3e9a519114b07705eba5b8610a46d2c9",
-    ".dockerignore": "622667d037b53c0d577795e29f7b62e3b491381a83eaca4899c52974d51d809e",
+    ".dockerignore": "d7765f476981aeb8130af90c6f26709fe7ff350688a86b4d84052de41e191546",
     ".github/ISSUE_TEMPLATE/bug_report.md": "fa32e1fa60cff2525b928a3da09570e3fa597151614bc4842c73753e0ce2db1f",
     ".github/ISSUE_TEMPLATE/config.yml": "cf31f6df64dcf5650cf620373c96641d7e0e0555d747b2fe24bbc0431c81b4c1",
     ".github/ISSUE_TEMPLATE/feature_request.md": "cc166481279508db53203087fd7c296548c457c4146946d175717bcabd77b32a",
@@ -21,7 +21,7 @@
     ".mcp.json": "1f7f2a36ce4fa54fa06dcf9e3813265f089eac4421a34bedd3c143fd83eedc22",
     "CHANGELOG.md": "c31d91472ccaed727de627f0112afc1a801db84116787f44bc6fc6eced590611",
     "CONTRIBUTING.md": "237a9b8d158655cff963697405b6420714ffb41ae4e457a2bc9105bead40164c",
-    "Dockerfile": "0b8e8a0239cdb4f298953f6263e0d65089268d77ce94c9aa3301e28416bf5cfa",
+    "Dockerfile": "9998adadc60123f3a1bbfd03d77135f2f4420b3cefab66c72d2f7164a4fa2cbf",
     "LICENSE": "630e78ab41c7f7f223125f54457ca1d0aa853bc5f5e986e533e490e8028fb322",
     "README.md": "1b9fffe03853c28f367704d56333aa9813ad870afc21875ec2b167bebc4668c9",
     "RELEASING.md": "8e128db81c55e29dd855a26eb4ad090f2cafe872c347461e0fe37e90fa136cdd",
