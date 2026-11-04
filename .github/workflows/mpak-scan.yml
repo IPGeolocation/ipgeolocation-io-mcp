@@ -137,6 +137,8 @@ jobs:
 
       - name: Finalize mpak bundle metadata
         working-directory: tooling
+        env:
+          MPAK_SOURCE_DIR: ../source
         run: >-
           node scripts/finalize-mpak-bundle.mjs
           "artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}"

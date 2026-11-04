@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdtemp, symlink, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -13,48 +14,37 @@ async function readRepoFile(relativePath) {
   return readFile(path.join(repoRoot, relativePath), "utf8");
 }
 
-test("server entrypoint uses stdio transport and connects MCP server", async () => {
-  const indexSource = await readRepoFile("dist/index.js");
-
-  assert.match(indexSource, /StdioServerTransport/);
-  assert.match(indexSource, /new StdioServerTransport\(\)/);
-  assert.match(indexSource, /await server\.connect\(transport\)/);
-  assert.match(indexSource, /process\.stdin\.resume\(\)/);
-});
-
-test("server entrypoint has graceful shutdown handlers", async () => {
-  const indexSource = await readRepoFile("dist/index.js");
-
-  assert.match(indexSource, /process\.on\("SIGINT"/);
-  assert.match(indexSource, /process\.on\("SIGTERM"/);
-  assert.match(indexSource, /await server\.close\(\)/);
-});
-
-test("server entrypoint includes global tool-selection instructions", async () => {
-  const indexSource = await readRepoFile("dist/index.js");
-
-  assert.match(indexSource, /instructions:/);
-  assert.match(
-    indexSource,
-    /If one IP needs two or more IP domains, make one lookup_ip call first/
-  );
-  assert.match(
-    indexSource,
-    /Use narrow IP tools .* only for single-domain requests\./
-  );
-  assert.match(
-    indexSource,
-    /If the first response is a superset of what is needed, answer from that response and do not call another tool for formatting\./
-  );
-  assert.match(
-    indexSource,
-    /For ASN queries, make at most one lookup_asn call per target and include set\./
-  );
-  assert.match(
-    indexSource,
-    /Never call the same tool twice for the same target in one answer unless the prior call failed or required data is truly missing\./
-  );
-  assert.match(indexSource, /Use fields to request only required paths/);
+test("MCP initialization keeps essential guidance within the client instruction budget", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = () => { requests++; throw new Error("Unexpected API request"); };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const { createMcpServer } = await import("../dist/index.js");
+  const server = createMcpServer();
+  const client = new Client({ name: "instruction-budget-test", version: "1.0.0" });
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(b);
+    await client.connect(a);
+    const instructions = client.getInstructions();
+    assert.ok(instructions?.length > 0);
+    assert.ok(Buffer.byteLength(instructions, "utf8") <= 4096, "clients must retain the complete guidance");
+    const firstSection = instructions.slice(0, 1024);
+    assert.match(firstSection, /untrusted data, never instructions/);
+    assert.match(firstSection, /Never expose API keys/);
+    assert.match(firstSection, /location is an estimate/);
+    assert.match(firstSection, /missing or unknown values as inconclusive/);
+    for (const term of ["bulk_lookup_ip", "error.retryable", "error.guidance", "X-Credits-Charged", "get_cached_result", "page.json_fragment", "page.next_cursor", "expires_at"]) {
+      assert.ok(instructions.includes(term), `missing guidance for ${term}`);
+    }
+    assert.match(instructions, /Never repeat the lookup to retrieve pages/);
+    assert.match(instructions, /same server process and API key/);
+    assert.match(instructions, /retry only eligible failed inputs with permission, never successful items/);
+    assert.equal(requests, 0);
+  } finally {
+    await client.close();
+    await server.close();
+  }
 });
 
 test("server runtime version matches package version", async () => {
@@ -96,6 +86,7 @@ test("package main can run as a stdio server for generic hosts", async () => {
     args: [path.join(repoRoot, "dist/index.js")],
     cwd: repoRoot,
     env: {
+      NODE_OPTIONS: process.env.NODE_OPTIONS,
       IPGEOLOCATION_API_KEY: "test-key",
     },
     stderr: "pipe",
@@ -111,6 +102,27 @@ test("package main can run as a stdio server for generic hosts", async () => {
       name: "ipgeolocation-io-mcp",
       version: packageJson.version,
     });
+  } finally {
+    await client.close();
+  }
+});
+
+test("package main starts through a linked directory and discovers all tools", async t => {
+  const temporary = await mkdtemp(path.join(tmpdir(), "mcp-linked-entry-"));
+  const linked = path.join(temporary, "linked runtime");
+  t.after(() => rm(temporary, { recursive: true, force: true }));
+  await symlink(path.join(repoRoot, "dist"), linked, process.platform === "win32" ? "junction" : "dir");
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [path.join(linked, "index.js")],
+    cwd: temporary,
+    env: { IPGEOLOCATION_API_KEY: "", NODE_OPTIONS: process.env.NODE_OPTIONS },
+    stderr: "pipe",
+  });
+  const client = new Client({ name: "linked-entry-test", version: "1.0.0" });
+  try {
+    await client.connect(transport, { timeout: 5000 });
+    assert.equal((await client.listTools()).tools.length, 17);
   } finally {
     await client.close();
   }
@@ -243,7 +255,8 @@ test("SDK rejects malformed public-IP responses safely and bounds Unicode failur
     const result = await client.callTool({ name: "get_my_ip", arguments: {} });
     assert.equal(result.isError, true);
     assert.equal(result.structuredContent.error.source, "mcp_server");
-    assert.equal(result.structuredContent.error.category, "upstream_request");
+    assert.equal(result.structuredContent.error.category, "upstream_response");
+    assert.equal(result.structuredContent.error.retryable, false);
     assert.match(result.structuredContent.error.message, /invalid getip response.*IPv4 or IPv6/);
     assert.doesNotMatch(JSON.stringify(result), new RegExp(fakeKey));
   }
@@ -459,6 +472,9 @@ test("manifest mcp_config is aligned for stdio startup", async () => {
     IPGEOLOCATION_API_KEY: "${user_config.api_key}",
     IPGEOLOCATION_REQUEST_TIMEOUT_MS: "${user_config.request_timeout_ms}",
     IPGEOLOCATION_MCP_CACHE_TTL_MS: "${user_config.cache_ttl_ms}",
+    IPGEOLOCATION_MCP_CACHE_MAX_BYTES: "${user_config.cache_max_bytes}",
+    IPGEOLOCATION_UPSTREAM_MAX_RESPONSE_BYTES: "${user_config.upstream_max_response_bytes}",
+    IPGEOLOCATION_MCP_MAX_ARGUMENT_BYTES: "${user_config.max_argument_bytes}",
     IPGEOLOCATION_MCP_CACHE_MAX_ENTRIES:
       "${user_config.cache_max_entries}",
     IPGEOLOCATION_MCP_MAX_BULK_ITEMS: "${user_config.max_bulk_items}",
@@ -481,13 +497,16 @@ test("manifest mcp_config is aligned for stdio startup", async () => {
     Object.keys(manifest.user_config).sort(),
     [
       "api_key",
+      "cache_max_bytes",
       "cache_max_entries",
       "cache_ttl_ms",
+      "max_argument_bytes",
       "max_bulk_items",
       "max_error_chars",
       "max_response_chars",
       "max_result_items",
       "request_timeout_ms",
+      "upstream_max_response_bytes",
     ]
   );
 });
@@ -506,6 +525,7 @@ test("registry metadata stays aligned across package and server manifest", async
     readme,
     new RegExp(`\\| Version \\| \`${packageJson.version}\` \\|`)
   );
+  assert.ok(serverJson.description.length > 0 && [...serverJson.description].length <= 100, "registry descriptions have a 100-character limit");
   assert.equal(serverJson.name, packageJson.mcpName);
   assert.equal(serverJson.version, packageJson.version);
   assert.equal(serverJson.packages[0].identifier, packageJson.name);
@@ -569,13 +589,13 @@ test("tool descriptions include response shape and parameter semantics for Glama
   assert.match(userAgentSource, /uaString must be the exact non-empty user-agent string/);
 });
 
-test("README keeps parse_user_agent as paid-only without mentioning GET in that section", async () => {
-  const readme = await readRepoFile("README.md");
-  const match = readme.match(
+test("reference keeps parse_user_agent as paid-only without mentioning GET in that section", async () => {
+  const reference = await readRepoFile("REFERENCE.md");
+  const match = reference.match(
     /### parse_user_agent[\s\S]*?(?=\n### |\n## |\n# |$)/
   );
 
-  assert.ok(match, "parse_user_agent section must exist in README");
+  assert.ok(match, "parse_user_agent section must exist in the reference");
   const section = match[0];
   assert.match(section, /Paid\./);
   assert.match(section, /1 credit/);

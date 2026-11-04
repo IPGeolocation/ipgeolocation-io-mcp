@@ -7,6 +7,16 @@ const DEFAULT_MAX_BULK_ITEMS = 1000;
 const DEFAULT_MAX_ITEMS_IN_RESPONSE = 250;
 const DEFAULT_MAX_RESPONSE_CHARS = 200000;
 const DEFAULT_MAX_ERROR_CHARS = 4000;
+const MIB = 1024 * 1024;
+const requestSignalStorage = new AsyncLocalStorage<AbortSignal | undefined>();
+
+export function withRequestSignal<T>(signal: AbortSignal | undefined, callback: () => T): T {
+  return requestSignalStorage.run(signal, callback);
+}
+
+export function getRequestSignal(): AbortSignal | undefined {
+  return requestSignalStorage.getStore();
+}
 
 export type RuntimeConfig = {
   apiKey?: string;
@@ -24,8 +34,10 @@ function parseBoundedInt(
     return fallback;
   }
 
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+  const normalized = raw.trim();
+  if (!/^\d+$/.test(normalized)) return fallback;
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) {
     return fallback;
   }
 
@@ -33,7 +45,9 @@ function parseBoundedInt(
 }
 
 function normalizeRuntimeConfig(config: Partial<RuntimeConfig> = {}): RuntimeConfig {
-  return config.apiKey ? { apiKey: config.apiKey } : {};
+  if (config.apiKey === undefined) return {};
+  if (typeof config.apiKey !== "string") throw new Error("API key configuration must be a string; omit it to use the environment variable.");
+  return { apiKey: config.apiKey.trim() };
 }
 
 export function withRuntimeConfig<T>(
@@ -44,7 +58,7 @@ export function withRuntimeConfig<T>(
 }
 
 export function getConfiguredApiKey(): string | undefined {
-  return runtimeConfigStorage.getStore()?.apiKey || process.env.IPGEOLOCATION_API_KEY;
+  return (runtimeConfigStorage.getStore()?.apiKey ?? process.env.IPGEOLOCATION_API_KEY)?.trim() || undefined;
 }
 
 export function getRequestTimeoutMs(): number {
@@ -108,4 +122,16 @@ export function getMaxErrorChars(): number {
     200,
     50000
   );
+}
+
+export function getCacheMaxBytes(): number {
+  return parseBoundedInt(process.env.IPGEOLOCATION_MCP_CACHE_MAX_BYTES, 32 * MIB, 4 * MIB, 1024 * MIB);
+}
+
+export function getMaxUpstreamBytes(): number {
+  return parseBoundedInt(process.env.IPGEOLOCATION_UPSTREAM_MAX_RESPONSE_BYTES, 8 * MIB, MIB, 256 * MIB);
+}
+
+export function getMaxToolArgumentBytes(): number {
+  return parseBoundedInt(process.env.IPGEOLOCATION_MCP_MAX_ARGUMENT_BYTES, 4 * MIB, 64 * 1024, 32 * MIB);
 }

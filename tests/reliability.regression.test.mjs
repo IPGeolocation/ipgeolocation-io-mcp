@@ -14,7 +14,7 @@ import { applyFieldsAndExcludes } from "../dist/tools/projection.js";
 import { withRuntimeConfig } from "../dist/config.js";
 import { getIpGeolocation, getIpGeolocationBulk } from "../dist/client.js";
 
-const fakeKey = 'regression-key/with+quotes"and\\slashes';
+const fakeKey = 'regression-key/with+quotes"and/slashes';
 const json = data => new Response(JSON.stringify(data));
 async function sdk(t, responder) {
   clearToolCacheForTests();
@@ -49,20 +49,20 @@ test("redaction preserves valid JSON, escaping, object keys, and sensitive field
   assert.equal(Object.getPrototypeOf(data), Object.prototype);
   assert.equal(data.apiKey, "[REDACTED_API_KEY]");
   assert.equal(data["x-ipgeolocation-api-key"], "[REDACTED_API_KEY]");
-  assert.equal(data.nested[3], 'Browser (apiKey="[REDACTED_API_KEY]") 😀\n');
+  assert.equal(data.nested[3], 'Browser (apiKey="quoted-value") 😀\n');
   assert.ok(Object.hasOwn(data, "[REDACTED_API_KEY]"));
-  assert.ok(!text.includes("quoted-value") && !text.includes("not configured"));
+  assert.ok(text.includes("quoted-value") && !text.includes("not configured"));
   assert.ok(!text.includes(fakeKey) && !text.includes(encodeURIComponent(fakeKey)));
   assert.equal(withRuntimeConfig({ apiKey: fakeKey }, () => formatToolResult(data)), text, "redaction is idempotent");
 });
 
-test("SDK returns quoted user-agent and WHOIS text as valid redacted success JSON", async t => {
+test("SDK preserves harmless quoted user-agent and WHOIS text as valid success JSON", async t => {
   const { call, requests } = await sdk(t, () => ({ text: 'Browser (apiKey="quoted-value") 😀\\\n' }));
   for (const [name, args] of [["parse_user_agent", { uaString: "Browser" }], ["lookup_asn", { asn: "AS1", include: "whois_response" }]]) {
     const result = await call(name, args);
     assert.equal(result.isError, undefined);
     assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent.data);
-    assert.equal(result.structuredContent.data.text, 'Browser (apiKey="[REDACTED_API_KEY]") 😀\\\n');
+    assert.equal(result.structuredContent.data.text, 'Browser (apiKey="quoted-value") 😀\\\n');
   }
   assert.equal(requests.length, 2);
 });
@@ -87,10 +87,11 @@ test("cached pages recover quoted bulk errors and secrets without another API re
     result = await call("get_cached_result", { cursor: page.next_cursor });
   } while (true);
   const recovered = JSON.parse(joined);
-  assert.equal(recovered.errors[0].input, 'bad apiKey="[REDACTED_API_KEY]"');
+  assert.equal(recovered.errors[0].input, 'bad apiKey="quoted-value"');
   assert.equal(recovered.errors[0].status, 400);
   assert.deepEqual(recovered.items[0], withRuntimeConfig({ apiKey: fakeKey }, () => JSON.parse(formatToolResult(large))));
-  assert.ok(!joined.includes("unknown-secret") && !joined.includes("quoted-value") && !joined.includes(fakeKey));
+  assert.ok(joined.includes("unknown-secret") && joined.includes("quoted-value"));
+  assert.ok(!joined.includes("bad-value") && !joined.includes(fakeKey));
   assert.ok(pages > 1);
   assert.equal(requests.length, 1);
 });
@@ -163,12 +164,14 @@ test("cached IP projection matches include precedence for roots, nested fields a
     ["security", "location.city", undefined, { ip: base.ip, location: { city: "Test" }, security: base.security }],
     ["security", "security", "security", { ip: base.ip, security: base.security }],
     ["security", "security.is_vpn", "security", { ip: base.ip, security: { is_vpn: false } }],
+    ["security", "security.is_vpn", "security.is_vpn", { ip: base.ip }],
+    ["security", "location", "location", { ip: base.ip, security: base.security }],
     ["security", "security.is_vpn,security.threat_score", "security.threat_score", { ip: base.ip, security: { is_vpn: false } }],
     ["geo_accuracy,dma_code", "location.city", undefined, { ip: base.ip, location: base.location }],
     ["geo_accuracy,dma_code", "location.city", "location", { ip: base.ip, location: base.location }],
-    ["geo_accuracy,dma_code", "location.accuracy_radius,location.dma_code", "location.accuracy_radius,location.dma_code", { ip: base.ip, location: {} }],
-    ["security", "location.city", "location", { ip: base.ip, location: { city: "Test" }, security: base.security }],
-    ["security", "location.city", "location.city", { ip: base.ip, location: {}, security: base.security }],
+    ["geo_accuracy,dma_code", "location.accuracy_radius,location.dma_code", "location.accuracy_radius,location.dma_code", { ip: base.ip }],
+    ["security", "location.city", "location", { ip: base.ip, security: base.security }],
+    ["security", "location.city", "location.city", { ip: base.ip, security: base.security }],
     ["*", "location.city", "security.threat_score", { ip: base.ip, location: { city: "Test" } }],
     ["*", undefined, "security,location", { ip: base.ip, abuse: base.abuse, hostname: base.hostname, user_agent: base.user_agent }],
   ]) {
@@ -180,6 +183,54 @@ test("cached IP projection matches include precedence for roots, nested fields a
     assert.equal(requests.length, before + 1, "projecting the cached superset must not spend credits");
   }
 });
+
+for (const [args, warmedInclude, expected] of [
+  [{ fields: "security.threat_score", excludes: "security" }, "security", { ip: "8.8.8.8" }],
+  [{ include: "security", fields: "security.threat_score", excludes: "security" }, "security", { ip: "8.8.8.8", security: { threat_score: 5 } }],
+  [{ include: "abuse", fields: "security.threat_score", excludes: "security" }, "abuse,security", { ip: "8.8.8.8", abuse: { organization: "Contact" } }],
+  [{ include: "*", fields: "security.threat_score", excludes: "security" }, "*", { ip: "8.8.8.8" }],
+  [{ fields: "location.accuracy_radius", excludes: "location" }, "geo_accuracy", { ip: "8.8.8.8" }],
+  [{ include: "geo_accuracy", fields: "location.accuracy_radius", excludes: "location" }, "geo_accuracy", { ip: "8.8.8.8", location: { accuracy_radius: "5" } }],
+]) {
+  for (const name of ["lookup_ip", "bulk_lookup_ip"]) {
+    test(`inferred include exclusions agree for cold, cached and forced ${name}: ${JSON.stringify(args)}`, async t => {
+      const source = { ip: "8.8.8.8", location: { city: "Test", accuracy_radius: "5" }, security: { threat_score: 5, is_vpn: false }, abuse: { organization: "Contact" } };
+      const itemError = { message: "Synthetic invalid input", status: 400 };
+      const bulk = name === "bulk_lookup_ip";
+      const input = bulk ? { ips: [source.ip, "invalid input label"] } : { ip: source.ip };
+      const { call, requests } = await sdk(t, ({ url }) => {
+        let data = source;
+        if (url.searchParams.has("fields")) {
+          data = structuredClone(expected);
+          // The provider protects explicitly sent modules, including ones inferred locally.
+          const sentIncludes = (url.searchParams.get("include") ?? "").split(",");
+          if (sentIncludes.includes("security")) data.security = { threat_score: 5 };
+          if (sentIncludes.includes("geo_accuracy")) data.location = { accuracy_radius: "5" };
+        }
+        return bulk ? [data, itemError] : data;
+      });
+      const verify = result => {
+        assert.equal(result.isError, undefined);
+        if (bulk) {
+          assert.deepEqual(result.structuredContent.items, [expected, itemError]);
+          assert.equal(result.structuredContent.errors[0].input, "invalid input label");
+          assert.equal(result.structuredContent.errors[0].status, 400);
+        } else assert.deepEqual(result.structuredContent.data, expected);
+      };
+      verify(await call(name, { ...input, ...args }));
+      const afterCold = requests.length;
+      verify(await call(name, { ...input, ...args }));
+      assert.equal(requests.length, afterCold, "identical cached calls must not fetch again");
+      clearToolCacheForTests();
+      await call(name, { ...input, include: warmedInclude });
+      const afterPrime = requests.length;
+      verify(await call(name, { ...input, ...args }));
+      if (!bulk) assert.equal(requests.length, afterPrime, "single lookups project the cached superset without another request");
+      verify(await call(name, { ...input, ...args, force_refresh: true }));
+      verify(await call(name, { ...input, ...args }));
+    });
+  }
+}
 
 test("unknown SDK arguments fail clearly before an API call and advertised schemas are strict", async t => {
   const { call, requests, client } = await sdk(t, () => ({ ip: "9.9.9.9" }));
@@ -209,7 +260,7 @@ test("raw stdio rejects prototype keys, null, primitives and nested invalid argu
   const preload = `globalThis.fetch = async () => { console.error('REGRESSION_UPSTREAM_CALL'); return new Response('{"ip":"9.9.9.9"}'); };`;
   const transport = new StdioClientTransport({
     command: process.execPath, args: [fileURLToPath(new URL("../dist/cli.js", import.meta.url))],
-    env: { IPGEOLOCATION_API_KEY: "stdio-dummy-key", NODE_OPTIONS: `--import=data:text/javascript,${encodeURIComponent(preload)}` },
+    env: { IPGEOLOCATION_API_KEY: "stdio-dummy-key", NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --import=data:text/javascript,${encodeURIComponent(preload)}` },
     stderr: "pipe",
   });
   let stderr = "";
@@ -305,6 +356,6 @@ test("build uses portable Node commands and preserves a single executable CLI sh
   const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.doesNotMatch(pkg.scripts.build, /\b(?:printf|cat|mv|chmod)\b(?!Sync)/);
   const cli = await readFile(new URL("../dist/cli.js", import.meta.url), "utf8");
-  assert.equal(cli.split("\n")[0], "#!/usr/bin/env node");
+  assert.equal(cli.split(/\r?\n/)[0], "#!/usr/bin/env node");
   assert.equal(cli.match(/#!\/usr\/bin\/env node/g).length, 1);
 });

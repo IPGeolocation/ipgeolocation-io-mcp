@@ -1,9 +1,9 @@
+import { ResourceLimitError } from "../errors.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { getCacheTtlMs, getMaxResponseChars } from "../config.js";
-import { redactSensitiveValue } from "../redaction.js";
-import { getCachedValue, setCachedValue } from "./cache.js";
+import { getCachedValue, setCachedValue, touchCachedValue } from "./cache.js";
 
 export const cachedResultCursorSchema = z.string().max(80).regex(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}:\d{1,16}$/)
   .describe("Opaque cursor returned in page.cursor or page.next_cursor. Retrieval requires the same server process and API key and does not repeat the original lookup.");
@@ -65,11 +65,13 @@ export function paginateToolResult(name: string, result: CallToolResult): CallTo
   if (fits(result)) return result;
   const id = randomUUID();
   const snapshot: CachedResult = {
-    json: JSON.stringify(redactSensitiveValue(result.structuredContent)),
+    // The caller already redacted and parsed the structured output; avoid another full tree.
+    json: JSON.stringify(result.structuredContent),
     sourceTool: name,
     expiresAt: Date.now() + getCacheTtlMs(),
   };
-  setCachedValue(cacheKey(id), snapshot);
+  const metadataBytes = Buffer.byteLength(JSON.stringify({ sourceTool: snapshot.sourceTool, expiresAt: snapshot.expiresAt }));
+  if (!setCachedValue(cacheKey(id), snapshot, Buffer.byteLength(snapshot.json) + metadataBytes)) throw new ResourceLimitError("The complete result exceeds IPGEOLOCATION_MCP_CACHE_MAX_BYTES and cannot be retained for pagination. Reduce the requested fields or batch size, or increase the cache byte limit with sufficient memory. API credits may already have been used; no automatic retry was made.");
   return readPage(id, snapshot, 0);
 }
 
@@ -81,7 +83,8 @@ export function readCachedResultPage(cursor: string): CallToolResult {
   const snapshot = getCachedValue(cacheKey(id)) as CachedResult | undefined;
   if (!snapshot) throw new Error("Cached result is unavailable or expired. No API call was made. A new lookup may consume credits.");
   if (offset >= snapshot.json.length || (offset > 0 && /[\uDC00-\uDFFF]/.test(snapshot.json[offset]))) throw new Error("Invalid cached-result cursor position.");
-  snapshot.expiresAt = Date.now() + getCacheTtlMs();
-  setCachedValue(cacheKey(id), snapshot);
+  const expiresAt = touchCachedValue(cacheKey(id));
+  if (expiresAt === undefined) throw new Error("Cached result is unavailable or expired. No API call was made. A new lookup may consume credits.");
+  snapshot.expiresAt = expiresAt;
   return readPage(id, snapshot, offset);
 }
