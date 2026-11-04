@@ -438,3 +438,72 @@ test('keyless tool diagnostics mask a configured short key without changing keyl
   assert.equal(success.structuredContent.ip, '8.8.8.8');
   assert.equal(calls, 2);
 });
+
+test('short keys do not match the middle of percent or JSON escapes', () => {
+  for (const [secret, values] of [
+    ['A9', ['caf%C3%A9', 'caf%25C3%25A9']],
+    ['20', ['a%20%20b', 'a%2520%2520b', '%20', '%2520']],
+    ['25', ['%25', '%2520', '%2525']],
+    ['2', ['%20', '%2520']],
+    ['n', [String.raw`\n`]],
+    ['f', [String.raw`\f`]],
+    ['%', ['%20', '%2520']],
+    ['\\', [String.raw`\n`, String.raw`\u0061`, String.raw`\uD801\uDC00`]],
+  ]) {
+    for (const text of values) {
+      for (const redact of [redaction.redactKnownSecrets, redaction.redactSensitiveText, redaction.redactSensitiveValue]) {
+        assert.equal(scoped(secret, () => redact(text)), text, `${JSON.stringify(secret)} in ${JSON.stringify(text)}`);
+      }
+    }
+  }
+});
+
+test('short-key backslash boundaries stay bounded for a large escaped run', { timeout: 10000 }, () => {
+  const count = 100000;
+  const text = '\\'.repeat(count * 2);
+  assert.equal(scoped('\\', () => redaction.redactKnownSecrets(text)), '[REDACTED_API_KEY]'.repeat(count));
+  assert.equal(scoped('ab1', () => redaction.redactKnownSecrets(`${text}nab1`)), `${text}nab1`);
+});
+
+for (const [secret, note] of [['A9', 'caf%C3%A9'], ['20', 'a%20%20b'], ['ab1', String.raw`C:\\nab1`]]) {
+  test(`short-key escape text survives cold, warm and cached-page results for ${secret}`, async t => {
+    const payload = { ...ordinary, note, echo: ` ${secret} `, filler: 'ordinary content '.repeat(20000) };
+    const { client, count } = await session(t, secret, payload);
+    for (let i = 0; i < 2; i++) {
+      const result = await client.callTool({ name: 'lookup_ip', arguments: { ip: '8.8.8.8' } });
+      assert.equal(result.isError, undefined);
+      assert.ok(result.structuredContent.page);
+      const recovered = await recover(client, result);
+      assert.deepEqual(recovered.data, { ...payload, echo: ' [REDACTED_API_KEY] ' });
+    }
+    assert.equal(count(), 1);
+  });
+}
+
+test('short-key JSON neighbours distinguish escaped backslashes from active escapes', () => {
+  for (const count of [1, 2, 3, 4, 31, 32]) {
+    const slashes = '\\'.repeat(count);
+    for (const suffix of ['n', 't', 'u0020']) {
+      const text = `C:${slashes}${suffix}ab1`;
+      const expected = count % 2 ? `C:${slashes}${suffix}[REDACTED_API_KEY]` : text;
+      assert.equal(scoped('ab1', () => redaction.redactKnownSecrets(text)), expected, text);
+    }
+    const text = `ab1${slashes}u0061`;
+    const expected = count === 1 ? text : `[REDACTED_API_KEY]${slashes}u0061`;
+    assert.equal(scoped('ab1', () => redaction.redactKnownSecrets(text)), expected, text);
+  }
+});
+
+test('complete short-key escapes remain masked without changing adjacent encoded text', () => {
+  for (const secret of ['n', '20', 'A9', '\\', '"', '/', 'é', '😀']) {
+    const percent = Array.from(Buffer.from(secret), byte => `%${byte.toString(16).padStart(2, '0')}`).join('');
+    const json = JSON.stringify(secret).slice(1, -1);
+    for (const echo of new Set([secret, json, percent, encodeURIComponent(percent)])) {
+      for (const neighbour of [' ', '%20', '%2520', String.raw`\n`]) {
+        if (echo === '\\' && neighbour === String.raw`\n`) continue;
+        const text = `${neighbour}${echo}${neighbour}`;
+        assert.equal(scoped(secret, () => redaction.redactKnownSecrets(text)), `${neighbour}[REDACTED_API_KEY]${neighbour}`, text);
+      }
+    }
+  }
+});

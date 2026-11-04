@@ -6,8 +6,8 @@ Changes in development appear under Unreleased. Published release details are av
 
 Planned version: 2.0.3.
 
-- Return `upstream_response` with `retryable: false` when an API request succeeds but its data cannot be used. For bulk results with the wrong number of items, this replaces `tool_error`.
-- Add clear errors for invalid settings (`configuration`), exceeded limits (`resource_limit`) and cancelled requests (`cancelled`).
+- Return `upstream_response` with `retryable: false` when the API reports success but sends invalid data. This includes broken JSON or text encoding, unexpected values, too much nesting, or a bulk reply with the wrong number of items. Earlier versions could accept these replies or return `tool_error` or `upstream_request`; invalid JSON was marked retryable.
+- Add clear errors for API keys with unsupported characters (`configuration`) and exceeded size limits (`resource_limit`).
 - List Standard Arabic (`ar`) among the `lang` values in the IP geolocation tool descriptions. The API already accepts it, and the server already passes it through.
 - Limit request size, API response size, JSON nesting and cache memory. Return clear local errors and explain when retrying may use credits.
 - Reject blank selectors and invalid dates or coordinate pairs before an API request. Keep cancellation and shared in-flight requests isolated between callers.
@@ -21,7 +21,7 @@ Planned version: 2.0.3.
 - Remove unused Corepack launchers and modules from the runtime image.
 - Reject API keys containing spaces, backslashes, control characters or non-ASCII characters before sending a request.
 - Set `retryable: false` for `timeout` and `upstream_request` errors if the API reports success but the response does not finish. Retrying may use API credits again.
-- Avoid unnecessary repeat requests after a forced refresh fails or is cancelled.
+- Reuse a normal lookup that is still running if a forced refresh fails or is cancelled.
 - Prevent normal lookups started after a refresh ends from clearing other cached results for the same IP.
 - Speed up API key masking in large responses.
 - Mask short API keys even when they appear in text encoded twice for a URL.
@@ -29,10 +29,14 @@ Planned version: 2.0.3.
 - Fix startup when the server is launched through a symbolic link.
 - Remove old build output before creating an npm package or preparing an mpak bundle.
 - Check the bundle’s name and version, and verify that `server.json` and `sbom.cdx.json` match the copies inside it, before signing or uploading release files.
-- Reject bundle manifests with a hidden UTF-8 marker at the start that can break JSON parsing.
-- Check scanned bundles against the selected source version, even when the workflow uses a different version.
+- Reject bundle manifests that start with a UTF-8 byte-order mark (BOM).
+- In mpak Scan, check the bundle version against the selected source, even when the scan workflow uses a different version.
 - Recheck the release tag and filenames before uploading.
 - Add network guards to offline tests so unexpected requests fail locally.
+- Keep short API keys from hiding unrelated text inside URL or JSON escapes.
+- Check bundle filenames for duplicates and unsafe paths.
+- Restore mpak scanning for 2.0.1, which does not include Kiro packaging.
+- Reject broken Unicode text before sending an API request.
 
 ## [2.0.2](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.2) - 2026-10-27
 

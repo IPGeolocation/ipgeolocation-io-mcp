@@ -12,6 +12,7 @@ import {
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { bundleDocuments } from "./prepare-mpak-announcement.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
@@ -194,6 +195,11 @@ if (path.relative(physicalOutput, physicalSource) === "" || isChild(physicalOutp
   throw new Error("MPAK_STAGING_DIR must not contain MPAK_SOURCE_DIR.");
 }
 
+const documents = bundleDocuments(sourceDir, rootPackage);
+for (const name of documents) {
+  if (!existsSync(path.join(sourceDir, name))) throw new Error(`Required mpak source file is missing: ${name}`);
+}
+
 // Build the selected source; a previous dist directory may contain removed files.
 rmSync(distDir, { recursive: true, force: true });
 runNpm(sourceDir, ["run", "build"]);
@@ -220,7 +226,7 @@ if (existsSync(licensePath)) {
   cpSync(licensePath, path.join(outputDir, "LICENSE"));
 }
 
-for (const name of ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md", "packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json"]) {
+for (const name of documents) {
   const destination = path.join(outputDir, name);
   mkdirSync(path.dirname(destination), { recursive: true });
   cpSync(path.join(sourceDir, name), destination);

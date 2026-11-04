@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createReadStream, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -86,8 +86,61 @@ export function parseBundleManifest(bytes, context) {
   return manifest;
 }
 
+export function bundleDocuments(sourceDir, sourcePackage) {
+  const documents = ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md"];
+  if (existsSync(path.join(sourceDir, "packaging/kiro")) || (Array.isArray(sourcePackage.files) && sourcePackage.files.some(name => /^packaging\/kiro(?:\/|$)/u.test(name)))) {
+    documents.push("packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json");
+  }
+  return documents;
+}
+
+export function listBundleEntries(bundlePath) {
+  const listing = spawnSync("unzip", ["-Z1", bundlePath], {
+    maxBuffer: 1024 * 1024,
+    env: { ...process.env, LC_ALL: process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8" },
+  });
+  if (listing.error || listing.status !== 0) throw new Error(`Unable to list mpak bundle contents.\n${listing.error?.message || listing.stderr || listing.stdout}`);
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(listing.stdout);
+  } catch {
+    throw new Error("Unable to read bundle paths as UTF-8.");
+  }
+  const entries = text.split(/\r?\n/u).filter(Boolean);
+  const paths = new Map();
+  for (const entry of entries) {
+    const directory = entry.endsWith("/");
+    const name = directory ? entry.slice(0, -1) : entry;
+    const segments = name.split("/");
+    if (!name || path.posix.isAbsolute(name) || path.posix.normalize(name) !== name ||
+        /[\\<>:"|?*\x00-\x1f\x7f]/u.test(name) || segments.some(part => !part || part === ".." || /[. ]$/u.test(part) || /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/iu.test(part))) {
+      throw new Error(`The bundle contains a noncanonical path: ${entry}`);
+    }
+    let children = paths;
+    for (const [index, part] of segments.entries()) {
+      const key = part.normalize("NFC").toUpperCase().toLowerCase();
+      let existing = children.get(key);
+      if (existing && existing.name !== part) throw new Error(`The bundle contains conflicting paths: ${existing.name} and ${entry}`);
+      if (!existing) {
+        existing = { name: part, listed: false, file: false, children: new Map() };
+        children.set(key, existing);
+      }
+      if (index === segments.length - 1) {
+        if (existing.listed) throw new Error(`The bundle must contain exactly one ${name}; it appears more than once.`);
+        if (!directory && existing.children.size) throw new Error(`The bundle uses a file as a directory path: ${entry}`);
+        existing.listed = true;
+        existing.file = !directory;
+      } else if (existing.file) {
+        throw new Error(`The bundle uses a file as a directory path: ${entry}`);
+      }
+      children = existing.children;
+    }
+  }
+  return entries;
+}
+
 export function verifyBundleManifest(bundlePath, context) {
-  const entries = run("unzip", ["-Z1", bundlePath, "manifest.json"], "utf8", 4096).split(/\r?\n/u).filter(Boolean);
+  const entries = listBundleEntries(bundlePath);
   if (entries.filter(name => name === "manifest.json").length !== 1) {
     throw new Error("The bundle must contain exactly one manifest.json.");
   }
@@ -98,7 +151,7 @@ export function verifyBundleManifest(bundlePath, context) {
 
 export function verifyBundleMetadata(bundlePath, sidecars) {
   const names = ["server.json", "sbom.cdx.json"];
-  const entries = run("unzip", ["-Z1", bundlePath, ...names], "utf8", 4096).split(/\r?\n/u).filter(Boolean);
+  const entries = listBundleEntries(bundlePath);
   for (const name of names) {
     if (entries.filter(entry => entry === name).length !== 1) {
       throw new Error(`The bundle must contain exactly one ${name}.`);

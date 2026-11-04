@@ -638,7 +638,7 @@ Tool failures return `isError: true`, readable text, and `structuredContent.erro
 | Connection failure | `source: "mcp_server"`, `category: "upstream_request"`, local `status: 502`; follow the returned retry guidance |
 | Invalid upstream JSON, UTF-8, payload shape, or nesting above 64 levels | `source: "mcp_server"`, `category: "upstream_response"`, local `status: 502`, `retryable: false`; the API may already have processed the request |
 | Tool arguments, upstream success body, or required pagination snapshot exceeds a resource limit | Local `resource_limit`, `retryable: false`; argument rejection precedes the API request, while body/snapshot rejection can happen after credits were used |
-| Cancelled lookup | Local `cancelled`, `retryable: false`; the API may already have processed the request, so a new attempt can use credits |
+| Cancelled lookup | If cancellation reaches the server before it replies, no result is sent. The API may already have processed the request, so a new attempt can use credits. |
 | API returned an HTTP redirect | `source: "mcp_server"`, `category: "redirect_blocked"`, local `status: 502`, `retryable: false`; investigate the redirect or contact support |
 
 Input validation uses the registered Zod schemas and the same structured error envelope as execution failures. Unknown tools and malformed MCP requests produce protocol errors. Retry guidance does not guarantee that a retry will succeed or be free: a local timeout can happen after the API processed a paid request. HTTP 429 is a credit/subscription limit, so immediate automatic retries are disabled; retry after credits become available.

@@ -210,6 +210,7 @@ async function packagingFixture(t) {
   await mkdir(path.join(fixtureRepo, "artifacts"));
   const prepare = path.join(fixtureRepo, "scripts/prepare-mpak-package.mjs");
   await cp(path.join(repo, "scripts/prepare-mpak-package.mjs"), prepare);
+  await cp(path.join(repo, "scripts/prepare-mpak-announcement.mjs"), path.join(fixtureRepo, "scripts/prepare-mpak-announcement.mjs"));
   const sbom = path.join(fixtureRepo, "scripts/generate-mpak-sbom.mjs");
   await cp(path.join(repo, "scripts/generate-mpak-sbom.mjs"), sbom);
   const syft = path.join(bin, "syft");

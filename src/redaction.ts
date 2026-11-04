@@ -8,6 +8,7 @@ const JSON_ESCAPE_CODE: Record<string, number> = { '"': 34, "\\": 92, "/": 47, b
 const JSON_CHARACTER_ESCAPE = /^(?:\\["\\/bfnrt]|\\u[0-9a-fA-F]{4}|\\u[dD][89aAbB][0-9a-fA-F]{2}\\u[dD][c-fC-F][0-9a-fA-F]{2})$/;
 type SecretVariant = { value: string; percentDepth: 0 | 1 | 2 };
 type Secrets = { value: string; variants: SecretVariant[]; short: boolean; jsonPrefix?: Uint32Array };
+type BackslashRun = { start: number; end: number };
 
 function configuredSecrets(): Secrets {
   const secret = getConfiguredApiKey();
@@ -42,7 +43,29 @@ function normalizeEscapes(text: string, variant: SecretVariant): string {
   return text.replace(pattern, value => value.toUpperCase());
 }
 
-function adjacentCharacter(text: string, position: number, before: boolean): string {
+function startsJsonEscape(text: string, position: number, run: BackslashRun): boolean {
+  if (position < run.start || position >= run.end) {
+    run.start = position;
+    run.end = position + 1;
+    while (run.start > 0 && text[run.start - 1] === "\\") run.start--;
+    while (text[run.end] === "\\") run.end++;
+  }
+  return (position - run.start) % 2 === 0;
+}
+
+function adjacentCharacter(text: string, position: number, before: boolean, run: BackslashRun): string {
+  // A match inside an escape is not a complete short-key token.
+  for (let start = Math.max(0, position - 11); start < position; start++) {
+    if (text[start] === "%") {
+      const part = /^%(?:25)?[\da-f]{2}/i.exec(text.slice(start, start + 5));
+      if (part && start + part[0].length > position) return "_";
+    } else if (text[start] === "\\") {
+      for (const size of text[start + 1] === "u" ? [12, 6] : [2]) {
+        const part = text.slice(start, start + size);
+        if (start + size > position && part.length === size && JSON_CHARACTER_ESCAPE.test(part) && startsJsonEscape(text, start, run)) return "_";
+      }
+    }
+  }
   // Compare encoded neighbours without changing the returned data or decoding its tree.
   for (const [width, pattern, escape] of [[5, /^(?:%25[\da-f]{2})+$/i, "%25"], [3, /^(?:%[\da-f]{2})+$/i, "%"]] as const) {
     for (let size = width; size <= width * 4; size += width) {
@@ -56,8 +79,9 @@ function adjacentCharacter(text: string, position: number, before: boolean): str
   }
   // A surrogate pair is one neighbour; check it before either escaped half.
   for (const size of [2, 12, 6]) {
-    const part = before ? text.slice(Math.max(0, position - size), position) : text.slice(position, position + size);
-    if (part.length === size && JSON_CHARACTER_ESCAPE.test(part)) return JSON.parse(`"${part}"`);
+    const start = before ? Math.max(0, position - size) : position;
+    const part = text.slice(start, before ? position : position + size);
+    if (part.length === size && JSON_CHARACTER_ESCAPE.test(part) && startsJsonEscape(text, start, run)) return JSON.parse(`"${part}"`);
   }
   let index = before ? position - 1 : position;
   if (index < 0 || index >= text.length) return "";
@@ -88,6 +112,7 @@ function redactJsonEscapes(text: string, secrets: Secrets): string {
     }
   }
   const starts = new Uint32Array(secret.length);
+  const run = { start: -1, end: -1 };
   let matched = 0, units = 0, from = 0, result = "";
   for (let i = 0; i < text.length;) {
     const start = i;
@@ -103,7 +128,7 @@ function redactJsonEscapes(text: string, secrets: Secrets): string {
     if (code === secret.charCodeAt(matched)) matched++;
     if (matched !== secret.length) continue;
     const position = starts[(units - secret.length) % secret.length];
-    const boundary = !secrets.short || (!WORD_CHARACTER.test(adjacentCharacter(text, position, true)) && !WORD_CHARACTER.test(adjacentCharacter(text, i, false)));
+    const boundary = !secrets.short || (!WORD_CHARACTER.test(adjacentCharacter(text, position, true, run)) && !WORD_CHARACTER.test(adjacentCharacter(text, i, false, run)));
     if (!insidePlaceholder(text, position, i - position) && boundary) {
       result += text.slice(from, position) + REDACTED_API_KEY;
       from = i;
@@ -117,6 +142,7 @@ function redactKnown(text: string, secrets: Secrets): string {
   if (!secrets.value || text.length < secrets.value.length) return text;
   let redacted = redactJsonEscapes(text, secrets), normalized: string | undefined, normalizedEncoding: string | undefined;
   for (const variant of secrets.variants) {
+    const run = { start: -1, end: -1 };
     const { value } = variant;
     const encoding = `${variant.percentDepth}`;
     if (normalized === undefined || encoding !== normalizedEncoding) {
@@ -127,7 +153,7 @@ function redactKnown(text: string, secrets: Secrets): string {
     const needle = normalizeEscapes(value, variant);
     let index = haystack.indexOf(needle), from = 0, result = "";
     while (index !== -1) {
-      const boundary = !secrets.short || (!WORD_CHARACTER.test(adjacentCharacter(redacted, index, true)) && !WORD_CHARACTER.test(adjacentCharacter(redacted, index + value.length, false)));
+      const boundary = !secrets.short || (!WORD_CHARACTER.test(adjacentCharacter(redacted, index, true, run)) && !WORD_CHARACTER.test(adjacentCharacter(redacted, index + value.length, false, run)));
       const replace = !insidePlaceholder(redacted, index, value.length) && boundary;
       if (replace) {
         result += redacted.slice(from, index) + REDACTED_API_KEY;

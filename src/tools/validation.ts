@@ -20,10 +20,17 @@ const LOOKUP_ARGUMENTS = new Set([
   "date", "dateStart", "dateEnd", "elevation", "time_zone", "time",
 ]);
 
+function validateUnicodeText(value: string, label: string): void {
+  if (/[\uD800-\uDFFF]/u.test(value)) {
+    throw new Error(`'${label}' contains invalid Unicode text. Check the input text. No API request was sent.`);
+  }
+}
+
 function normalizeLookupValue(value: unknown, name: string, label = name): string {
   if (typeof value !== "string" || value.trim() === "") {
     throw new Error(`'${label}' must be a non-blank string. Omit optional selectors to use their defaults.`);
   }
+  validateUnicodeText(value, label);
   const normalized = value.trim();
   if (name === "ip" || name === "lang") return normalized.toLowerCase();
   if (name === "asn") return normalized.toUpperCase();
@@ -38,6 +45,7 @@ export function normalizeLookupArguments<T extends Record<string, unknown>>(args
   const normalized: Record<string, unknown> = { ...args };
   for (const [name, value] of Object.entries(args)) {
     if (value === undefined) continue;
+    if (typeof value === "string") validateUnicodeText(value, name);
     if (LOOKUP_ARGUMENTS.has(name)) {
       normalized[name] = normalizeLookupValue(value, name);
     } else if (name === "fields" || name === "excludes") {

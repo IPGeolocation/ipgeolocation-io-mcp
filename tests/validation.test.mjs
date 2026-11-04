@@ -198,3 +198,104 @@ test("numeric configuration rejects partial, fractional and unsafe integer value
   }
   process.env[name] = " 30000 "; assert.equal(getRequestTimeoutMs(), 30000);
 });
+
+test("lookup normalization rejects unpaired Unicode surrogates without changing valid text", async () => {
+  const { normalizeLookupArguments } = await import(validationModuleUrl());
+  const broken = ["\ud800", "\udfff", "a\ud800b", "a\udc00b", "\udc00\ud800", "\ud800\ud800", "😀\udc00"];
+  for (const value of broken) {
+    for (const name of ["ip", "asn", "lang", "location", "fields", "excludes", "include", "uaString"]) {
+      assert.throws(() => normalizeLookupArguments({ [name]: value }), /invalid Unicode text/);
+    }
+    for (const name of ["ips", "uaStrings"]) {
+      assert.throws(() => normalizeLookupArguments({ [name]: ["valid", value] }), /invalid Unicode text/);
+    }
+  }
+  for (const value of ["😀", "\ud800\udc00", "\udbff\udfff", "Lahore لاہور", "café", "literal \\ud800", "replacement �"]) {
+    const args = { location: value, uaString: ` ${value} `, uaStrings: [` ${value} `] };
+    assert.deepEqual(normalizeLookupArguments(args), args);
+  }
+});
+
+test("Unicode validation agrees with the platform for generated UTF-16 strings", async () => {
+  const { normalizeLookupArguments } = await import(validationModuleUrl());
+  let seed = 0x28a6701d;
+  for (let sample = 0; sample < 10000; sample++) {
+    let value = "text:";
+    for (let index = 0; index < 8; index++) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      value += String.fromCharCode(seed & 0xffff);
+    }
+    if (value.isWellFormed()) assert.equal(normalizeLookupArguments({ uaString: value }).uaString, value);
+    else assert.throws(() => normalizeLookupArguments({ uaString: value }), /invalid Unicode text/);
+  }
+});
+
+test("all API tools reject broken Unicode locally before any request", async t => {
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+  const { createMcpServer } = await import("../dist/index.js");
+  const { clearToolCacheForTests } = await import("../dist/tools/cache.js");
+  const { getMaxToolArgumentBytes } = await import("../dist/config.js");
+  const previousFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => { requests++; throw new Error("Unexpected upstream call in local Unicode validation test"); };
+  clearToolCacheForTests();
+  const server = createMcpServer({ apiKey: "unicode-validation-synthetic-key" });
+  const client = new Client({ name: "unicode-validation", version: "1" });
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); clearToolCacheForTests(); globalThis.fetch = previousFetch; });
+  await server.connect(b); await client.connect(a);
+  const broken = "input\ud800";
+  const cases = [
+    ...["lookup_ip", "lookup_company", "lookup_network", "lookup_currency", "check_security", "get_abuse_contact"].map(name => [name, { ip: broken }]),
+    ["lookup_asn", { asn: broken }], ["get_timezone", { location: broken }],
+    ["convert_timezone", { location_from: broken, tz_to: "UTC" }],
+    ["get_astronomy", { location: broken }],
+    ["get_astronomy_time_series", { ip: broken, dateStart: "2026-01-01", dateEnd: "2026-01-02" }],
+    ["parse_user_agent", { uaString: broken }], ["bulk_parse_user_agent", { uaStrings: ["valid", broken] }],
+    ["bulk_lookup_ip", { ips: ["8.8.8.8", broken] }], ["bulk_security_check", { ips: [broken] }],
+    ...["fields", "excludes", "include"].map(name => ["lookup_ip", { ip: "8.8.8.8", [name]: broken }]),
+  ];
+  for (const [name, args] of cases) {
+    const result = await client.callTool({ name, arguments: args });
+    assert.equal(result.isError, true, name);
+    assert.equal(result.structuredContent.error.category, "validation", name);
+    assert.equal(result.structuredContent.error.retryable, false, name);
+    assert.match(result.structuredContent.error.message, /invalid Unicode text/, name);
+    assert.equal(requests, 0, name);
+  }
+  for (const args of [{ ip: { nested: broken } }, { ips: [[broken]] }, { unknown: broken }, { [broken]: "value" }]) {
+    const result = await client.callTool({ name: "lookup_ip", arguments: args });
+    assert.equal(result.structuredContent.error.category, "validation");
+    assert.equal(requests, 0);
+  }
+  const oversized = await client.callTool({ name: "parse_user_agent", arguments: { uaString: "x".repeat(getMaxToolArgumentBytes()) + broken } });
+  assert.equal(oversized.structuredContent.error.category, "resource_limit", "byte limits must be checked before text validation");
+  assert.equal(requests, 0);
+});
+
+test("direct clients reject broken Unicode and preserve valid URL and body text", async t => {
+  const { getTimezone, getIpGeolocation, getIpGeolocationBulk, parseUserAgent, parseUserAgentBulk } = await import("../dist/client.js");
+  const { withRuntimeConfig } = await import("../dist/config.js");
+  const previousFetch = globalThis.fetch, requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url: new URL(url), body: options.body ? JSON.parse(options.body) : undefined });
+    return new Response(JSON.stringify({ timezone: "Synthetic", user_agent_string: "Synthetic" }));
+  };
+  t.after(() => { globalThis.fetch = previousFetch; });
+  await withRuntimeConfig({ apiKey: "unicode-validation-synthetic-key" }, async () => {
+    const broken = "input\udc00";
+    for (const call of [
+      () => getTimezone({ location: broken }), () => getIpGeolocation({ ip: broken }),
+      () => getIpGeolocation({ include: broken }), () => getIpGeolocation({ fields: broken }),
+      () => getIpGeolocationBulk({ ips: ["8.8.8.8", broken] }),
+      () => parseUserAgent({ uaString: broken }), () => parseUserAgentBulk({ uaStrings: [broken] }),
+    ]) await assert.rejects(call, /invalid Unicode text/);
+    assert.equal(requests.length, 0);
+    const location = "Lahore لاہور 😀", uaString = " Synthetic/1.0 😀 ";
+    await getTimezone({ location });
+    await parseUserAgent({ uaString });
+    assert.equal(requests[0].url.searchParams.get("location"), location);
+    assert.equal(requests[1].body.uaString, uaString);
+  });
+});
