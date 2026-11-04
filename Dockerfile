@@ -31,7 +31,18 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn* \
         /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
-        /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx
+        /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx \
+    && apk add --no-network --no-scripts alpine-baselayout-data \
+    && apk del --no-network --no-scripts alpine-baselayout busybox busybox-binsh ssl_client \
+    && node -e "const fs = require('node:fs'); \
+        for (const dir of ['/bin', '/sbin', '/usr/bin', '/usr/sbin']) { \
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) { \
+                const file = dir + '/' + entry.name; \
+                if (entry.isSymbolicLink() && fs.readlinkSync(file) === '/bin/busybox') fs.unlinkSync(file); \
+            } \
+        } \
+        fs.mkdirSync('/opt', { recursive: true }); \
+        for (const dir of ['/tmp', '/var/tmp']) { fs.mkdirSync(dir, { recursive: true }); fs.chmodSync(dir, 0o1777); }"
 
 COPY --from=build /app/dist ./dist
 COPY manifest.json server.json LICENSE README.md CHANGELOG.md SECURITY.md CONTRIBUTING.md RELEASING.md REFERENCE.md ./

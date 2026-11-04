@@ -27,7 +27,7 @@ Planned version: 2.0.3.
 - Check filenames and bundled metadata before release. Reject unsafe source or dependency paths while packaging and remove rejected scanner output.
 - Recover interrupted uploads from the original signed files and retry announcements without rebuilding or replacing published assets.
 - Include Kiro packaging files in npm, Docker and MCP bundles. Keep mpak scans compatible with 2.0.1, which has no Kiro files.
-- Remove unused Corepack components from the Docker runtime image.
+- Remove unused Corepack and BusyBox tools from the Docker image. The server still starts with Node; the image no longer includes a shell.
 - Block unexpected network requests in offline Node.js tests.
 
 ## [2.0.2](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.2) - 2026-10-27
