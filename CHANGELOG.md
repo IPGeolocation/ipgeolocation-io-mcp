@@ -6,37 +6,29 @@ Changes in development appear under Unreleased. Published release details are av
 
 Planned version: 2.0.3.
 
-- Return `upstream_response` with `retryable: false` when the API reports success but sends invalid data. This includes broken JSON or text encoding, unexpected values, too much nesting, or a bulk reply with the wrong number of items. Earlier versions could accept these replies or return `tool_error` or `upstream_request`; invalid JSON was marked retryable.
-- Add clear errors for API keys with unsupported characters (`configuration`) and exceeded size limits (`resource_limit`).
-- List Standard Arabic (`ar`) among the `lang` values in the IP geolocation tool descriptions. The API already accepts it, and the server already passes it through.
-- Limit request size, API response size, JSON nesting and cache memory. Return clear local errors and explain when retrying may use credits.
-- Reject blank selectors and invalid dates or coordinate pairs before an API request. Keep cancellation and shared in-flight requests isolated between callers.
-- Keep successful refreshes from leaving older cached views behind when a newer overlapping refresh fails or is cancelled.
-- Preserve received API error statuses when an error body times out, while respecting explicit cancellation.
-- Avoid redaction stack overflows and preserve ordinary company names, user-agent strings and bulk input labels while masking configured credentials and sensitive fields, including encoded echoes.
-- Use less memory when formatting large responses and storing cached results. Reading pages of a large cached result no longer reprocesses the whole result.
-- Allow six-byte JSON string escapes within the bounded stdio wire buffer and handle closed output pipes without an unhandled error.
-- Recover interrupted mpak uploads from verified retained files and retry announcements from published bundle bytes, without rebuilding, signing or replacing assets.
-- Skip dependency symlinks and junctions while pruning, reject escaped workspace paths in SBOM data, and remove rejected scanner output.
-- Remove unused Corepack launchers and modules from the runtime image.
-- Reject API keys containing spaces, backslashes, control characters or non-ASCII characters before sending a request.
-- Set `retryable: false` for `timeout` and `upstream_request` errors if the API reports success but the response does not finish. Retrying may use API credits again.
-- Reuse a normal lookup that is still running if a forced refresh fails or is cancelled.
-- Prevent normal lookups started after a refresh ends from clearing other cached results for the same IP.
-- Speed up API key masking in large responses.
-- Mask short API keys even when they appear in text encoded twice for a URL.
-- Treat a negative astronomy `elevation` as 0, as the API does.
-- Fix startup when the server is launched through a symbolic link.
-- Remove old build output before creating an npm package or preparing an mpak bundle.
-- Check the bundle’s name and version, and verify that `server.json` and `sbom.cdx.json` match the copies inside it, before signing or uploading release files.
-- Reject bundle manifests that start with a UTF-8 byte-order mark (BOM).
-- In mpak Scan, check the bundle version against the selected source, even when the scan workflow uses a different version.
-- Recheck the release tag and filenames before uploading.
-- Add network guards to offline tests so unexpected requests fail locally.
-- Keep short API keys from hiding unrelated text inside URL or JSON escapes.
-- Check bundle filenames for duplicates and unsafe paths.
-- Restore mpak scanning for 2.0.1, which does not include Kiro packaging.
-- Reject broken Unicode text before sending an API request.
+### Tool use and reliability
+
+- Simplify setup and security documentation, keep detailed tool information in a separate reference, and clarify bulk calls, retries and cached-page retrieval.
+- Put safety rules first and shorten server instructions so clients can retain the full guidance.
+- Clarify missing API key errors and proxy setup, and include company and currency data in package descriptions.
+- Reject blank inputs, broken Unicode text, invalid dates or coordinate pairs, and unsupported API key characters before making an API request.
+- Return clear errors for configuration and size limits. If the API reports success but returns invalid or incomplete data, mark the error as non-retryable because another request may use credits again. See the [error reference](REFERENCE.md#error-codes) for the exact categories.
+- Preserve the API's HTTP status when its error response cannot finish, while still honoring cancellation.
+- Keep overlapping lookups, refreshes and cancellations from replacing newer cached data or interrupting other callers.
+- Use less memory for large responses and cached results. Reading a saved page no longer processes the whole result again.
+- Improve credential masking for encoded values and short keys while preserving ordinary company names, user-agent strings and input labels.
+- Limit request, response and cache sizes and JSON nesting. Accept valid JSON escapes and handle closed output connections without an unhandled error.
+- Treat negative astronomy `elevation` as 0, matching the API, and list Standard Arabic (`ar`) in the IP geolocation tool descriptions.
+- Fix startup when a client launches the server through a symbolic link.
+
+### Packaging and releases
+
+- Remove old build output before preparing npm packages or MCP bundles, and build the selected source before packaging it.
+- Check filenames and bundled metadata before release. Reject unsafe source or dependency paths while packaging and remove rejected scanner output.
+- Recover interrupted uploads from the original signed files and retry announcements without rebuilding or replacing published assets.
+- Include Kiro packaging files in npm, Docker and MCP bundles. Keep mpak scans compatible with 2.0.1, which has no Kiro files.
+- Remove unused Corepack and BusyBox tools from the Docker image. The server still starts with Node; the image no longer includes a shell.
+- Block unexpected network requests in offline Node.js tests.
 
 ## [2.0.2](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.2) - 2026-10-27
 

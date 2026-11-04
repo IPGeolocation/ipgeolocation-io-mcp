@@ -33,6 +33,62 @@ Follow the TypeScript patterns in `src/` and discuss new dependencies first. Kee
 
 See [RELEASING.md](RELEASING.md) for publication channels and release verification.
 
+## Building from Source
+
+```bash
+git clone https://github.com/IPGeolocation/ipgeolocation-io-mcp.git
+cd ipgeolocation-io-mcp
+npm ci --ignore-scripts
+npm run build
+```
+
+Run it directly:
+
+```bash
+node dist/cli.js
+```
+
+Set `IPGEOLOCATION_API_KEY` through your shell's private environment settings before running the command. The process waits for MCP messages on stdin; it does not display an interactive prompt.
+
+Inspect with MCP Inspector:
+
+```bash
+npx @modelcontextprotocol/inspector node dist/cli.js
+```
+
+## Testing
+
+Use Node.js 22 or later and npm. macOS and Linux also need Bash and `unzip`. Install dependencies with `npm ci --ignore-scripts` before running the suite. Windows skips some release tests, so run the full suite on Linux before a release.
+
+The regular suite uses local test data. Run the live commands below only when you intend to call the real API and use credits. Keep test keys in private environment variables.
+
+Record GUI and operating-system checks separately from protocol, package and Docker tests; see the [release checklist](RELEASING.md).
+
+```bash
+npm test               # full suite
+npm run test:unit      # unit tests only
+npm run test:integration  # integration tests only
+```
+
+Live smoke tests use a real stdio MCP client and spend API credits. `IPGEOLOCATION_FREE_KEY` with `npm run test:live:free` checks the seven core tools, paid-feature restrictions, ownership/network fallbacks, and the observed bulk entitlement. It reports when bulk access differs from the documented paid-only policy. `IPGEOLOCATION_PAID_KEY` with `npm run test:live:paid` checks all 16 API tools, paid modules, structured validation errors, mixed valid/private bulk inputs, and the local cached-result reader. Testing a paid key does not verify free-plan entitlement restrictions.
+
+After building, verify complete cached pagination with either key:
+
+```bash
+node tests/pagination.stdio.mjs free  # uses IPGEOLOCATION_FREE_KEY
+node tests/pagination.stdio.mjs paid  # uses IPGEOLOCATION_PAID_KEY
+```
+
+Each run makes one six-IP API request and checks the reported six credits. It compares the recovered records against a hash of the complete upstream response and verifies that page reads, replay, expiry, and process restart make no additional API calls. The test temporarily lowers the child server's response budget and cache TTL; your server configuration stays unchanged.
+
+To check the same behavior in the [Docker image](README.md#docker):
+
+```bash
+node tests/pagination.stdio.mjs free docker run --rm -i \
+  -e IPGEOLOCATION_API_KEY -e IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS \
+  -e IPGEOLOCATION_MCP_CACHE_TTL_MS -e NODE_OPTIONS ipgeolocation-mcp
+```
+
 ## Resource Limits
 
 Tool arguments have a 4 MiB default limit, measured as UTF-8 bytes of `JSON.stringify(arguments)`. Stdio uses a separate wire-buffer cap of `6 × argument limit + 128 KiB` (24 MiB + 128 KiB by default) to accommodate six-byte JSON string escapes. Exceeding that cap closes the session and can discard pending replies after the API has used credits.

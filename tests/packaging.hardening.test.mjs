@@ -35,7 +35,7 @@ async function fixture(t) {
     "packaging/mpak/config.json": { bundleName },
   };
   for (const [name, value] of Object.entries(metadata)) await writeFile(path.join(repository, name), JSON.stringify(value));
-  for (const name of ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "LICENSE", "packaging/mpak/README.md", "packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json"]) {
+  for (const name of ["README.md", "REFERENCE.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "LICENSE", "packaging/mpak/README.md", "packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json"]) {
     await mkdir(path.dirname(path.join(repository, name)), { recursive: true });
     await writeFile(path.join(repository, name), `Fixture ${name}\n`);
   }
@@ -59,7 +59,7 @@ test("npm packing rebuilds dist without stale code or stray credential files", a
   t.after(() => rm(root, { recursive: true, force: true }));
   const repository = path.join(root, "repository with spaces");
   await mkdir(repository);
-  for (const name of ["package.json", "tsconfig.json", "src"]) {
+  for (const name of ["package.json", "REFERENCE.md", "tsconfig.json", "src"]) {
     await cp(path.join(repo, name), path.join(repository, name), { recursive: true });
   }
   await symlink(await realpath(path.join(repo, "node_modules")), path.join(repository, "node_modules"), process.platform === "win32" ? "junction" : "dir");
@@ -89,6 +89,7 @@ test("npm packing rebuilds dist without stale code or stray credential files", a
   const files = new Set(packed.files.map(file => file.path));
   assert.ok(files.has("dist/cli.js"));
   assert.ok(files.has("dist/index.js"));
+  assert.ok(files.has("REFERENCE.md"));
   for (const name of strayFiles) {
     assert.equal(files.has(name), false, `${name} must not enter the package`);
     await assert.rejects(readFile(path.join(repository, name)), { code: "ENOENT" });
@@ -582,23 +583,24 @@ onReleasePlatform("the actual publication context step accepts only the selected
   assert.deepEqual(await f.calls(), []);
 });
 
-test("staging retains the README's Kiro guide and both existing configuration files", async t => {
+test("staging retains the reference, Kiro guide and both configuration files", async t => {
   const f = await fixture(t), npmCli = path.join(f.root, "npm fixture.mjs");
   await writeFile(npmCli, "import {mkdirSync,writeFileSync} from 'node:fs'; if(process.argv[2]==='run'){mkdirSync('dist',{recursive:true});writeFileSync('dist/cli.js','// fresh fixture runtime');}\n");
   const result = f.run("prepare-mpak-package.mjs", [], { npm_execpath: npmCli, MPAK_STAGING_DIR: f.staging });
   assert.equal(result.status, 0, result.stderr);
   const pkg = JSON.parse(await readFile(path.join(repo, "package.json"), "utf8"));
-  for (const name of ["README.md", "mcp.json", "plugin.json"]) {
-    const relative = `packaging/kiro/${name}`;
+  for (const relative of ["REFERENCE.md", "packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json"]) {
     assert.deepEqual(await readFile(path.join(f.staging, relative)), await readFile(path.join(f.repository, relative)));
     assert.ok(pkg.files.includes(relative));
   }
   assert.match(await readFile(path.join(repo, "Dockerfile"), "utf8"), /COPY packaging\/kiro\/ \.\/packaging\/kiro\//);
+  const runtime = (await readFile(path.join(repo, "Dockerfile"), "utf8")).split(" AS runtime")[1];
+  assert.match(runtime, /^COPY [^\n]*\bREFERENCE\.md\b[^\n]* \.\/$/m);
 });
 
 async function bundleFixture(t) {
   const f = await fixture(t), entries = {};
-  for (const name of ["LICENSE", "README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md", "packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json", "icon.png", "manifest.json", "package-lock.json", "package.json", "sbom.cdx.json", "server.json"]) {
+  for (const name of ["LICENSE", "README.md", "REFERENCE.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md", "packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json", "icon.png", "manifest.json", "package-lock.json", "package.json", "sbom.cdx.json", "server.json"]) {
     entries[name] = name === "manifest.json" ? JSON.stringify({ name: bundleName, version }) : "fixture";
     await mkdir(path.dirname(path.join(f.staging, name)), { recursive: true });
     await writeFile(path.join(f.staging, name), entries[name]);
@@ -757,21 +759,20 @@ onReleasePlatform("a valid manifest at the size limit passes finalization and ev
   assert.equal(uploadCalls(await release.calls()).length, 5, "Resume must not replace published assets");
 });
 
-onReleasePlatform("bundle finalization rejects a missing Kiro file in staging or inside the archive", async t => {
+onReleasePlatform("bundle finalization rejects a missing reference or Kiro file in staging or inside the archive", async t => {
   const f = await bundleFixture(t), { entries, bundle } = f;
   assert.equal(f.finalize().status, 0);
-  for (const name of ["README.md", "mcp.json", "plugin.json"]) {
-    const relative = `packaging/kiro/${name}`;
+  for (const relative of ["REFERENCE.md", "packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json"]) {
     await rm(path.join(f.staging, relative));
     const missingStaging = f.run("finalize-mpak-bundle.mjs", [bundle, f.staging]);
     assert.notEqual(missingStaging.status, 0);
-    assert.match(missingStaging.stderr, /Required mpak file is missing from staging: packaging\/kiro\//);
+    assert.ok(missingStaging.stderr.includes(`Required mpak file is missing from staging: ${relative}`), missingStaging.stderr);
     await writeFile(path.join(f.staging, relative), entries[relative]);
     const omitted = { ...entries }; delete omitted[relative];
     await writeFile(bundle, fixtureArchive(omitted));
     const missingArchive = f.run("finalize-mpak-bundle.mjs", [bundle, f.staging]);
     assert.notEqual(missingArchive.status, 0);
-    assert.match(missingArchive.stderr, /Required file is missing from the mpak bundle: packaging\/kiro\//);
+    assert.ok(missingArchive.stderr.includes(`Required file is missing from the mpak bundle: ${relative}`), missingArchive.stderr);
     await writeFile(bundle, fixtureArchive(entries));
   }
 });
@@ -919,6 +920,14 @@ const ambiguousBundlePaths = [
   ["case-only directory collision", ["node_modules/Package/one.js", "node_modules/package/two.js"]],
   ["Unicode-normalized path collision", ["node_modules/é/index.js", "node_modules/e\u0301/other.js"]],
   ["Unicode case-fold path collision", ["node_modules/ß/index.js", "node_modules/SS/other.js"]],
+  ["uppercase sharp S directory collision", ["node_modules/ẞ/index.js", "node_modules/ß/other.js"]],
+  ["expanded uppercase sharp S filename collision", ["node_modules/pkg/ẞ.js", "node_modules/pkg/ss.js"]],
+  ["Greek case-fold path collision", ["node_modules/ΐ/index.js", "node_modules/Ϊ\u0301/other.js"]],
+  ["newline in filename", ["node_modules/pkg/line\nbreak.js"]],
+  ["tab in filename", ["node_modules/pkg/tab\tname.js"]],
+  ["escape in filename", ["node_modules/pkg/escape\u001bname.js"]],
+  ["carriage return in filename", ["node_modules/pkg/return\rname.js"]],
+  ["literal caret ambiguity", ["node_modules/pkg/line^Jbreak.js"]],
   ["double trailing slash", ["node_modules//"]],
   ["Windows device basename", ["node_modules/pkg/NUL.txt"]],
   ["Windows numbered device directory", ["node_modules/cOm1/file.js"]],
@@ -969,7 +978,7 @@ onReleasePlatform("valid nested bundle files and explicit directories pass every
   }
 });
 
-onReleasePlatform("scan accepts older source without Kiro packaging", async t => {
+onReleasePlatform("scan accepts older source without the reference or Kiro packaging", async t => {
   const f = await fixture(t), source = path.join(f.root, "old source");
   await cp(f.repository, source, { recursive: true });
   const pkg = JSON.parse(await readFile(path.join(source, "package.json"), "utf8"));
@@ -977,6 +986,7 @@ onReleasePlatform("scan accepts older source without Kiro packaging", async t =>
   pkg.files = ["dist", "manifest.json", "server.json", "packaging/mpak/README.md"];
   await writeFile(path.join(source, "package.json"), JSON.stringify(pkg));
   await rm(path.join(source, "packaging/kiro"), { recursive: true });
+  await rm(path.join(source, "REFERENCE.md"));
   await writeFile(path.join(source, "icon.png"), "fixture icon");
   const npmCli = path.join(f.root, "npm fixture.mjs");
   await writeFile(npmCli, "import fs from 'node:fs';if(process.argv[2]==='run'){fs.mkdirSync('dist',{recursive:true});fs.writeFileSync('dist/cli.js','// selected old source');}");
@@ -984,6 +994,7 @@ onReleasePlatform("scan accepts older source without Kiro packaging", async t =>
   const prepared = f.run("prepare-mpak-package.mjs", [], env);
   assert.equal(prepared.status, 0, prepared.stderr);
   await assert.rejects(lstat(path.join(f.staging, "packaging/kiro")), { code: "ENOENT" });
+  await assert.rejects(lstat(path.join(f.staging, "REFERENCE.md")), { code: "ENOENT" });
   await writeFile(path.join(f.staging, "sbom.cdx.json"), "fixture SBOM");
   const entries = {};
   for (const entry of await readdir(f.staging, { recursive: true, withFileTypes: true })) {
@@ -995,6 +1006,30 @@ onReleasePlatform("scan accepts older source without Kiro packaging", async t =>
   await writeFile(bundle, fixtureArchive(entries));
   const finalized = f.run("finalize-mpak-bundle.mjs", [bundle, f.staging], env);
   assert.equal(finalized.status, 0, finalized.stderr);
+});
+
+test("a declared reference must exist before building or replacing staged files", async t => {
+  const f = await fixture(t), pkg = JSON.parse(await readFile(path.join(f.repository, "package.json"), "utf8"));
+  pkg.files = ["REFERENCE.md"];
+  await writeFile(path.join(f.repository, "package.json"), JSON.stringify(pkg));
+  await rm(path.join(f.repository, "REFERENCE.md"));
+  await writeFile(path.join(f.staging, "keep.txt"), "previous staged content");
+  const result = f.run("prepare-mpak-package.mjs", [], { MPAK_STAGING_DIR: f.staging });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Required mpak source file is missing: REFERENCE\.md/);
+  assert.equal(await readFile(path.join(f.staging, "keep.txt"), "utf8"), "previous staged content");
+  assert.equal(await readFile(path.join(f.repository, "dist/cli.js"), "utf8"), "// Fixture runtime\n");
+});
+
+onReleasePlatform("finalization requires a declared reference even if the source file is absent", async t => {
+  const f = await bundleFixture(t), pkg = JSON.parse(await readFile(path.join(f.repository, "package.json"), "utf8"));
+  pkg.files = ["REFERENCE.md"];
+  await writeFile(path.join(f.repository, "package.json"), JSON.stringify(pkg));
+  await rm(path.join(f.repository, "REFERENCE.md"));
+  await rm(path.join(f.staging, "REFERENCE.md"));
+  const result = f.finalize();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Required mpak file is missing from staging: REFERENCE\.md/);
 });
 
 for (const declaration of ["packaging/kiro", "packaging/kiro/README.md", "packaging/kiro/**"]) {

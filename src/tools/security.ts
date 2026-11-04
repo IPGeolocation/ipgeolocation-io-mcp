@@ -47,7 +47,7 @@ export function registerSecurityTools(server: McpServer) {
         readOnlyHint: true,
         openWorldHint: true,
       },
-      description: `Read-only security lookup via GET /v3/security. Paid only. Cost: 2 credits. This endpoint is dedicated to security and threat data; lookup_ip with include=security provides security data together with location, ASN/company, network, timezone, currency, or abuse.
+      description: `Read-only security lookup via GET /v3/security. Paid only. Cost: 2 credits. This endpoint is dedicated to security and threat data; lookup_ip with include=security provides security data together with location, company, ASN, network, timezone, currency, or abuse.
 
 Returns { ip, security } with threat_score, VPN, proxy, residential proxy, Tor, relay, anonymity, bot, spam, known attacker, and cloud-provider fields; provider names, confidence scores, and last_seen dates appear when available.
 

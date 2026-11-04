@@ -197,7 +197,7 @@ async function packagingFixture(t) {
     for (const file of ["package.json", "package-lock.json", "manifest.json", "server.json"]) {
       await cp(path.join(repo, file), path.join(destination, file));
     }
-    for (const file of ["LICENSE", "README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md", "packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json"]) {
+    for (const file of ["LICENSE", "README.md", "REFERENCE.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md", "packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json"]) {
       await mkdir(path.dirname(path.join(destination, file)), { recursive: true });
       await writeFile(path.join(destination, file), "Packaging fixture");
     }

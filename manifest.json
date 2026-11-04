@@ -2,8 +2,8 @@
   "manifest_version": "0.3",
   "name": "ipgeolocation-io-mcp",
   "display_name": "IPGeolocation.io MCP Server",
-  "description": "Official MCP server for IP geolocation, security indicators, abuse contacts, ASN, time zones, astronomy, and user-agent parsing.",
-  "long_description": "Use IPGeolocation.io APIs from an MCP client or host that can launch a local stdio command. Provides 16 API tools and a zero-credit cached-result reader; endpoint and module access depends on the API plan. Bulk tools accept 250 inputs by default, subject to input and response limits. Results above the tool-response budget use cached JSON pages when the complete snapshot fits the cache byte budget. A snapshot that cannot fit returns a local resource-limit error after the lookup may have used credits. Read pages with the same process and API key before expiry or eviction; unavailable cursors fail locally without another API call.",
+  "description": "Official MCP server for IP geolocation, company information, ASN and network data, IP security, abuse contacts, time zones, astronomy, currency data and user-agent parsing.",
+  "long_description": "The official IPGeolocation.io MCP server provides 17 tools for accurate IP geolocation, company information, ASN and network data, IP security (VPN, proxy, Tor, bot, hosting and spam detection), abuse contacts, time zones, astronomy, currency data and user-agent parsing. It runs locally over stdio on Node.js 22 or later. Most tools need an API key; data access and credits depend on your plan. Large results use cached pages when they fit in the cache, so you can read the rest without another API call. Saved pages require the same server process and API key and can expire. See README.md for setup and REFERENCE.md for tool and configuration details.",
   "author": {
     "name": "ipgeolocation.io",
     "email": "support@ipgeolocation.io",
@@ -191,14 +191,14 @@
     "api_key": {
       "type": "string",
       "title": "API Key",
-      "description": "Your ipgeolocation.io API key. Get one free at https://app.ipgeolocation.io/signup",
+      "description": "Your IPGeolocation.io API key. Get a free key at https://app.ipgeolocation.io/signup",
       "sensitive": true,
       "required": true
     },
     "request_timeout_ms": {
       "type": "number",
       "title": "Request timeout (ms)",
-      "description": "Maximum time allowed for an upstream API request.",
+      "description": "Time limit for an API request, including reading its response.",
       "default": 15000,
       "min": 1000,
       "max": 120000
@@ -206,7 +206,7 @@
     "cache_ttl_ms": {
       "type": "number",
       "title": "Cache TTL (ms)",
-      "description": "Time-to-live for cached tool responses; successful cached-page reads extend their idle expiry.",
+      "description": "How long results stay cached. Reading a cached page restarts its expiry timer.",
       "default": 300000,
       "min": 1000,
       "max": 3600000
@@ -214,7 +214,7 @@
     "cache_max_entries": {
       "type": "number",
       "title": "Maximum cache entries",
-      "description": "Maximum cached responses and page snapshots. The entry ceiling and cache byte budget both apply.",
+      "description": "Maximum number of stored responses and page snapshots. The cache size limit also applies.",
       "default": 500,
       "min": 10,
       "max": 5000
@@ -222,7 +222,7 @@
     "max_bulk_items": {
       "type": "number",
       "title": "Maximum bulk items",
-      "description": "Bulk input ceiling. The actual batch limit is the lower of this setting and Maximum result items.",
+      "description": "Maximum inputs in a bulk request. The lower of this setting and Maximum result items sets the batch limit.",
       "default": 1000,
       "min": 1,
       "max": 50000
@@ -230,7 +230,7 @@
     "max_result_items": {
       "type": "number",
       "title": "Maximum result items",
-      "description": "Bulk input/result item ceiling. Complete nested arrays are retained; large successful results use cached pagination.",
+      "description": "Maximum results in a bulk request. The lower of this setting and Maximum bulk items sets the batch limit. Arrays within a result stay complete.",
       "default": 250,
       "min": 1,
       "max": 50000
@@ -238,7 +238,7 @@
     "max_response_chars": {
       "type": "number",
       "title": "Maximum response bytes",
-      "description": "Maximum UTF-8 bytes of a complete serialized tool result, including text and structured content. Larger successes use cached pages if the complete snapshot fits the cache byte budget; otherwise the call fails locally and may already have used API credits. Error messages are shortened while retaining status and guidance.",
+      "description": "Maximum size of a tool reply in bytes. Larger results use cached pages when they fit in the cache. Results that cannot be stored can fail after using API credits. Error messages may be shortened.",
       "default": 200000,
       "min": 10000,
       "max": 2000000
@@ -246,7 +246,7 @@
     "max_error_chars": {
       "type": "number",
       "title": "Maximum error characters",
-      "description": "Upper character limit for the error message, excluding truncation markers and guidance. The complete response byte limit can shorten the message further.",
+      "description": "Maximum length of an error message. The reply size limit can shorten it further.",
       "default": 4000,
       "min": 200,
       "max": 50000
@@ -254,7 +254,7 @@
     "cache_max_bytes": {
       "type": "number",
       "title": "Maximum cache bytes",
-      "description": "Maximum accounted bytes for cached values and keys, shared by responses and page snapshots. This is not a process-memory limit. An oversized normal value is not stored but can still serve a fitting result; a snapshot that cannot fit fails locally after the lookup may have used credits.",
+      "description": "Maximum size of stored cache data in bytes. This does not limit total memory use. A result that cannot fit may be returned without caching; large results that need saved pages can fail after using credits.",
       "default": 33554432,
       "min": 4194304,
       "max": 1073741824
@@ -262,7 +262,7 @@
     "upstream_max_response_bytes": {
       "type": "number",
       "title": "Maximum upstream response bytes",
-      "description": "Maximum bytes read from a successful API response after HTTP decompression. Oversized responses fail locally after the API may have used credits. Upstream error bodies have a separate fixed 64 KiB limit.",
+      "description": "Maximum size of a successful API response in bytes, after decompression. A larger response fails and may already have used credits.",
       "default": 8388608,
       "min": 1048576,
       "max": 268435456
@@ -270,11 +270,11 @@
     "max_argument_bytes": {
       "type": "number",
       "title": "Maximum tool argument bytes",
-      "description": "Maximum UTF-8 bytes of serialized tool arguments. Oversized arguments fail locally before an API request. The stdio message buffer allows six times this limit plus 128 KiB for the protocol envelope.",
+      "description": "Maximum size of tool inputs in bytes. Larger inputs are rejected before an API request.",
       "default": 4194304,
       "min": 65536,
       "max": 33554432
     }
   },
-  "version": "2.0.2"
+  "version": "2.0.3"
 }

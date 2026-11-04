@@ -393,7 +393,7 @@ The response covers location data or mixed IP data domains for multiple IPs or d
         openWorldHint: true,
       },
       description:
-        "Returns the public IP address of the machine running this MCP server via GET /v3/getip. Takes no input parameters and requires no API key, account, or credits. The response is a plain IP address string, not geolocation data; lookup_ip provides location, ASN, timezone, currency, security, and abuse data.",
+        "Returns the public IP address of the machine running this MCP server via GET /v3/getip. Takes no input parameters and requires no API key, account, or credits. Text content contains the IP address; structuredContent contains { ip }. This is not geolocation data. lookup_ip provides location, company, ASN, network, time zone, currency, security and abuse data.",
       inputSchema: {},
     },
     async () => {
@@ -516,7 +516,7 @@ This response is limited to currency and country metadata. lookup_ip can return 
       },
       description: `Read-only network lookup via GET /v3/ipgeo. Network details require a paid plan. Cost: 1 credit. Returns { network } with route CIDR prefix, connection_type, and is_anycast. If the API omits network data, returns a local error without inventing an HTTP status; credits may already have been used.
 
-ip omitted means the server's public egress IP. force_refresh bypasses cached data, makes a new upstream request, and can consume credits. This response is limited to network data; lookup_ip can return network data together with location, ASN/company, timezone, currency, security, or abuse.`,
+ip omitted means the server's public egress IP. force_refresh bypasses cached data, makes a new upstream request, and can consume credits. This response is limited to network data; lookup_ip can return network data together with location, company, ASN, timezone, currency, security, or abuse.`,
       inputSchema: {
         ip: z
           .string()

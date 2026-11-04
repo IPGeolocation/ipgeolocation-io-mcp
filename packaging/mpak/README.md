@@ -2,7 +2,7 @@
 
 mpak publishes this server as `@ipgeolocation/ipgeolocation-io-mcp`. The prep script derives that bundle from the root metadata and stages it in `artifacts/mpak-package/`. The npm package name, root manifests, and existing client install commands stay unchanged.
 
-Version **2.0.2**. See the [release checklist](../../RELEASING.md) for publication channels, dated listing checks, and follow-ups.
+Version **2.0.3** (unreleased). See the [release checklist](../../RELEASING.md) for publication channels, dated listing checks, and follow-ups.
 
 ## Prepare and Publish
 

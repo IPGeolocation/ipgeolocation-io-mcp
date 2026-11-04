@@ -23,6 +23,29 @@ test("Docker runtime contains no unused package-manager modules or launchers", (
   assert.deepEqual(remaining, { commands: [], modules: [], yarnBundles: [] });
 });
 
+test("Docker runtime removes BusyBox and preserves accounts, certificates and temporary directories", () => {
+  const runtime = JSON.parse(execFileSync("docker", [
+    "run", "--rm", "--network", "none", "--read-only", "--entrypoint", "node", image,
+    "-p", `(() => {
+      const fs = require('node:fs'), path = require('node:path');
+      const packages = fs.readFileSync('/lib/apk/db/installed', 'utf8').split('\\n\\n').map(record => record.match(/^P:(.+)$/m)?.[1]);
+      const unwantedPackages = packages.filter(name => ['busybox', 'busybox-binsh', 'ssl_client', 'alpine-baselayout'].includes(name));
+      const commands = ['/bin', '/sbin', '/usr/bin', '/usr/sbin'].flatMap(dir =>
+        fs.readdirSync(dir, { withFileTypes: true }).filter(entry => entry.name === 'busybox' ||
+          (entry.isSymbolicLink() && path.resolve(dir, fs.readlinkSync(path.join(dir, entry.name))) === '/bin/busybox'))
+          .map(entry => path.join(dir, entry.name)));
+      const tempModes = ['/tmp', '/var/tmp'].map(dir => fs.statSync(dir).mode & 0o7777);
+      const certificatesPresent = fs.statSync('/etc/ssl/certs/ca-certificates.crt').size > 0;
+      return JSON.stringify({ unwantedPackages, commands, tempModes, certificatesPresent,
+        user: require('node:os').userInfo().username, nameServiceConfigPresent: fs.existsSync('/etc/nsswitch.conf') });
+    })()`,
+  ], { encoding: "utf8", timeout: 30000 }));
+  assert.deepEqual(runtime, {
+    unwantedPackages: [], commands: [], tempModes: [0o1777, 0o1777],
+    certificatesPresent: true, user: "node", nameServiceConfigPresent: true,
+  });
+});
+
 test("Docker runtime uses patched Node and preserves the stdio tool contract", async () => {
   const runtime = JSON.parse(execFileSync("docker", [
     "run", "--rm", "--network", "none", "--entrypoint", "node", image,

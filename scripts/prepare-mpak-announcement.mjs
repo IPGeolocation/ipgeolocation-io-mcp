@@ -88,6 +88,9 @@ export function parseBundleManifest(bytes, context) {
 
 export function bundleDocuments(sourceDir, sourcePackage) {
   const documents = ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md"];
+  if (existsSync(path.join(sourceDir, "REFERENCE.md")) || (Array.isArray(sourcePackage.files) && sourcePackage.files.includes("REFERENCE.md"))) {
+    documents.push("REFERENCE.md");
+  }
   if (existsSync(path.join(sourceDir, "packaging/kiro")) || (Array.isArray(sourcePackage.files) && sourcePackage.files.some(name => /^packaging\/kiro(?:\/|$)/u.test(name)))) {
     documents.push("packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json");
   }
@@ -112,13 +115,14 @@ export function listBundleEntries(bundlePath) {
     const directory = entry.endsWith("/");
     const name = directory ? entry.slice(0, -1) : entry;
     const segments = name.split("/");
+    // unzip renders control characters with carets, which are ambiguous with literal names.
     if (!name || path.posix.isAbsolute(name) || path.posix.normalize(name) !== name ||
-        /[\\<>:"|?*\x00-\x1f\x7f]/u.test(name) || segments.some(part => !part || part === ".." || /[. ]$/u.test(part) || /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/iu.test(part))) {
+        /[\\<>:"|?*^\x00-\x1f\x7f]/u.test(name) || segments.some(part => !part || part === ".." || /[. ]$/u.test(part) || /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/iu.test(part))) {
       throw new Error(`The bundle contains a noncanonical path: ${entry}`);
     }
     let children = paths;
     for (const [index, part] of segments.entries()) {
-      const key = part.normalize("NFC").toUpperCase().toLowerCase();
+      const key = part.normalize("NFC").toLowerCase().toUpperCase().toLowerCase().normalize("NFC");
       let existing = children.get(key);
       if (existing && existing.name !== part) throw new Error(`The bundle contains conflicting paths: ${existing.name} and ${entry}`);
       if (!existing) {

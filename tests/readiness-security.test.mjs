@@ -454,28 +454,41 @@ test('API-key namespaces still isolate cache entries and all page reads', async 
   assert.equal(calls.length, 2);
 });
 
-test('explicitly blank session keys cannot silently fall back to a process environment key', async t => {
+test('explicitly blank session keys explain how to restore access without using the environment key', async t => {
   setup(t, { IPGEOLOCATION_API_KEY: 'synthetic-environment-owner-key' });
   const calls = mock(() => json({ ip: '8.8.8.8' }));
   for (const blank of ['', ' \t\n']) {
-    let client;
-    try { client = await session(t, blank); }
-    catch { continue; } // Rejecting invalid configuration before transport setup is also safe.
-    try {
-      const result = await client.call('lookup_ip', { ip: '8.8.8.8' });
-      assert.equal(result.isError, true);
-    } catch { /* A local protocol rejection is also safe when no fetch occurred. */ }
+    const client = await session(t, blank);
+    const result = await client.call('lookup_ip', { ip: '8.8.8.8' });
+    assert.equal(result.isError, true);
+    const error = result.structuredContent.error;
+    assert.equal(error.retryable, false);
+    assert.equal(error.status, undefined);
+    assert.match(error.message, /Set IPGEOLOCATION_API_KEY in your client's server settings/);
+    assert.match(error.message, /If your host passes apiKey directly/);
+    assert.match(error.message, /empty apiKey prevents use of the environment key/);
+    assert.match(error.message, /omit apiKey to use it/);
+    assert.ok(!JSON.stringify(result).includes('synthetic-environment-owner-key'));
   }
-  assert.equal(calls.length, 0, 'blank session configuration must not bill the environment owner or send an empty header');
+  assert.equal(calls.length, 0, 'blank configuration must not bill the environment owner or send an empty header');
 });
 
 test('explicitly blank direct runtime keys cannot silently use the environment owner key', async t => {
   setup(t, { IPGEOLOCATION_API_KEY: 'synthetic-environment-owner-key' });
   const calls = mock(() => json({ ip: '8.8.8.8' }));
   for (const apiKey of ['', ' \t\n']) {
-    await assert.rejects(Promise.resolve().then(() => config.withRuntimeConfig({ apiKey }, () => api.getIpGeolocation({ ip: '8.8.8.8' }))));
+    await assert.rejects(Promise.resolve().then(() => config.withRuntimeConfig({ apiKey }, () => api.getIpGeolocation({ ip: '8.8.8.8' }))), /empty apiKey prevents use of the environment key; provide a key or omit apiKey to use it/);
   }
   assert.equal(calls.length, 0);
+});
+
+test('omitted runtime keys use the environment while explicit keys keep precedence', async t => {
+  setup(t, { IPGEOLOCATION_API_KEY: 'synthetic-environment-owner-key' });
+  const calls = mock(() => json({ ip: '8.8.8.8' }));
+  for (const settings of [{}, { apiKey: undefined }, { apiKey: ` ${syntheticA} ` }]) {
+    await config.withRuntimeConfig(settings, () => api.getIpGeolocation({ ip: '8.8.8.8' }));
+  }
+  assert.deepEqual(calls.map(call => call.key), ['synthetic-environment-owner-key', 'synthetic-environment-owner-key', syntheticA]);
 });
 
 test('native fetch counts decompressed bytes and retains deadlines for both success and error bodies', async t => {

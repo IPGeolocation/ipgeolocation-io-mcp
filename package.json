@@ -1,7 +1,7 @@
 {
   "name": "ipgeolocation-io-mcp",
   "mcpName": "io.github.IPGeolocation/ipgeolocation-io-mcp",
-  "description": "Official MCP server for IP geolocation, security indicators, abuse contacts, ASN, time zones, astronomy, and user-agent parsing.",
+  "description": "Official MCP server for IP geolocation, company information, ASN and network data, IP security, abuse contacts, time zones, astronomy, currency data and user-agent parsing.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -17,6 +17,7 @@
     "SECURITY.md",
     "CONTRIBUTING.md",
     "RELEASING.md",
+    "REFERENCE.md",
     "packaging/mpak/README.md",
     "packaging/kiro/README.md",
     "packaging/kiro/mcp.json",
@@ -107,5 +108,5 @@
     "fast-check": "4.9.0",
     "typescript": "^7.0.2"
   },
-  "version": "2.0.2"
+  "version": "2.0.3"
 }

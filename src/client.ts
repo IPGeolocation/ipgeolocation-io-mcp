@@ -30,7 +30,7 @@ export function getApiKey(): string {
   const apiKey = getConfiguredApiKey();
   if (!apiKey) {
     throw new Error(
-      "API key not configured. Set the IPGEOLOCATION_API_KEY environment variable."
+      "API key not configured. Set IPGEOLOCATION_API_KEY in your client's server settings. If your host passes apiKey directly, an empty apiKey prevents use of the environment key; provide a key or omit apiKey to use it."
     );
   }
   if (!/^[\x21-\x7e]+$/.test(apiKey) || apiKey.includes("\\")) {
