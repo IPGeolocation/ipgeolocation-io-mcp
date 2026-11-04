@@ -57,7 +57,7 @@ function adjacentCharacter(text: string, position: number, before: boolean, run:
   // A match inside an escape is not a complete short-key token.
   for (let start = Math.max(0, position - 11); start < position; start++) {
     if (text[start] === "%") {
-      const part = /^%(?:25)?[\da-f]{2}/i.exec(text.slice(start, start + 5));
+      const part = text.slice(start, start + 5).match(/^%(?:25)?[\da-f]{2}/i);
       if (part && start + part[0].length > position) return "_";
     } else if (text[start] === "\\") {
       for (const size of text[start + 1] === "u" ? [12, 6] : [2]) {
