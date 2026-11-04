@@ -220,7 +220,7 @@ Listed costs apply to successful upstream requests. Cache hits and cached-page r
 | `lookup_ip` | 1 | Location, time zone, currency, ASN for one IP |
 | `get_my_ip` | 0 | Public IP of the machine running the server |
 | `lookup_currency` | 1 | Currency and country metadata for one IP |
-| `get_timezone` | 1 | Timezone by name, location, IP, airport code, or UN/LOCODE |
+| `get_timezone` | 1 | Time zone by name, location, IP, airport code, or UN/LOCODE |
 | `convert_timezone` | 1 | Convert time between two locations |
 | `get_astronomy` | 1 | Sunrise, sunset, moonrise, moonset, twilight, moon phase for one date |
 | `get_astronomy_time_series` | 1 | Daily astronomy data for a date range (up to 90 days) |
@@ -537,7 +537,7 @@ IP location is an estimate. Use `include=geo_accuracy` where available to assess
 - I need the abuse contact for 1.0.0.0 and the network route involved.
 - For this IP, show me the abuse contact details only: 1.1.1.1
 
-### Timezone lookups and conversions
+### Time zone lookups and conversions
 
 - What time is it in Tokyo right now?
 - Convert 2026-03-07 09:30 from New York to Tokyo time.
