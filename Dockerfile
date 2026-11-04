@@ -41,6 +41,7 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force \
                 if (entry.isSymbolicLink() && fs.readlinkSync(file) === '/bin/busybox') fs.unlinkSync(file); \
             } \
         } \
+        fs.mkdirSync('/opt', { recursive: true }); \
         for (const dir of ['/tmp', '/var/tmp']) { fs.mkdirSync(dir, { recursive: true }); fs.chmodSync(dir, 0o1777); }"
 
 COPY --from=build /app/dist ./dist
