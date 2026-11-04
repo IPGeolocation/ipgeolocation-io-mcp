@@ -407,7 +407,7 @@ if (complete.page) {
 }
 ```
 
-Use cursors to retrieve remaining data. The [cache rules](#caching) explain snapshot expiry, eviction, API-key isolation, and when a new lookup can consume credits.
+Use cursors to retrieve remaining data. The [cache rules](#caching) explain snapshot expiry, eviction, API key isolation, and when a new lookup can consume credits.
 
 ## Example Answers and Tool Output
 

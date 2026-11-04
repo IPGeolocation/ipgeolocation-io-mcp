@@ -28,7 +28,7 @@ The install commands follow npm's `latest` tag, including future major releases.
 
 ## Quick Start
 
-1. [Create a free IPGeolocation API key](https://app.ipgeolocation.io/signup).
+1. [Create a free IPGeolocation.io API key](https://app.ipgeolocation.io/signup).
 2. Merge this entry into your client's private configuration, keeping any existing servers. See [Install by Client](#install-by-client) for the configuration location. Cursor also has a [one-click installer](#cursor).
 
 ```json
@@ -83,7 +83,7 @@ Use a supported Node.js release with its latest security updates.
 
 `get_my_ip` requires no API key. The other 15 API tools require one. `get_cached_result` reads results already held in memory; use the same API key as the original lookup.
 
-[Sign up for a free IPGeolocation API key](https://app.ipgeolocation.io/signup)
+[Sign up for a free IPGeolocation.io API key](https://app.ipgeolocation.io/signup)
 
 Use a private user configuration or your client's secret/environment settings for the real key. Keep keys out of committed project configuration. Each client below uses the [Quick Start server entry](#quick-start) unless its format differs.
 
@@ -187,7 +187,7 @@ Use the server's **Start** action and approve its configuration when prompted. E
 
 You can try the server on [Glama](https://glama.ai/mcp/servers/IPGeolocation/ipgeolocation-io-mcp) directly. Only `IPGEOLOCATION_API_KEY` is required. Leave other environment variable fields empty unless you want to change cache, timeout, or output limits.
 
-If you don't have a key yet, [create a free IPGeolocation API key](https://app.ipgeolocation.io/signup).
+If you don't have a key yet, [create a free IPGeolocation.io API key](https://app.ipgeolocation.io/signup).
 
 ### Any Other MCP Client
 
@@ -497,9 +497,9 @@ For current plan details, credits, and pricing, see the [IPGeolocation.io pricin
 ## Links
 
 - [IPGeolocation.io Website](https://ipgeolocation.io)
-- [IPGeolocation API Documentation](https://ipgeolocation.io/documentation.html)
+- [IPGeolocation.io API Documentation](https://ipgeolocation.io/documentation.html)
 - [IPGeolocation.io Pricing](https://ipgeolocation.io/pricing.html)
-- [Create a Free IPGeolocation API Key](https://app.ipgeolocation.io/signup)
+- [Create a Free IPGeolocation.io API Key](https://app.ipgeolocation.io/signup)
 - [Tool and Configuration Reference](REFERENCE.md)
 - [Changelog](CHANGELOG.md)
 - [Security Policy](SECURITY.md)
