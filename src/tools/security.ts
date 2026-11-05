@@ -6,6 +6,7 @@ import {
   errorToolResponse,
   formatBulkToolResult,
   formatToolResult,
+  shouldCacheBulkResult,
 } from "./response.js";
 import { getCachedOrFetchValue } from "./cache.js";
 import { applyFieldsAndExcludes } from "./projection.js";
@@ -46,7 +47,7 @@ export function registerSecurityTools(server: McpServer) {
         readOnlyHint: true,
         openWorldHint: true,
       },
-      description: `Read-only security lookup via GET /v3/security. Paid only. Cost: 2 credits. This endpoint is dedicated to security and threat data; lookup_ip with include=security provides security data together with location, ASN/company, network, timezone, currency, or abuse.
+      description: `Read-only security lookup via GET /v3/security. Paid only. Cost: 2 credits. This endpoint is dedicated to security and threat data; lookup_ip with include=security provides security data together with location, company, ASN, network, timezone, currency, or abuse.
 
 Returns { ip, security } with threat_score, VPN, proxy, residential proxy, Tor, relay, anonymity, bot, spam, known attacker, and cloud-provider fields; provider names, confidence scores, and last_seen dates appear when available.
 
@@ -114,7 +115,7 @@ fields/excludes accept comma-separated security.* dot paths; ip is always return
         readOnlyHint: true,
         openWorldHint: true,
       },
-      description: `Read-only bulk security lookup via POST /v3/security-bulk. Paid only. Cost: 2 credits per valid IP. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs; private, bogon, and malformed IPs are not billed. Larger batches are rejected before any API call. Complete results are returned directly or as cached pages. Oversized results contain page.next_cursor for complete retrieval through get_cached_result without another API call or additional credits.
+      description: `Read-only bulk security lookup via POST /v3/security-bulk. Paid only. Cost: 2 credits per valid IP. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} IPs; private, bogon, and malformed IPs are not billed. Larger batches are rejected before any API call. Complete results within upstream and cache byte limits are returned directly or as cached pages. Cached pages use get_cached_result without another API call or additional credits. An upstream body above its byte limit, or a required pagination snapshot too large to retain, returns a non-retryable resource_limit error with no cursor; the API may already have used credits.
 
 This endpoint is dedicated to security-only batches; bulk_lookup_ip with include=security provides security data together with geolocation or other IP domains. Returns one { ip, security } result per valid IP. fields/excludes accept security.* dot paths per item. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
       inputSchema: {
@@ -151,7 +152,9 @@ This endpoint is dedicated to security-only batches; bulk_lookup_ip with include
         const result = await getCachedOrFetchValue(
           cacheKey,
           () => getSecurityBulk(params),
-          params.force_refresh
+          params.force_refresh,
+          shouldCacheBulkResult,
+          buildSecurityBulkCacheKey({ ips: params.ips })
         );
 
         return {

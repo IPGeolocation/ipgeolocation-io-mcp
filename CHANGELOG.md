@@ -4,7 +4,31 @@ Changes in development appear under Unreleased. Published release details are av
 
 ## Unreleased
 
-- List Standard Arabic (`ar`) among the `lang` values in the IP geolocation tool descriptions. The API already accepts it, and the server already passes it through.
+Planned version: 2.0.3.
+
+### Tool use and reliability
+
+- Simplify setup and security documentation, keep detailed tool information in a separate reference, and clarify bulk calls, retries and cached-page retrieval.
+- Put safety rules first and shorten server instructions so clients can retain the full guidance.
+- Clarify missing API key errors and proxy setup, and include company and currency data in package descriptions.
+- Reject blank inputs, broken Unicode text, invalid dates or coordinate pairs, and unsupported API key characters before making an API request.
+- Return clear errors for configuration and size limits. If the API reports success but returns invalid or incomplete data, mark the error as non-retryable because another request may use credits again. See the [error reference](REFERENCE.md#error-codes) for the exact categories.
+- Preserve the API's HTTP status when its error response cannot finish, while still honoring cancellation.
+- Keep overlapping lookups, refreshes and cancellations from replacing newer cached data or interrupting other callers.
+- Use less memory for large responses and cached results. Reading a saved page no longer processes the whole result again.
+- Improve credential masking for encoded values and short keys while preserving ordinary company names, user-agent strings and input labels.
+- Limit request, response and cache sizes and JSON nesting. Accept valid JSON escapes and handle closed output connections without an unhandled error.
+- Treat negative astronomy `elevation` as 0, matching the API, and list Standard Arabic (`ar`) in the IP geolocation tool descriptions.
+- Fix startup when a client launches the server through a symbolic link.
+
+### Packaging and releases
+
+- Remove old build output before preparing npm packages or MCP bundles, and build the selected source before packaging it.
+- Check filenames and bundled metadata before release. Reject unsafe source or dependency paths while packaging and remove rejected scanner output.
+- Recover interrupted uploads from the original signed files and retry announcements without rebuilding or replacing published assets.
+- Include Kiro packaging files in npm, Docker and MCP bundles. Keep mpak scans compatible with 2.0.1, which has no Kiro files.
+- Remove unused Corepack and BusyBox tools from the Docker image. The server still starts with Node; the image no longer includes a shell.
+- Block unexpected network requests in offline Node.js tests.
 
 ## [2.0.2](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.2) - 2026-10-27
 
