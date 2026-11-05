@@ -2,7 +2,7 @@
 
 Use this reference when writing tool calls, handling results or changing server settings. For installation and everyday use, start with [README](README.md).
 
-This checkout includes [unreleased changes](CHANGELOG.md#unreleased). For an installed release, use the documentation shipped with that version.
+This reference covers [version 2.0.3](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.3).
 
 ## Contents
 

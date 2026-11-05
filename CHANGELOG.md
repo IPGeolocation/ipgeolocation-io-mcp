@@ -2,9 +2,7 @@
 
 Changes in development appear under Unreleased. Published release details are available on [GitHub Releases](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases).
 
-## Unreleased
-
-Planned version: 2.0.3.
+## [2.0.3](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.3) - 2026-11-05
 
 ### Tool use and reliability
 
