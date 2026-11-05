@@ -2,7 +2,7 @@
 
 mpak publishes this server as `@ipgeolocation/ipgeolocation-io-mcp`. The prep script derives that bundle from the root metadata and stages it in `artifacts/mpak-package/`. The npm package name, root manifests, and existing client install commands stay unchanged.
 
-Version **2.0.3** (unreleased). See the [release checklist](../../RELEASING.md) for publication channels, dated listing checks, and follow-ups.
+Version **2.0.3**. See the [release checklist](../../RELEASING.md) for publication channels, dated listing checks, and follow-ups.
 
 ## Prepare and Publish
 
@@ -29,11 +29,11 @@ Local staging and scan builds do not acquire release signatures or provenance au
 
 ## Verify a Published Bundle
 
-Use GitHub CLI and Cosign in an empty download directory. Run the following as a Bash script so a failed download or verification stops the procedure. This example verifies `v2.0.2`; use the matching tag for other published releases.
+Use GitHub CLI and Cosign in an empty download directory. Run the following as a Bash script so a failed download or verification stops the procedure. This example verifies `v2.0.3`; use the matching tag for other published releases.
 
 ```bash
 set -euo pipefail
-release_tag=v2.0.2
+release_tag=v2.0.3
 bundle_name="ipgeolocation-ipgeolocation-io-mcp-${release_tag#v}.mcpb"
 workflow_identity="https://github.com/IPGeolocation/ipgeolocation-io-mcp/.github/workflows/mpak-release.yml@refs/tags/$release_tag"
 release_commit=$(gh api "repos/IPGeolocation/ipgeolocation-io-mcp/commits/refs%2Ftags%2F$release_tag" --jq .sha)

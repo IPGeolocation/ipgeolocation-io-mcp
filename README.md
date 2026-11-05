@@ -14,7 +14,7 @@ The official [IPGeolocation.io](https://ipgeolocation.io) MCP server provides 17
 
 MCP (Model Context Protocol) connects your client to these tools. Your client or host must support launching a local command over `stdio`. See [Install by Client](#install-by-client) for configuration examples.
 
-**Published version: [2.0.2](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.2).** This checkout also contains [unreleased changes](CHANGELOG.md#unreleased), which need a source build until the next release.
+**Published version: [2.0.3](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.3).**
 
 The install commands follow npm's `latest` tag, including future major releases. Restart the server to load an update. Source and Docker installations need a rebuild.
 
@@ -22,7 +22,7 @@ The install commands follow npm's `latest` tag, including future major releases.
 |------|-------|
 | Package | `ipgeolocation-io-mcp` |
 | Version | `2.0.3` |
-| Release date | Unreleased |
+| Release date | 2026-11-05 |
 | Transport | `stdio` |
 | Node.js | `>=22` |
 
@@ -111,7 +111,7 @@ Merge the [Quick Start entry](#quick-start) into `mcpServers`.
 
 Fully quit and reopen Claude Desktop after saving. See the [official local-server setup guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
 
-For clients that install MCP Bundles, download the published [v2.0.2 `.mcpb` bundle](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/download/v2.0.2/ipgeolocation-ipgeolocation-io-mcp-2.0.2.mcpb) from [GitHub Releases](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases). The bundle contains the server and its dependencies; its host still needs a Node.js 22+ runtime. Enter your API key when the host prompts for bundle configuration.
+For clients that install MCP Bundles, download the published [v2.0.3 `.mcpb` bundle](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/download/v2.0.3/ipgeolocation-ipgeolocation-io-mcp-2.0.3.mcpb) from [GitHub Releases](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases). The bundle contains the server and its dependencies; its host still needs a Node.js 22+ runtime. Enter your API key when the host prompts for bundle configuration.
 
 ### Cline
 
