@@ -149,7 +149,9 @@ jobs:
       - name: Install mpak scanner
         env:
           UV_BIN: ${{ steps.scan_uv.outputs.uv-path }}
-        run: '"$UV_BIN" pip install --system -r tooling/packaging/scanner-tools/requirements.txt'
+        run: >-
+          "$UV_BIN" pip install --system --require-hashes --only-binary=:all:
+          -r tooling/packaging/scanner-tools/requirements.txt
 
       - name: Run mpak scanner
         working-directory: tooling/artifacts/mpak-package
