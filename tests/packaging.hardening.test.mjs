@@ -771,19 +771,20 @@ onReleasePlatform("an oversized manifest stops the extractor even if it handles 
 if (process.argv[2] === "-Z1") {
   console.log("manifest.json");
 } else {
-  process.on("SIGTERM", () => {
+  const continued = () => {
     require("node:fs").writeFileSync(process.env.FIXTURE_CONTINUED, "continued");
     process.exit(0);
-  });
+  };
+  process.on("SIGTERM", continued);
   process.stdout.on("error", () => {});
   process.stdout.write(Buffer.alloc(2 * 1024 * 1024));
-  setTimeout(() => process.exit(1), 5000);
+  setTimeout(continued, 5000);
 }
 `, { mode: 0o755 });
   const result = f.upload({ FIXTURE_CONTINUED: marker });
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stderr, /manifest/i);
-  await assert.rejects(lstat(marker), { code: "ENOENT" });
+  await assert.rejects(lstat(marker), { code: "ENOENT" }, "The extractor continued past the output limit");
   assert.deepEqual(await f.calls(), []);
 });
 
