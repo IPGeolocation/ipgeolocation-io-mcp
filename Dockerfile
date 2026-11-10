@@ -1,4 +1,8 @@
-FROM node:24.22.1-alpine3.24@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS build
+FROM node:24.22.1-alpine3.24@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS base
+
+RUN apk add --no-cache 'zlib>=1.4-r0'
+
+FROM base AS build
 
 WORKDIR /app
 
@@ -21,7 +25,7 @@ COPY .github/workflows/mpak-release.yml .github/workflows/mpak-scan.yml ./.githu
 COPY Dockerfile README.md REFERENCE.md .dockerignore ./
 RUN --network=none npm test
 
-FROM node:24.22.1-alpine3.24@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS runtime
+FROM base AS runtime
 
 WORKDIR /app
 
