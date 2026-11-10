@@ -48,9 +48,14 @@ async function fixture(t) {
   for (const name of Object.keys(childEnv)) if (/IPGEOLOCATION|TOKEN|SECRET|API_KEY/i.test(name)) delete childEnv[name];
   return {
     root, repository, staging, env: childEnv,
-    run: (script, args = [], env = {}) => spawnSync(process.execPath, [path.join(repository, "scripts", script), ...args], {
-      cwd: repository, env: { ...childEnv, ...env }, encoding: "utf8", timeout: 30000,
-    }),
+    run: (script, args = [], env = {}) => {
+      const result = spawnSync(process.execPath, [path.join(repository, "scripts", script), ...args], {
+        cwd: repository, env: { ...childEnv, ...env }, encoding: "utf8", timeout: 30000,
+      });
+      assert.ifError(result.error);
+      assert.equal(result.signal, null, `${script} stopped by ${result.signal}`);
+      return result;
+    },
   };
 }
 
@@ -757,6 +762,29 @@ onReleasePlatform("a valid manifest at the size limit passes finalization and ev
     assert.equal(result.status, 0, result.stderr);
   }
   assert.equal(uploadCalls(await release.calls()).length, 5, "Resume must not replace published assets");
+});
+
+onReleasePlatform("an oversized manifest stops the extractor even if it handles SIGTERM", async t => {
+  const f = await announcementFixture(t);
+  const marker = path.join(f.root, "extractor-continued");
+  await writeFile(path.join(f.root, "bin", "unzip"), `#!${process.execPath}
+if (process.argv[2] === "-Z1") {
+  console.log("manifest.json");
+} else {
+  process.on("SIGTERM", () => {
+    require("node:fs").writeFileSync(process.env.FIXTURE_CONTINUED, "continued");
+    process.exit(0);
+  });
+  process.stdout.on("error", () => {});
+  process.stdout.write(Buffer.alloc(2 * 1024 * 1024));
+  setTimeout(() => process.exit(1), 5000);
+}
+`, { mode: 0o755 });
+  const result = f.upload({ FIXTURE_CONTINUED: marker });
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /manifest/i);
+  await assert.rejects(lstat(marker), { code: "ENOENT" });
+  assert.deepEqual(await f.calls(), []);
 });
 
 onReleasePlatform("bundle finalization rejects a missing reference or Kiro file in staging or inside the archive", async t => {

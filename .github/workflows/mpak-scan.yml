@@ -145,11 +145,7 @@ jobs:
           "artifacts/mpak-package"
 
       - name: Install mpak scanner
-        run: >-
-          uv pip install --system
-          "mpak-scanner==0.2.9"
-          "bandit==1.9.4"
-          "guarddog==3.1.0"
+        run: uv pip install --system -r tooling/packaging/scanner-tools/requirements.txt
 
       - name: Run mpak scanner
         working-directory: tooling/artifacts/mpak-package
