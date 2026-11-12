@@ -2,6 +2,10 @@
 
 Changes in development appear under Unreleased. Published release details are available on [GitHub Releases](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases).
 
+## Unreleased
+
+- Explain HTTP 402 (expired subscription) and 403 (IP allow-list) errors with their own categories and guidance instead of reporting them as undocumented, and describe 405 as a wrong HTTP method.
+
 ## [2.0.3](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.3) - 2026-11-05
 
 ### Tool use and reliability
