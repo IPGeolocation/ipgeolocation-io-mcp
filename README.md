@@ -395,7 +395,7 @@ See the [abuse contact example](REFERENCE.md#abuse-contact).
 
 Errors explain what failed and suggest a next step. Start with [Troubleshooting](#troubleshooting) for common problems, or see the [error reference](REFERENCE.md#error-codes) when handling errors in code.
 
-A failed or cancelled request may already have used API credits. Check the error guidance before retrying. For bulk results, retry only eligible failed inputs; successful inputs do not need another lookup.
+A failed or canceled request may already have used API credits. Check the error guidance before retrying. For bulk results, retry only eligible failed inputs; successful inputs do not need another lookup.
 
 ## How It Works
 
