@@ -64,7 +64,7 @@ test("npm packing rebuilds dist without stale code or stray credential files", a
   t.after(() => rm(root, { recursive: true, force: true }));
   const repository = path.join(root, "repository with spaces");
   await mkdir(repository);
-  for (const name of ["package.json", "REFERENCE.md", "tsconfig.json", "src"]) {
+  for (const name of ["package.json", "REFERENCE.md", "HOSTED.md", "tsconfig.json", "src"]) {
     await cp(path.join(repo, name), path.join(repository, name), { recursive: true });
   }
   await symlink(await realpath(path.join(repo, "node_modules")), path.join(repository, "node_modules"), process.platform === "win32" ? "junction" : "dir");
@@ -93,8 +93,13 @@ test("npm packing rebuilds dist without stale code or stray credential files", a
   const [packed] = JSON.parse(result.stdout.slice(result.stdout.indexOf("[")));
   const files = new Set(packed.files.map(file => file.path));
   assert.ok(files.has("dist/cli.js"));
+  assert.ok(files.has("dist/http-cli.js"));
   assert.ok(files.has("dist/index.js"));
   assert.ok(files.has("REFERENCE.md"));
+  assert.ok(files.has("HOSTED.md"));
+  for (const name of ["dist/cli.js", "dist/http-cli.js"]) {
+    assert.ok(packed.files.find(file => file.path === name).mode & 0o111, `${name} must be executable`);
+  }
   for (const name of strayFiles) {
     assert.equal(files.has(name), false, `${name} must not enter the package`);
     await assert.rejects(readFile(path.join(repository, name)), { code: "ENOENT" });
