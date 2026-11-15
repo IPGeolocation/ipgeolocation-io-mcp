@@ -51,6 +51,8 @@ test("32 concurrent near-limit provider responses fit the hosted memory budget",
   Object.assign(env, {
     IPGEOLOCATION_MCP_HTTP_PORT: String(port),
     IPGEOLOCATION_MCP_PUBLIC_URL: "http://127.0.0.1:" + port + "/mcp",
+    // This checks memory; shared-runner CPU speed must not trigger the API deadline.
+    IPGEOLOCATION_REQUEST_TIMEOUT_MS: "60000",
   });
   const child = spawn(process.execPath, ["--max-old-space-size=512", entry], {
     cwd: temp, env, stdio: ["ignore", "ignore", "pipe"],
@@ -91,10 +93,10 @@ test("32 concurrent near-limit provider responses fit the hosted memory budget",
   const results = await Promise.race([
     Promise.all(Array.from({ length: 32 }, (_, i) => clients[0].callTool({
       name: "lookup_ip", arguments: { ip: "8.8.0." + (i + 1) },
-    }))),
-    delay(60000, undefined, { ref: false }).then(() => { throw new Error("Load-test deadline"); }),
+    }, undefined, { timeout: 75000 }))),
+    delay(80000, undefined, { ref: false }).then(() => { throw new Error("Load-test deadline"); }),
   ]);
-  for (const result of results) assert.ok(!result.isError, "All concurrent tool calls must succeed");
+  for (const result of results) assert.ok(!result.isError, "All concurrent tool calls must succeed: " + JSON.stringify(result.structuredContent?.error));
   for (const client of clients) await client.close();
   child.kill("SIGTERM");
   await exited;
