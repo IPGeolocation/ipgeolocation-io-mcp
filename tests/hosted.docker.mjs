@@ -105,7 +105,7 @@ test("hardened hosted container works through a real verified HTTPS/Nginx proxy"
   assert.match(homepage.text, /X-IPGeolocation-API-Key/);
   assert.match(homepage.text, /https:\/\/app\.ipgeolocation\.io\/signup/);
   for (const tag of ["style", "script"]) {
-    const blocks = [...homepage.text.matchAll(new RegExp("<" + tag + ">([\\s\\S]*?)</" + tag + ">", "g"))];
+    const blocks = [...homepage.text.matchAll(new RegExp("<" + tag + ">([\\s\\S]*?)</" + tag + ">", "gi"))];
     assert.equal(blocks.length, 1);
     const hash = createHash("sha256").update(blocks[0][1]).digest("base64");
     assert.ok(homepage.headers["content-security-policy"].includes("'sha256-" + hash + "'"), tag + " must match the actual CSP hash");
