@@ -1,6 +1,6 @@
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { type Socket } from "node:net";
+import { isIP, type Socket } from "node:net";
 import type { Duplex } from "node:stream";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { CancelledNotificationSchema, JSONRPCMessageSchema, LATEST_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS, isInitializeRequest, isJSONRPCRequest } from "@modelcontextprotocol/sdk/types.js";
@@ -12,6 +12,13 @@ const SESSION_HEADER = "mcp-session-id";
 
 class HttpFailure extends Error {
   constructor(readonly status: number, readonly code: string) { super(code); }
+}
+
+function canonicalIp(address: string): string | undefined {
+  const version = isIP(address);
+  if (!version || address.includes("%")) return undefined;
+  // Node may report an IPv4 socket as an IPv4-mapped IPv6 address.
+  return new URL(`http://[${version === 4 ? "::ffff:" + address : address}]`).hostname;
 }
 
 function singleHeader(req: IncomingMessage, name: string): string | undefined {
@@ -101,6 +108,7 @@ export function createHostedServer(
   log: (entry: Record<string, unknown>) => void = entry => console.error(JSON.stringify(entry)),
 ): HostedServer {
   const sessionSecret = randomBytes(32);
+  const trustedProxies = new Set([...config.trustedProxies].map(canonicalIp));
   const calls = new Map<string, ActiveCall>();
   const responses = new Set<ServerResponse>();
   const receiving = new Set<ServerResponse>();
@@ -137,6 +145,11 @@ export function createHostedServer(
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const started = performance.now();
     const requestId = randomUUID();
+    const peerIp = req.socket.remoteAddress ?? "";
+    const canonicalPeer = canonicalIp(peerIp);
+    const forwardedIp = req.headersDistinct["x-real-ip"];
+    const clientIp = canonicalPeer && trustedProxies.has(canonicalPeer) && forwardedIp?.length === 1 && canonicalIp(forwardedIp[0])
+      ? forwardedIp[0] : peerIp.replace(/^::ffff:(?=\d+\.)/i, "");
     let reservedBytes = 0;
     let large = false;
     let deadline: NodeJS.Timeout | undefined;
@@ -155,11 +168,12 @@ export function createHostedServer(
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("X-Request-ID", requestId);
     res.setHeader("Vary", "Origin");
-    res.once("finish", () => log({
-      event: "http_request", request_id: requestId,
+    res.once("close", () => log({
+      event: "http_request", timestamp: new Date().toISOString(), request_id: requestId,
+      client_ip: clientIp || null, peer_ip: peerIp || null,
       method: ["POST", "GET", "HEAD", "DELETE", "OPTIONS"].includes(req.method ?? "") ? req.method : "OTHER",
       route: req.url === "/mcp" ? "/mcp" : req.url === "/health" ? "/health" : "unmatched",
-      status: res.statusCode, duration_ms: Math.round(performance.now() - started),
+      status: res.writableFinished ? res.statusCode : 499, duration_ms: Math.round(performance.now() - started),
     }));
     try {
       const host = singleHeader(req, "host");

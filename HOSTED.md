@@ -4,8 +4,8 @@ The hosted entry point runs the same tool handlers as local MCP over Streamable
 HTTP. The existing command and default package entry point continue to use stdio.
 General hosted MCP has no dependency on ChatGPT, OpenAI identity, or billing.
 
-The candidate public URL is https://mcp.ipgeolocation.io/mcp. This code does not
-publish that endpoint or claim it is deployed.
+Connect to the public IPGeolocation.io server at https://mcp.ipgeolocation.io/mcp.
+This guide covers client connections and running your own hosted server.
 
 ## Tools and account usage
 
@@ -99,6 +99,7 @@ ipgeolocation-io-mcp command continues to use stdio. Both belong to one package.
 | IPGEOLOCATION_MCP_HTTP_PORT | 8787 | Listener port |
 | IPGEOLOCATION_MCP_PUBLIC_URL | https://mcp.ipgeolocation.io/mcp | Exact endpoint; HTTPS outside loopback |
 | IPGEOLOCATION_MCP_ALLOWED_ORIGINS | Endpoint origin | Additional exact browser origins; never a wildcard |
+| IPGEOLOCATION_MCP_TRUSTED_PROXIES | 127.0.0.1, ::1 | Exact proxy peer addresses allowed to supply X-Real-IP for request logs; the Compose example adds its host gateway |
 | IPGEOLOCATION_MCP_HTTP_CONCURRENCY | 32 | Global executing-request capacity |
 
 There are no per-customer session, concurrency, cache or upload allowances. The
@@ -136,6 +137,16 @@ the application port; Nginx supplies HTTPS and forwards to that private port.
 These templates and the Docker build context belong to the matching repository
 source checkout; they are not installed by the npm package.
 
+The Nginx example serves the connection guide at `/`. Install its static page:
+
+    sudo install -d -m 0755 /var/www/ipgeolocation-mcp
+    sudo install -o root -g root -m 0644 deploy/hosted.index.html /var/www/ipgeolocation-mcp/index.html
+
+Keep the inline style and script hashes in the root location's Content Security
+Policy matched to this HTML file when changing it. The page takes no API keys;
+customers configure their key in their MCP client. `/mcp` remains the protocol
+endpoint, and unrecognized paths remain unavailable.
+
 Nginx buffers complete request bodies before sending them to the application;
 response buffering and caching stay off. Create /var/cache/nginx/mcp_body on a
 **dedicated, size-bounded filesystem**, for example a 128 MiB tmpfs, owned and
@@ -144,13 +155,23 @@ on the actual host. Do not let temporary uploads fill a shared root disk. The
 example accepts up to 32 MiB; the application enforces its configured lower bound.
 The container tests use a bounded 128 MiB temporary filesystem.
 
+Request logs contain UTC timestamps, request IDs, client/peer IPs and response
+status/timing, including interrupted requests. They omit URLs, keys, cookies,
+authorization values and request bodies. Only an exact trusted proxy peer may
+supply one valid X-Real-IP value; other forwarded claims are ignored. This
+logging metadata never authenticates a caller or affects account usage.
+
 Cloudflare proxying can stay enabled; this service does not need OpenAI mTLS.
 Use Full (strict) TLS, bypass caching and browser challenges for /mcp, and preserve
 custom key, session and protocol headers. Restrict direct origin access to trusted
 ingress. Proxy/Cloudflare logs must not collect keys or bodies; the example access
-log omits URLs, keys and payloads. Forwarded client-IP headers never authenticate
-an MCP caller or affect customer usage. If other host-level rules need real client
-IPs, configure trust there using only [Cloudflare's current ranges](https://www.cloudflare.com/ips/).
+log omits URLs, keys and payloads. With Cloudflare, configure Nginx real_ip_header
+CF-Connecting-IP and set_real_ip_from using only
+[Cloudflare's current ranges](https://www.cloudflare.com/ips/), and keep those
+ranges updated. This verifies the source of the header; it is not an IP block
+list. Direct requests must not be able to forge the logged client IP. Nginx then
+overwrites X-Real-IP with its verified remote address before forwarding to the
+private application. Do not trust every private-network address as a proxy.
 
 Use one worker initially. Signed connection IDs and active cancellation routing
 are worker-local; multiple workers need affinity and a separate scaling design.

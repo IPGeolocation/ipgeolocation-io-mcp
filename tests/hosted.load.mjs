@@ -18,9 +18,14 @@ test("32 concurrent near-limit provider responses fit the hosted memory budget",
     route: "203.0.113." + (i % 255), value: "x".repeat(52),
   })) });
   assert.ok(Buffer.byteLength(wire) < 8 * 1024 * 1024);
+  const waiting = [];
   const upstream = http.createServer((_req, res) => {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(wire);
+    waiting.push(res);
+    // Establish every connection before parsing large responses can occupy the child.
+    if (waiting.length === 32) for (const response of waiting) {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(wire);
+    }
   });
   upstream.listen(0, "127.0.0.1");
   await once(upstream, "listening");
@@ -96,6 +101,7 @@ test("32 concurrent near-limit provider responses fit the hosted memory budget",
     }, undefined, { timeout: 75000 }))),
     delay(80000, undefined, { ref: false }).then(() => { throw new Error("Load-test deadline"); }),
   ]);
+  assert.equal(waiting.length, 32, "Every input must make exactly one provider request");
   for (const result of results) assert.ok(!result.isError, "All concurrent tool calls must succeed: " + JSON.stringify(result.structuredContent?.error));
   for (const client of clients) await client.close();
   child.kill("SIGTERM");

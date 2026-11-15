@@ -6,6 +6,7 @@ export interface HostedConfig {
   port: number;
   publicUrl: URL;
   allowedOrigins: ReadonlySet<string>;
+  trustedProxies: ReadonlySet<string>;
   maxConcurrent: number;
   requestTimeoutMs: number;
   shutdownGraceMs: number;
@@ -41,12 +42,19 @@ export function loadHostedConfig(env: NodeJS.ProcessEnv = process.env): HostedCo
     origins.add(url.origin);
   }
   if (origins.size > 32) throw new Error("Too many allowed origins.");
+  const trustedProxies = new Set(["127.0.0.1", "::1"]);
+  for (const address of (env.IPGEOLOCATION_MCP_TRUSTED_PROXIES ?? "").split(",").map(value => value.trim()).filter(Boolean)) {
+    if (!isIP(address) || address.includes("%")) throw new Error("IPGEOLOCATION_MCP_TRUSTED_PROXIES must contain exact IP addresses.");
+    trustedProxies.add(address);
+  }
+  if (trustedProxies.size > 32) throw new Error("Too many trusted proxies.");
   const maxConcurrent = integer("IPGEOLOCATION_MCP_HTTP_CONCURRENCY", 32, 1, 256);
   return {
     host,
     port: integer("IPGEOLOCATION_MCP_HTTP_PORT", 8787, 0, 65535),
     publicUrl,
     allowedOrigins: origins,
+    trustedProxies,
     maxConcurrent,
     requestTimeoutMs: getRequestTimeoutMs() + 5000,
     shutdownGraceMs: 5000,

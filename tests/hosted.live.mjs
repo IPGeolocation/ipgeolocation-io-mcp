@@ -102,7 +102,7 @@ try {
     }
   });
   await check("paid ASN lookup and complete live cached-page retrieval", async () => {
-    const { data } = await invoke(paid, "lookup_asn", { asn: "AS15169", include: "routes" });
+    const { data } = await invoke(paid, "lookup_asn", { asn: "AS16509", include: "routes" });
     assert.ok(data.asn);
     assert.ok(cachedPages > 0, "the live run must actually exercise get_cached_result");
   });
@@ -125,6 +125,7 @@ try {
   });
   await check("keys cannot take over each other's sessions", async () => {
     const result = await fetch(config.publicUrl, {
+      redirect: "error",
       method: "POST", headers: {
         "Content-Type": "application/json", Accept: "application/json, text/event-stream",
         "X-IPGeolocation-API-Key": paidKey, "Mcp-Session-Id": free.transport.sessionId, "Mcp-Protocol-Version": "2025-11-25",

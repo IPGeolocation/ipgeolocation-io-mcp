@@ -4,13 +4,18 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import https from "node:https";
 import { setTimeout as delay } from "node:timers/promises";
 
 const image = process.env.MCP_DOCKER_IMAGE || "ipgeolocation-io-mcp:security-test";
 const nginx = "nginx@sha256:901e593c95dc85f5a729f5765516321366ef4ac401821431d408897e95287d0a";
-const docker = args => execFileSync("docker", args, { encoding: "utf8", timeout: 180000, stdio: ["ignore", "pipe", "pipe"] }).trim();
+const docker = args => {
+  const result = spawnSync("docker", args, { encoding: "utf8", timeout: 180000 });
+  if (result.error) throw result.error;
+  assert.equal(result.status, 0, result.stderr);
+  return (result.stdout + (args[0] === "logs" ? result.stderr : "")).trim();
+};
 const openssl = args => execFileSync("openssl", args, { stdio: "ignore", timeout: 10000 });
 
 test("hardened hosted container works through a real verified HTTPS/Nginx proxy", { timeout: 300000 }, async t => {
@@ -57,8 +62,9 @@ test("hardened hosted container works through a real verified HTTPS/Nginx proxy"
     .replace("/var/log/nginx/mcp.access.log", "/dev/stdout")
     .replace("/var/cache/nginx/mcp_body", "/tmp/client_temp");
   await writeFile(path.join(root, "site.conf"), site);
+  await writeFile(path.join(root, "index.html"), await readFile(new URL("../deploy/hosted.index.html", import.meta.url)));
   await writeFile(path.join(root, "nginx.conf"), "worker_processes 1;\npid /tmp/nginx.pid;\nevents { worker_connections 1024; }\nhttp {\n include /etc/nginx/mime.types;\n client_body_temp_path /tmp/client_temp;\n proxy_temp_path /tmp/proxy_temp;\n fastcgi_temp_path /tmp/fastcgi_temp;\n uwsgi_temp_path /tmp/uwsgi_temp;\n scgi_temp_path /tmp/scgi_temp;\n include /etc/nginx/conf.d/default.conf;\n}\n");
-  await writeFile(path.join(root, "Dockerfile"), "FROM " + nginx + "\nCOPY nginx.conf /etc/nginx/nginx.conf\nCOPY site.conf /etc/nginx/conf.d/default.conf\nCOPY --chown=101:101 fullchain.pem privkey.pem /etc/letsencrypt/live/127.0.0.1/\nUSER 101:101\nENTRYPOINT [\"nginx\", \"-g\", \"daemon off;\"]\n");
+  await writeFile(path.join(root, "Dockerfile"), "FROM " + nginx + "\nCOPY nginx.conf /etc/nginx/nginx.conf\nCOPY site.conf /etc/nginx/conf.d/default.conf\nCOPY index.html /var/www/ipgeolocation-mcp/index.html\nCOPY --chown=101:101 fullchain.pem privkey.pem /etc/letsencrypt/live/127.0.0.1/\nUSER 101:101\nENTRYPOINT [\"nginx\", \"-g\", \"daemon off;\"]\n");
   docker(["buildx", "build", "--load", "--tag", proxyImage, root]);
   docker(["run", "--detach", "--name", app, "--network", network, "--network-alias", "mcp", "--ip", "172.30.99.2",
     "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--pids-limit", "128", "--memory", "1g",
@@ -66,6 +72,7 @@ test("hardened hosted container works through a real verified HTTPS/Nginx proxy"
     "--env", "IPGEOLOCATION_MCP_HTTP_HOST=0.0.0.0",
     "--env", "IPGEOLOCATION_MCP_PUBLIC_URL=" + url.href,
     "--env", "IPGEOLOCATION_MCP_MAX_RESPONSE_CHARS=10000",
+    "--env", "IPGEOLOCATION_MCP_TRUSTED_PROXIES=172.30.99.3",
     image, "/app/dist/http-cli.js"]);
   docker(["run", "--detach", "--name", proxy, "--network", network, "--ip", "172.30.99.3",
     "--publish", "127.0.0.1:" + assigned + ":8443", "--read-only", "--cap-drop", "ALL",
@@ -90,6 +97,30 @@ test("hardened hosted container works through a real verified HTTPS/Nginx proxy"
     if (!healthy) await delay(50);
   }
   assert.ok(healthy, "HTTPS health check must succeed with CA verification enabled: " + healthFailure + "\n" + docker(["logs", app]) + "\n" + docker(["logs", proxy]));
+  const homepage = await request("/");
+  assert.equal(homepage.status, 200);
+  assert.match(homepage.headers["content-type"], /^text\/html/);
+  assert.match(homepage.headers["cache-control"], /no-store/);
+  assert.match(homepage.text, /https:\/\/mcp\.ipgeolocation\.io\/mcp/);
+  assert.match(homepage.text, /X-IPGeolocation-API-Key/);
+  assert.match(homepage.text, /https:\/\/app\.ipgeolocation\.io\/signup/);
+  for (const tag of ["style", "script"]) {
+    const blocks = [...homepage.text.matchAll(new RegExp("<" + tag + ">([\\s\\S]*?)</" + tag + ">", "g"))];
+    assert.equal(blocks.length, 1);
+    const hash = createHash("sha256").update(blocks[0][1]).digest("base64");
+    assert.ok(homepage.headers["content-security-policy"].includes("'sha256-" + hash + "'"), tag + " must match the actual CSP hash");
+  }
+  assert.ok(!/unsafe-inline|unsafe-eval/.test(homepage.headers["content-security-policy"]));
+  assert.equal(homepage.headers["x-content-type-options"], "nosniff");
+  assert.equal(homepage.headers["x-frame-options"], "DENY");
+  assert.equal(homepage.headers["referrer-policy"], "no-referrer");
+  assert.equal((await request("/", { method: "HEAD" })).text, "");
+  assert.equal((await request("/", { method: "POST", body: {} })).status, 405);
+  assert.equal((await request("/index.html")).status, 404);
+  assert.equal((await request("/.env")).status, 404);
+  assert.equal((await request("/mcp")).status, 405);
+  const health = await request("/health", { headers: { "X-Real-IP": "198.51.100.10", "X-Forwarded-For": "198.51.100.11" } });
+  assert.equal(health.status, 200);
   const headers = { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "X-IPGeolocation-API-Key": key };
   const init = await request("/mcp", { method: "POST", headers, body: { jsonrpc: "2.0", id: 1, method: "initialize",
     params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "tls-proxy-test", version: "1" } } } });
@@ -147,7 +178,16 @@ test("hardened hosted container works through a real verified HTTPS/Nginx proxy"
       assert.match(result.stdout, /"cachedPageReads":[1-9]/);
     });
   }
-  const logs = docker(["logs", app]) + docker(["logs", proxy]);
+  const appLogs = docker(["logs", app]), proxyLogs = docker(["logs", proxy]);
+  const entries = logs => logs.split("\n").filter(line => line.startsWith("{")).map(line => JSON.parse(line));
+  const healthId = health.headers["x-request-id"];
+  const appHealth = entries(appLogs).find(entry => entry.request_id === healthId);
+  const proxyHealth = entries(proxyLogs).find(entry => entry.request_id === healthId);
+  assert.ok(appHealth && proxyHealth, "both servers must log the same health request");
+  assert.equal(appHealth.client_ip, proxyHealth.client_ip, "health logs must preserve the verified proxy client IP");
+  assert.notEqual(appHealth.client_ip, "198.51.100.10", "health logs must ignore caller-supplied IP claims");
+  assert.equal(appHealth.peer_ip, "172.30.99.3");
+  const logs = appLogs + proxyLogs;
   for (const secret of [key, process.env.IPGEOLOCATION_LIVE_FREE_KEY, process.env.IPGEOLOCATION_LIVE_PAID_KEY].filter(Boolean)) {
     assert.ok(!logs.includes(secret), "proxy or runtime logs exposed a credential");
   }
@@ -199,8 +239,9 @@ test("shipped Compose works through host Nginx without customer quotas or forwar
     .replace("/var/log/nginx/mcp.access.log", "/dev/stdout")
     .replace("/var/cache/nginx/mcp_body", "/tmp/client_temp");
   await writeFile(path.join(root, "site.conf"), site);
+  await writeFile(path.join(root, "index.html"), await readFile(new URL("../deploy/hosted.index.html", import.meta.url)));
   await writeFile(path.join(root, "nginx.conf"), "worker_processes 1;\npid /tmp/nginx.pid;\nevents { worker_connections 1024; }\nhttp {\n include /etc/nginx/mime.types;\n client_body_temp_path /tmp/client_temp;\n proxy_temp_path /tmp/proxy_temp;\n fastcgi_temp_path /tmp/fastcgi_temp;\n uwsgi_temp_path /tmp/uwsgi_temp;\n scgi_temp_path /tmp/scgi_temp;\n include /etc/nginx/conf.d/default.conf;\n}\n");
-  await writeFile(path.join(root, "Dockerfile"), "FROM " + nginx + "\nCOPY nginx.conf /etc/nginx/nginx.conf\nCOPY site.conf /etc/nginx/conf.d/default.conf\nCOPY --chown=101:101 fullchain.pem privkey.pem /etc/letsencrypt/live/mcp.test/\nUSER 101:101\nENTRYPOINT [\"nginx\", \"-g\", \"daemon off;\"]\n");
+  await writeFile(path.join(root, "Dockerfile"), "FROM " + nginx + "\nCOPY nginx.conf /etc/nginx/nginx.conf\nCOPY site.conf /etc/nginx/conf.d/default.conf\nCOPY index.html /var/www/ipgeolocation-mcp/index.html\nCOPY --chown=101:101 fullchain.pem privkey.pem /etc/letsencrypt/live/mcp.test/\nUSER 101:101\nENTRYPOINT [\"nginx\", \"-g\", \"daemon off;\"]\n");
   docker(["buildx", "build", "--load", "--tag", proxyImage, root]);
   docker([...compose, "up", "--detach", "--no-build"]);
   const app = docker([...compose, "ps", "--quiet", "mcp"]);

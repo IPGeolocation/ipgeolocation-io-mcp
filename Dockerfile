@@ -23,6 +23,7 @@ COPY scripts ./scripts
 COPY packaging/mpak/config.json ./packaging/mpak/config.json
 COPY .github/workflows/mpak-release.yml .github/workflows/mpak-scan.yml ./.github/workflows/
 COPY Dockerfile README.md REFERENCE.md HOSTED.md .dockerignore ./
+COPY deploy/hosted.index.html deploy/hosted.nginx.conf ./deploy/
 RUN --network=none npm test
 RUN --network=none node --test tests/hosted.load.mjs
 
