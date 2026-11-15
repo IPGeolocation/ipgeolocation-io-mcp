@@ -88,8 +88,10 @@ export function parseBundleManifest(bytes, context) {
 
 export function bundleDocuments(sourceDir, sourcePackage) {
   const documents = ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md"];
-  if (existsSync(path.join(sourceDir, "REFERENCE.md")) || (Array.isArray(sourcePackage.files) && sourcePackage.files.includes("REFERENCE.md"))) {
-    documents.push("REFERENCE.md");
+  for (const document of ["REFERENCE.md", "HOSTED.md"]) {
+    if (existsSync(path.join(sourceDir, document)) || (Array.isArray(sourcePackage.files) && sourcePackage.files.includes(document))) {
+      documents.push(document);
+    }
   }
   if (existsSync(path.join(sourceDir, "packaging/kiro")) || (Array.isArray(sourcePackage.files) && sourcePackage.files.some(name => /^packaging\/kiro(?:\/|$)/u.test(name)))) {
     documents.push("packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json");

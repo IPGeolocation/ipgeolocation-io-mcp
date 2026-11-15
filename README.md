@@ -10,13 +10,15 @@
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-5FA04E?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-16A34A)](https://github.com/IPGeolocation/ipgeolocation-io-mcp/blob/main/LICENSE)
 
-The official [IPGeolocation.io](https://ipgeolocation.io) MCP server provides 17 tools for accurate IP geolocation, company information, ASN and network data, IP security (VPN, proxy, Tor, bot, hosting and spam detection), abuse contacts, time zones, astronomy, currency data and user-agent parsing.
+The official [IPGeolocation.io](https://ipgeolocation.io) MCP server provides tools for accurate IP geolocation, company information, ASN and network data, IP security (VPN, proxy, Tor, bot, hosting and spam detection), abuse contacts, time zones, astronomy, currency data and user-agent parsing.
 
-MCP (Model Context Protocol) connects your client to these tools. Your client or host must support launching a local command over `stdio`. See [Install by Client](#install-by-client) for configuration examples.
+MCP (Model Context Protocol) lets your assistant use these tools. [Connect to our hosted server](#hosted-mcp), or [run the server on your computer](#quick-start).
 
 **Published version: [2.0.3](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.3).**
 
-The install commands follow npm's `latest` tag, including future major releases. Restart the server to load an update. Source and Docker installations need a rebuild.
+The local install commands follow npm's `latest` tag, including future major releases. Restart your local MCP server to load an update. Source and Docker installations need a rebuild.
+
+The table below describes the published local package.
 
 | Item | Value |
 |------|-------|
@@ -25,6 +27,30 @@ The install commands follow npm's `latest` tag, including future major releases.
 | Release date | 2026-11-05 |
 | Transport | `stdio` |
 | Node.js | `>=22` |
+
+## Hosted MCP
+
+Use our hosted server without installing or running an MCP server on your computer. Your client must support Streamable HTTP and private custom headers.
+
+1. Use your existing IPGeolocation.io API key, or [create a free one](https://app.ipgeolocation.io/signup).
+2. Add a remote MCP connection with these settings:
+
+| Setting | Value |
+| --- | --- |
+| Server URL | `https://mcp.ipgeolocation.io/mcp` |
+| Connection type | Streamable HTTP |
+| Header name | `X-IPGeolocation-API-Key` |
+| Header value | `<YOUR_API_KEY>` |
+
+3. Save the connection and ask: **"Where is 8.8.8.8 located?"**
+
+Replace `<YOUR_API_KEY>` with your key in your client's private settings. Keep the key out of chat messages, URLs and shared files.
+
+Your existing free or paid plan and API credit rules apply.
+
+Hosted MCP provides 16 tools. `get_my_ip` is available only locally because a hosted server would return its own IP address. For IP lookups, include the IP you want to check.
+
+See the [hosted guide](HOSTED.md) for connection details and instructions for running your own hosted server.
 
 ## Quick Start
 
@@ -50,6 +76,7 @@ The install commands follow npm's `latest` tag, including future major releases.
 
 ## Table of Contents
 
+- [Hosted MCP](#hosted-mcp)
 - [Quick Start](#quick-start)
 - [Install by Client](#install-by-client)
 - [Verify It Works](#verify-it-works)
@@ -72,6 +99,8 @@ The install commands follow npm's `latest` tag, including future major releases.
 - [Privacy Policy](#privacy-policy)
 
 ## Install by Client
+
+The following instructions run MCP on your computer. To connect to our hosted service, see [Hosted MCP](#hosted-mcp).
 
 ### Requirements
 
@@ -191,7 +220,7 @@ If you don't have a key yet, [create a free IPGeolocation.io API key](https://ap
 
 ### Any Other MCP Client
 
-Use the `ipgeolocation` server entry from [Quick Start](#quick-start) in your client's configuration format. The client must support launching a local `stdio` process. A client that accepts only a remote MCP URL needs a hosted endpoint; this package supplies the server command.
+For local MCP, use the `ipgeolocation` entry from [Quick Start](#quick-start) in your client's configuration format. The client must support launching a local `stdio` process. To connect to our hosted service, follow [Hosted MCP](#hosted-mcp).
 
 ## Verify It Works
 
@@ -209,13 +238,13 @@ Try these after setup:
 
 ## Tools by Plan
 
-Version 2.0.3 exposes 16 API tools and `get_cached_result`, a zero-credit page reader. Bulk tools accept 250 inputs by default; the effective ceiling is the lower of the two [item-limit settings](#environment-variables).
+Local MCP provides 17 tools. Hosted MCP provides 16 and does not include `get_my_ip`. Both follow your IPGeolocation.io plan and credit rules. Bulk tools accept 250 inputs by default; the effective ceiling is the lower of the two [item-limit settings](#environment-variables).
 
 Listed costs apply to successful upstream requests. Cache hits and cached-page reads use no additional credits. The API's `X-Credits-Charged` response header establishes actual billing; see the [credit rules](https://ipgeolocation.io/documentation/credits-usage.html).
 
 ### Free Plan
 
-The free plan provides 1,000 API credits per day. These 7 API tools provide their core data; `get_cached_result` also reads saved pages for 0 credits:
+The free plan provides 1,000 API credits per day. The following tools provide their core data on Free; `get_cached_result` also reads saved pages for 0 credits. `get_my_ip` is available only locally.
 
 | Tool | Credits | What it does |
 |------|---------|--------------|
@@ -231,7 +260,7 @@ Company details, network data, security, abuse contacts and bulk geolocation req
 
 ### Paid Plans
 
-All 17 tools, including the zero-credit cached result reader. Paid plans also add `network`, `company`, and extended `asn` fields to `lookup_ip`, plus the `include` parameter for `security`, `abuse`, `hostname`, `liveHostname`, `hostnameFallbackLive`, `user_agent`, `geo_accuracy`, `dma_code`, or `*`.
+All 17 tools are available locally, or 16 through hosted MCP, including the zero-credit cached result reader. Paid plans also add `network`, `company`, and extended `asn` fields to `lookup_ip`, plus the `include` parameter for `security`, `abuse`, `hostname`, `liveHostname`, `hostnameFallbackLive`, `user_agent`, `geo_accuracy`, `dma_code`, or `*`.
 
 | Tool | Credits | What it does |
 |------|---------|--------------|
@@ -261,7 +290,7 @@ For current plan details and pricing, see the [IPGeolocation.io pricing page](ht
 
 ## Tool Reference
 
-The [full reference](REFERENCE.md#tool-reference) lists parameters and response formats. These are the 17 available tools:
+The [full reference](REFERENCE.md#tool-reference) lists parameters and response formats. The tools below are available locally; hosted MCP provides the same tools except `get_my_ip`.
 
 ### lookup_ip
 
@@ -273,7 +302,7 @@ IP lookups in batches of up to 250 by default. [Parameters](REFERENCE.md#bulk_lo
 
 ### get_my_ip
 
-The public IP of the machine running the server. No API key or credits needed. [Parameters](REFERENCE.md#get_my_ip).
+Available only when running MCP locally. Returns the public IP of the machine running the server. No API key or credits needed. [Parameters](REFERENCE.md#get_my_ip).
 
 ### check_security
 
@@ -399,11 +428,11 @@ A failed or canceled request may already have used API credits. Check the error 
 
 ## How It Works
 
-Your MCP client starts this server as a local process and makes its tools available in your conversation. The server checks each request, then returns a cached result or calls the IPGeolocation.io API.
+Your MCP client connects to our hosted server or starts the server on your computer. The server checks each request, then returns a cached result or calls the IPGeolocation.io API.
 
 Lookups send the requested inputs to IPGeolocation.io. Cached results stay in memory; your client or host controls its own configuration and logs. See the [Security Policy](SECURITY.md) for data handling.
 
-When you omit an IP address, tools that support this use the server machine's public IP. That can differ from your own IP. Security tools return IP intelligence; they do not run the separate browser-based Real-Time Proxy & VPN Detection service.
+When running locally, tools that allow an omitted IP use the server machine's public IP. That can differ from your own IP. Hosted MCP requires an explicit lookup target, such as an IP address, place or ASN. Security tools return IP intelligence; they do not run the separate browser-based Real-Time Proxy & VPN Detection service.
 
 ## Caching
 
@@ -415,7 +444,7 @@ Saved pages remain available for five minutes after the last successful page rea
 
 ## Environment Variables
 
-Most users only need to set `IPGEOLOCATION_API_KEY` in their client's private server settings. Leave optional settings unset unless you need to change the defaults.
+For local MCP, set `IPGEOLOCATION_API_KEY` in your client's private server settings. Leave optional settings unset unless you need to change the defaults. To connect to our hosted service, use the [Hosted MCP connection settings](#hosted-mcp).
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
@@ -470,9 +499,11 @@ See [Testing](CONTRIBUTING.md#testing) for the offline suite and separate live A
 
 ## Troubleshooting
 
+Instructions to restart the server or change environment variables apply when you run the server yourself. For our hosted service, use the [connection settings](#hosted-mcp) in your client.
+
 **Client uses an old tool after updating:** Restart the server process and check its version in your client's MCP connection details. Compare it with the [latest npm version](https://www.npmjs.com/package/ipgeolocation-io-mcp). Rebuild source and Docker installations before restarting them.
 
-**API key not configured:** Set `IPGEOLOCATION_API_KEY` in your client's server configuration. This local error has no HTTP status and makes no upstream request.
+**API key not configured:** For local MCP, set `IPGEOLOCATION_API_KEY` in your client's private server configuration. For hosted MCP, add the `X-IPGeolocation-API-Key` header in your client's private connection settings. A missing key is rejected before an API lookup.
 
 **401 errors:** The API rejected the key or requested capability. Check that the key is active and the plan supports the tool. Domain lookups in `lookup_ip` also require a paid plan.
 
@@ -488,7 +519,7 @@ See [Testing](CONTRIBUTING.md#testing) for the offline suite and separate live A
 
 **Resource limit:** Check the error's guidance before trying again. The server rejects oversized tool arguments before making an API request. A response can exceed a limit after the API has used credits. Another lookup can use more credits. Reducing displayed fields does not always reduce the API response size. If you received a page cursor, use `get_cached_result` to read the remaining data without another API request. Raise limits only when the server has enough memory.
 
-**Client asks for an MCP URL:** This package supplies a local `stdio` command. Use a client or host that can launch it; a remote-only connector needs a hosted MCP endpoint.
+**Client asks for an MCP URL:** Use the [hosted connection](#hosted-mcp). Your client must support Streamable HTTP and private custom headers.
 
 ## Pricing
 
@@ -501,6 +532,7 @@ For current plan details, credits, and pricing, see the [IPGeolocation.io pricin
 - [IPGeolocation.io Pricing](https://ipgeolocation.io/pricing.html)
 - [Create a Free IPGeolocation.io API Key](https://app.ipgeolocation.io/signup)
 - [Tool and Configuration Reference](REFERENCE.md)
+- [Hosted MCP Guide](HOSTED.md)
 - [Changelog](CHANGELOG.md)
 - [Security Policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)

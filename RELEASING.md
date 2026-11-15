@@ -41,6 +41,8 @@ Public npm commands and launcher configurations use `ipgeolocation-io-mcp@latest
 
 ## Client and Security Checks
 
+For releases including hosted support, run the hosted protocol suite, the large-response resource test and the verified HTTPS/Nginx container test in [HOSTED.md](HOSTED.md). Verify both packaged CLI binaries in a fresh consumer installation. Keep stdio registry records unchanged until a remote URL is actually deployed and independently verified. Record actual-host Cloudflare, monitoring, restart and client connection checks separately from repository tests.
+
 Cursor's install link and the Claude Desktop, Cline, Windsurf, VS Code, and Codex configurations consume the npm package or MCP Bundle. Check them against the released artifact and preserve existing client settings. Record which GUI and operating-system installations were actually tested.
 
 Check the commit, date and artifact version in the [OpenSSF Scorecard report](https://api.scorecard.dev/projects/github.com/IPGeolocation/ipgeolocation-io-mcp) and [SafeSkill scan](https://safeskill.dev/scan/ipgeolocation-io-mcp) before making certification claims about a release.
