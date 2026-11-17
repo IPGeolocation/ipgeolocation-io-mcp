@@ -71,7 +71,9 @@ export function paginateToolResult(name: string, result: CallToolResult): CallTo
     expiresAt: Date.now() + getCacheTtlMs(),
   };
   const metadataBytes = Buffer.byteLength(JSON.stringify({ sourceTool: snapshot.sourceTool, expiresAt: snapshot.expiresAt }));
-  if (!setCachedValue(cacheKey(id), snapshot, Buffer.byteLength(snapshot.json) + metadataBytes)) throw new ResourceLimitError("The complete result exceeds IPGEOLOCATION_MCP_CACHE_MAX_BYTES and cannot be retained for pagination. Reduce the requested fields or batch size, or increase the cache byte limit with sufficient memory. API credits may already have been used; no automatic retry was made.");
+  if (!setCachedValue(cacheKey(id), snapshot, Buffer.byteLength(snapshot.json) + metadataBytes)) {
+    throw new ResourceLimitError("The complete result exceeds IPGEOLOCATION_MCP_CACHE_MAX_BYTES and cannot be retained for pagination. Reduce the requested fields or batch size, or increase the cache byte limit with sufficient memory. API credits may already have been used; no automatic retry was made.");
+  }
   return readPage(id, snapshot, 0);
 }
 

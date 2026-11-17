@@ -22,8 +22,10 @@ COPY tests ./tests
 COPY scripts ./scripts
 COPY packaging/mpak/config.json ./packaging/mpak/config.json
 COPY .github/workflows/mpak-release.yml .github/workflows/mpak-scan.yml ./.github/workflows/
-COPY Dockerfile README.md REFERENCE.md .dockerignore ./
+COPY Dockerfile README.md REFERENCE.md HOSTED.md .dockerignore ./
+COPY deploy/hosted.index.html deploy/hosted.nginx.conf ./deploy/
 RUN --network=none npm test
+RUN --network=none node --test tests/hosted.load.mjs
 
 FROM base AS runtime
 
@@ -49,7 +51,7 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force \
         for (const dir of ['/tmp', '/var/tmp']) { fs.mkdirSync(dir, { recursive: true }); fs.chmodSync(dir, 0o1777); }"
 
 COPY --from=build /app/dist ./dist
-COPY manifest.json server.json LICENSE README.md CHANGELOG.md SECURITY.md CONTRIBUTING.md RELEASING.md REFERENCE.md ./
+COPY manifest.json server.json LICENSE README.md CHANGELOG.md SECURITY.md CONTRIBUTING.md RELEASING.md REFERENCE.md HOSTED.md ./
 COPY packaging/mpak/README.md ./packaging/mpak/README.md
 COPY packaging/kiro/ ./packaging/kiro/
 
