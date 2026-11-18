@@ -1,16 +1,18 @@
 import {
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   rmSync,
   readdirSync,
-  statSync,
+  realpathSync,
   writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { bundleDocuments } from "./prepare-mpak-announcement.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
@@ -93,20 +95,24 @@ function buildStagingServer(rootServerMetadata, rootManifest, version, bundleNam
   };
 }
 
-function installBundledDependencies(outputDir) {
-  const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
+function runNpm(directory, args) {
+  const npmCli = process.env.npm_execpath;
+  if (process.platform === "win32" && !npmCli) {
+    throw new Error("On Windows, run npm run prepare:mpak so npm_execpath identifies the npm JavaScript CLI.");
+  }
   const result = spawnSync(
-    npmBin,
-    ["ci", "--omit=dev", "--ignore-scripts"],
+    npmCli ? process.execPath : "npm",
+    [...(npmCli ? [npmCli] : []), ...args],
     {
-      cwd: outputDir,
+      cwd: directory,
       encoding: "utf8",
     },
   );
 
   if (result.status !== 0) {
+    const command = args[0] === "run" ? `npm run ${args[1]}` : `npm ${args[0]}`;
     throw new Error(
-      `npm ci failed while preparing the mpak package.\n${result.stderr || result.stdout}`,
+      `${command} failed while preparing the mpak package.\n${result.error?.message || result.stderr || result.stdout}`,
     );
   }
 }
@@ -124,14 +130,15 @@ function pruneBundledDependencyNoise(outputDir) {
   ]);
   const ignoredFilePattern = /^(readme|changelog|history)/i;
 
-  if (!existsSync(nodeModulesDir)) {
+  if (!existsSync(nodeModulesDir) || lstatSync(nodeModulesDir).isSymbolicLink()) {
     return;
   }
 
   function walk(currentPath) {
     for (const entry of readdirSync(currentPath)) {
       const entryPath = path.join(currentPath, entry);
-      const entryStats = statSync(entryPath);
+      const entryStats = lstatSync(entryPath);
+      if (entryStats.isSymbolicLink()) continue;
 
       if (entryStats.isDirectory()) {
         if (ignoredDirectoryNames.has(entry)) {
@@ -159,27 +166,44 @@ const rootServerMetadata = readJson(path.join(sourceDir, "server.json"));
 const mpakConfig = readJson(path.join(packagingDir, "config.json"));
 const version = rootPackage.version;
 
-if (
-  sourceDir !== repoRoot &&
-  sourceDir !== workspaceRoot &&
-  !sourceDir.startsWith(`${repoRoot}${path.sep}`) &&
-  !sourceDir.startsWith(`${workspaceRoot}${path.sep}`)
-) {
+const physicalSource = realpathSync(sourceDir);
+const physicalRepo = realpathSync(repoRoot);
+const physicalWorkspace = realpathSync(workspaceRoot);
+if (![physicalRepo, physicalWorkspace].some(parent => path.relative(parent, physicalSource) === "" || isChild(parent, physicalSource))) {
   throw new Error(
     "MPAK_SOURCE_DIR must stay within the repository or the GitHub Actions workspace.",
   );
 }
 
-if (
-  outputDir !== artifactsRoot &&
-  !outputDir.startsWith(`${artifactsRoot}${path.sep}`)
-) {
-  throw new Error("MPAK_STAGING_DIR must stay within the repository artifacts/ directory.");
+function isChild(parent, target) {
+  const relative = path.relative(parent, target);
+  return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
-if (!existsSync(distDir)) {
-  throw new Error("Missing dist/. Run npm run build before preparing the mpak package.");
+function physicalPath(target) {
+  if (existsSync(target)) return realpathSync(target);
+  return path.join(physicalPath(path.dirname(target)), path.basename(target));
 }
+
+if (!isChild(artifactsRoot, outputDir)) throw new Error("MPAK_STAGING_DIR must be a child of the repository artifacts/ directory.");
+const physicalOutput = physicalPath(outputDir);
+const physicalArtifacts = path.join(physicalRepo, "artifacts");
+if (!isChild(physicalArtifacts, physicalOutput)) {
+  throw new Error("MPAK_STAGING_DIR must be a child of the repository artifacts/ directory without escaping through a symlink.");
+}
+if (path.relative(physicalOutput, physicalSource) === "" || isChild(physicalOutput, physicalSource)) {
+  throw new Error("MPAK_STAGING_DIR must not contain MPAK_SOURCE_DIR.");
+}
+
+const documents = bundleDocuments(sourceDir, rootPackage);
+for (const name of documents) {
+  if (!existsSync(path.join(sourceDir, name))) throw new Error(`Required mpak source file is missing: ${name}`);
+}
+
+// Build the selected source; a previous dist directory may contain removed files.
+rmSync(distDir, { recursive: true, force: true });
+runNpm(sourceDir, ["run", "build"]);
+if (!existsSync(distDir)) throw new Error("The source build did not create dist/. Nothing was staged.");
 
 rmSync(outputDir, { recursive: true, force: true });
 mkdirSync(outputDir, { recursive: true });
@@ -196,13 +220,13 @@ writeJson(
 );
 
 cpSync(distDir, path.join(outputDir, "dist"), { recursive: true });
-installBundledDependencies(outputDir);
+runNpm(outputDir, ["ci", "--omit=dev", "--ignore-scripts"]);
 pruneBundledDependencyNoise(outputDir);
 if (existsSync(licensePath)) {
   cpSync(licensePath, path.join(outputDir, "LICENSE"));
 }
 
-for (const name of ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md"]) {
+for (const name of documents) {
   const destination = path.join(outputDir, name);
   mkdirSync(path.dirname(destination), { recursive: true });
   cpSync(path.join(sourceDir, name), destination);

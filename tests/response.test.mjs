@@ -97,6 +97,19 @@ test("bulk formatting preserves oversized data for shared pagination and rejects
   );
 });
 
+test("formatToolResult preserves small readable text and bounds large indentation", async (t) => {
+  clearResponseEnv();
+  t.after(clearResponseEnv);
+  const { formatToolResult } = await import(responseModuleUrl());
+  const small = {location: {city: "Synthetic city"}};
+  assert.equal(formatToolResult(small), JSON.stringify(small, null, 2));
+  let nested = Array(9000).fill(0);
+  for (let i = 0; i < 60; i++) nested = [nested];
+  const large = {nested};
+  assert.equal(formatToolResult(large), JSON.stringify(large));
+  assert.deepEqual(JSON.parse(formatToolResult(large)), large);
+});
+
 test("formatToolResult preserves complete arrays regardless of the bulk item limit", async (t) => {
   clearResponseEnv();
   process.env.IPGEOLOCATION_MCP_MAX_RESULT_ITEMS = "10";
@@ -210,6 +223,8 @@ test("local request failures are distinguished from received HTTP errors", async
     assert.equal(detail.documented_status, undefined);
     assert.doesNotMatch(response.content[0].text, /HTTP|IPGeolocation\.io API upstream error/);
     assert.match(detail.guidance, /retry/);
+    assert.match(detail.guidance, /API may already have processed/);
+    assert.match(detail.guidance, /only with approval.*may use credits/);
   }
   const upstream = errorToolResponse(new ApiError(502, "502: Bad Gateway"));
   assert.equal(upstream.structuredContent.error.source, "ipgeolocation_api");
@@ -289,6 +304,22 @@ const DOCUMENTED_API_ERROR_SCENARIOS = [
     retryable: false,
     guidance:
       "Check IPGEOLOCATION_API_KEY, confirm the key is active, and confirm the requested endpoint is available on the current plan.",
+  },
+  {
+    status: 402,
+    category: "subscription_expired",
+    prefix: "IPGeolocation.io API subscription expired error",
+    retryable: false,
+    guidance:
+      "Renew the IPGeolocation.io subscription, then retry; retries fail until it is active again.",
+  },
+  {
+    status: 403,
+    category: "ip_not_allowed",
+    prefix: "IPGeolocation.io API IP allow-list error",
+    retryable: false,
+    guidance:
+      "Add this MCP server's public egress IP to the API key's IP allow-list, or remove the allow-list, then retry.",
   },
   {
     status: 404,

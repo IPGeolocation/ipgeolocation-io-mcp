@@ -1,9 +1,14 @@
 import {
   getConfiguredApiKey,
   getRequestTimeoutMs,
+  getRequestSignal,
+  getMaxUpstreamBytes,
 } from "./config.js";
 import { redactSensitiveText } from "./redaction.js";
 import { isIP } from "node:net";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { RequestCancelledError, ResourceLimitError } from "./errors.js";
+import { normalizeLookupArguments, validateToolArgumentSize } from "./tools/validation.js";
 
 const API_BASE = "https://api.ipgeolocation.io";
 const MAX_UPSTREAM_ERROR_CHARS = 4000;
@@ -13,13 +18,23 @@ const UPSTREAM_ERROR_MESSAGE_KEYS = [
   "detail",
   "description",
 ];
+const validatedToolArguments = new AsyncLocalStorage<boolean>();
+
+// The MCP dispatcher has already measured the original arguments before this
+// context begins. Derived API parameters must not impose a second, smaller budget.
+export function withValidatedToolArguments<T>(callback: () => T): T {
+  return validatedToolArguments.run(true, callback);
+}
 
 export function getApiKey(): string {
   const apiKey = getConfiguredApiKey();
   if (!apiKey) {
     throw new Error(
-      "API key not configured. Set the IPGEOLOCATION_API_KEY environment variable."
+      "API key not configured. Set IPGEOLOCATION_API_KEY in your client's server settings. If your host passes apiKey directly, an empty apiKey prevents use of the environment key; provide a key or omit apiKey to use it."
     );
+  }
+  if (!/^[\x21-\x7e]+$/.test(apiKey) || apiKey.includes("\\")) {
+    throw new ApiError(400, "400: API key must contain only printable ASCII characters without spaces or backslashes. Update IPGEOLOCATION_API_KEY. No API request was sent.", "mcp_server", "invalid_api_key");
   }
   return apiKey;
 }
@@ -29,62 +44,143 @@ export class ApiError extends Error {
     public status: number,
     message: string,
     public source: "ipgeolocation_api" | "mcp_server" = "ipgeolocation_api",
-    public code?: "redirect_blocked"
+    public code?: "redirect_blocked" | "invalid_response" | "response_incomplete" | "invalid_api_key"
   ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
+function invalidResponse(message: string): ApiError {
+  return new ApiError(502, `502: Upstream API ${message}. The API may already have processed the request; no automatic retry was made.`, "mcp_server", "invalid_response");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateResponse(value: unknown, expectedItems?: number): void {
+  if (expectedItems === undefined) {
+    if (!isRecord(value)) throw invalidResponse("returned an invalid response: expected a JSON object");
+  } else {
+    if (!Array.isArray(value)) throw invalidResponse("returned an invalid bulk response: expected a JSON array");
+    if (value.length !== expectedItems) throw invalidResponse(`bulk item count (${value.length}) does not match input count (${expectedItems})`);
+    const invalidIndex = value.findIndex(item => !isRecord(item));
+    if (invalidIndex !== -1) throw invalidResponse(`bulk item at input index ${invalidIndex} is not a JSON object`);
+  }
+  const stack = [{ value, depth: 1 }];
+  while (stack.length) {
+    const current = stack.pop()!;
+    if (current.depth > 64) throw invalidResponse("response exceeds the supported JSON nesting depth of 64");
+    for (const child of Object.values(current.value as object)) {
+      if (typeof child === "number" && !Number.isFinite(child)) throw invalidResponse("returned a non-finite JSON number");
+      if (typeof child === "object" && child !== null) stack.push({ value: child, depth: current.depth + 1 });
+    }
+  }
+}
+
+async function readBoundedBody(response: Response, limit: number): Promise<Uint8Array | undefined> {
+  const encoding = response.headers.get("content-encoding");
+  const length = response.headers.get("content-length");
+  if ((!encoding || encoding === "identity") && length && /^\d+$/.test(length) && Number(length) > limit) {
+    void response.body?.cancel().catch(() => {});
+    return undefined;
+  }
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) {
+        void reader.cancel().catch(() => {});
+        return undefined;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return bytes;
+}
+
+function upstreamSizeAdvice(url: string, expectedItems?: number): string {
+  const request = new URL(url);
+  if (expectedItems !== undefined) {
+    return request.pathname === "/v3/user-agent-bulk"
+      ? "Use a smaller input batch."
+      : "Use a smaller input batch or narrower upstream fields/excludes.";
+  }
+  if (request.pathname === "/v3/asn") {
+    return request.searchParams.get("include")
+      ? "Reduce optional include datasets, including datasets inferred from fields. Local excludes alone do not shrink this ASN download."
+      : "This ASN request has no optional include datasets; its local fields/excludes cannot shrink the upstream download.";
+  }
+  if (request.pathname === "/v3/security" || request.pathname === "/v3/abuse") {
+    if (request.searchParams.has("fields") || request.searchParams.has("excludes")) return "Narrow the upstream fields/excludes.";
+    const module = request.pathname.slice(4);
+    return `This request downloads the complete ${module} response before local projection. Changing only local fields/excludes will not shrink it. lookup_ip with targeted ${module} fields sends those fields upstream.`;
+  }
+  if (request.pathname === "/v3/ipgeo") {
+    return request.searchParams.has("include") || request.searchParams.has("fields") || request.searchParams.has("excludes")
+      ? "Narrow upstream fields/excludes or reduce include datasets."
+      : "This request downloads the full core IP response before local projection; changing only local fields/excludes will not shrink this download.";
+  }
+  if (request.pathname === "/v3/astronomy/timeSeries") return "Use a shorter date range.";
+  return "This request has no upstream response-size selectors in this server.";
+}
+
 async function fetchJsonWithTimeout(
   url: string,
   options: RequestInit = {},
-  errorFallback?: string
+  errorFallback?: string,
+  expectedItems?: number
 ): Promise<unknown> {
   const timeoutMs = getRequestTimeoutMs();
   const controller = new AbortController();
+  const requestSignal = getRequestSignal();
+  const signal = requestSignal ? AbortSignal.any([requestSignal, controller.signal]) : controller.signal;
+  if (signal.aborted) throw new RequestCancelledError();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
+  let receivedSuccess = false;
   try {
-    const response = await fetch(url, { ...options, redirect: "manual", signal: controller.signal });
+    const response = await fetch(url, { ...options, redirect: "manual", signal });
+    receivedSuccess = response.ok;
     if (response.status >= 300 && response.status < 400) {
-      await response.body?.cancel();
+      void response.body?.cancel().catch(() => {});
       throw new ApiError(502, "502: Upstream API returned an unexpected redirect. Redirects are blocked to protect credentials and request data.", "mcp_server", "redirect_blocked");
     }
-    if (!response.ok) {
-      await throwUpstreamResponseError(response, errorFallback);
-    }
-
-    try {
-      return await response.json();
-    } catch (error) {
-      if (controller.signal.aborted) {
-        throw error;
-      }
-      throw new ApiError(502, "502: Upstream API returned invalid JSON", "mcp_server");
-    }
+    if (!response.ok) await throwUpstreamResponseError(response, errorFallback);
+    const limit = getMaxUpstreamBytes();
+    const bytes = await readBoundedBody(response, limit);
+    if (!bytes) throw new ResourceLimitError(`Upstream response exceeds the ${limit}-byte limit. ${upstreamSizeAdvice(url, expectedItems)} Raise IPGEOLOCATION_UPSTREAM_MAX_RESPONSE_BYTES only with sufficient memory. The API may already have used credits; no automatic retry was made.`);
+    let data: unknown;
+    try { data = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); }
+    catch { throw invalidResponse("returned invalid JSON or UTF-8"); }
+    validateResponse(data, expectedItems);
+    return data;
   } catch (error) {
-    if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
-      throw new ApiError(
-        504,
-        `504: Upstream request timed out after ${timeoutMs}ms`,
-        "mcp_server"
-      );
+    // Explicit cancellation wins; a body-read deadline cannot erase received HTTP status.
+    if (requestSignal?.aborted) throw new RequestCancelledError();
+    if (error instanceof ApiError && error.source === "ipgeolocation_api") throw error;
+    if (signal.aborted) {
+      throw new ApiError(504, `504: Upstream request timed out after ${timeoutMs}ms${receivedSuccess ? ". The API returned a success status, but its response was incomplete. Credits may already have been used; a new request may use credits again. No automatic retry was made." : ""}`, "mcp_server", receivedSuccess ? "response_incomplete" : undefined);
     }
-
-    if (error instanceof ApiError) {
-      throw error;
+    if (error instanceof ApiError || error instanceof ResourceLimitError || error instanceof RequestCancelledError) throw error;
+    if (receivedSuccess) {
+      throw new ApiError(502, "502: The API returned a success status, but its response was interrupted. Credits may already have been used; a new request may use credits again. No automatic retry was made.", "mcp_server", "response_incomplete");
     }
-
-    throw new ApiError(
-      502,
-      `502: Failed to reach upstream API (${redactSensitiveText(
-        error instanceof Error ? error.message : String(error)
-      )})`,
-      "mcp_server"
-    );
+    throw new ApiError(502, `502: Upstream request or response failed (${redactSensitiveText(error instanceof Error ? error.message : String(error))}). The API may already have processed the request; no automatic retry was made.`, "mcp_server");
   } finally {
     clearTimeout(timeout);
+    // Release rejected or unfinished response bodies even on older fetch runtimes.
+    controller.abort();
   }
 }
 
@@ -120,19 +216,19 @@ async function throwUpstreamResponseError(
 ): Promise<never> {
   let message: string;
   try {
-    const text = await response.text();
-    message = parseUpstreamErrorMessage(text, fallback);
+    const bytes = await readBoundedBody(response, 64 * 1024);
+    message = bytes ? parseUpstreamErrorMessage(new TextDecoder().decode(bytes), fallback)
+      : "Upstream error body exceeded the 65536-byte limit and was omitted. Check the HTTP status; no automatic retry was made.";
   } catch {
-    message = fallback;
+    message = "Upstream error body was unavailable; the received HTTP status is preserved. No automatic retry was made.";
   }
 
   message = redactSensitiveText(message);
 
   if (message.length > MAX_UPSTREAM_ERROR_CHARS) {
-    message = `${message.slice(
-      0,
-      MAX_UPSTREAM_ERROR_CHARS
-    )}... [truncated upstream error body]`;
+    let end = MAX_UPSTREAM_ERROR_CHARS;
+    if (/[\uD800-\uDBFF]/.test(message[end - 1]) && /[\uDC00-\uDFFF]/.test(message[end])) end--;
+    message = `${message.slice(0, end)}... [truncated upstream error body]`;
   }
 
   throw new ApiError(response.status, `${response.status}: ${message}`);
@@ -141,11 +237,12 @@ async function throwUpstreamResponseError(
 async function request(
   path: string,
   params: Record<string, string | undefined> = {},
-  options: { method?: string; body?: unknown; skipAuth?: boolean } = {}
+  options: { method?: string; body?: Record<string, unknown>; skipAuth?: boolean } = {}
 ): Promise<unknown> {
+  if (!validatedToolArguments.getStore()) validateToolArgumentSize({ ...params, ...options.body });
   const url = new URL(path, API_BASE);
 
-  for (const [key, value] of Object.entries(params)) {
+  for (const [key, value] of Object.entries(normalizeLookupArguments(params))) {
     if (value !== undefined && value !== "") {
       url.searchParams.set(key, value);
     }
@@ -166,10 +263,13 @@ async function request(
 
   if (options.body) {
     headers.set("Content-Type", "application/json");
-    fetchOptions.body = JSON.stringify(options.body);
+    const body = normalizeLookupArguments(options.body);
+    fetchOptions.body = JSON.stringify(body);
   }
 
-  return fetchJsonWithTimeout(url.toString(), fetchOptions);
+  const body = options.body as { ips?: unknown[]; uaStrings?: unknown[] } | undefined;
+  const expectedItems = body?.ips?.length ?? body?.uaStrings?.length;
+  return fetchJsonWithTimeout(url.toString(), fetchOptions, undefined, expectedItems);
 }
 
 export async function getIpGeolocation(params: {
@@ -195,7 +295,7 @@ export async function getMyIp(): Promise<string> {
     "Failed to retrieve IP address"
   );
   if (typeof data !== "object" || data === null || !("ip" in data) || typeof data.ip !== "string" || isIP(data.ip) === 0) {
-    throw new ApiError(502, "502: Upstream API returned an invalid getip response: expected an IPv4 or IPv6 address.", "mcp_server");
+    throw invalidResponse("returned an invalid getip response: expected an IPv4 or IPv6 address");
   }
   return data.ip;
 }

@@ -1,0 +1,109 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { isIP } from "node:net";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+
+const image = process.env.MCP_DOCKER_IMAGE || "ipgeolocation-io-mcp:security-test";
+const dockerEnvironment = Object.fromEntries(["DOCKER_CONTEXT", "DOCKER_HOST", "DOCKER_CONFIG"]
+  .filter(name => process.env[name] !== undefined).map(name => [name, process.env[name]]));
+
+test("Docker runtime contains no unused package-manager modules or launchers", () => {
+  const remaining = JSON.parse(execFileSync("docker", [
+    "run", "--rm", "--network", "none", "--read-only", "--entrypoint", "node", image,
+    "-p", `(() => {
+      const fs = require('node:fs'), path = require('node:path');
+      const names = ['npm', 'npx', 'corepack', 'yarn', 'yarnpkg', 'pnpm', 'pnpx'];
+      const exists = file => { try { fs.lstatSync(file); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } };
+      const commands = [...new Set(process.env.PATH.split(path.delimiter))].flatMap(directory => names.map(name => path.join(directory, name))).filter(exists);
+      const modules = ['npm', 'corepack'].map(name => '/usr/local/lib/node_modules/' + name).filter(exists);
+      const yarnBundles = fs.readdirSync('/opt').filter(name => name.startsWith('yarn'));
+      return JSON.stringify({ commands, modules, yarnBundles });
+    })()`,
+  ], { encoding: "utf8", timeout: 30000 }));
+  assert.deepEqual(remaining, { commands: [], modules: [], yarnBundles: [] });
+});
+
+test("Docker runtime removes BusyBox and preserves accounts, certificates and temporary directories", () => {
+  const runtime = JSON.parse(execFileSync("docker", [
+    "run", "--rm", "--network", "none", "--read-only", "--entrypoint", "node", image,
+    "-p", `(() => {
+      const fs = require('node:fs'), path = require('node:path');
+      const packages = fs.readFileSync('/lib/apk/db/installed', 'utf8').split('\\n\\n').map(record => record.match(/^P:(.+)$/m)?.[1]);
+      const unwantedPackages = packages.filter(name => ['busybox', 'busybox-binsh', 'ssl_client', 'alpine-baselayout'].includes(name));
+      const commands = ['/bin', '/sbin', '/usr/bin', '/usr/sbin'].flatMap(dir =>
+        fs.readdirSync(dir, { withFileTypes: true }).filter(entry => entry.name === 'busybox' ||
+          (entry.isSymbolicLink() && path.resolve(dir, fs.readlinkSync(path.join(dir, entry.name))) === '/bin/busybox'))
+          .map(entry => path.join(dir, entry.name)));
+      const tempModes = ['/tmp', '/var/tmp'].map(dir => fs.statSync(dir).mode & 0o7777);
+      const certificatesPresent = fs.statSync('/etc/ssl/certs/ca-certificates.crt').size > 0;
+      return JSON.stringify({ unwantedPackages, commands, tempModes, certificatesPresent,
+        user: require('node:os').userInfo().username, nameServiceConfigPresent: fs.existsSync('/etc/nsswitch.conf') });
+    })()`,
+  ], { encoding: "utf8", timeout: 30000 }));
+  assert.deepEqual(runtime, {
+    unwantedPackages: [], commands: [], tempModes: [0o1777, 0o1777],
+    certificatesPresent: true, user: "node", nameServiceConfigPresent: true,
+  });
+});
+
+test("Docker runtime uses patched Node and preserves the stdio tool contract", async () => {
+  const runtime = JSON.parse(execFileSync("docker", [
+    "run", "--rm", "--network", "none", "--entrypoint", "node", image,
+    "-p", "JSON.stringify({ version: process.version, uid: process.getuid() })",
+  ], { encoding: "utf8", timeout: 30000 }));
+  const [major, minor, patch] = runtime.version.slice(1).split(".").map(Number);
+  assert.ok(major === 24 && (minor > 22 || (minor === 22 && patch >= 1)), runtime.version);
+  assert.ok(runtime.uid > 0);
+  assert.equal(runtime.uid, Number(process.env.MCP_DOCKER_UID || 1000));
+
+  const transport = new StdioClientTransport({
+    command: "docker",
+    env: dockerEnvironment,
+    args: ["run", "--rm", "--interactive", "--network", "none", "--read-only",
+      "--env", "IPGEOLOCATION_API_KEY=container-test-key", image],
+    stderr: "pipe",
+  });
+  const client = new Client({ name: "container-smoke-test", version: "1.0.0" });
+  try {
+    await client.connect(transport, { timeout: 10000 });
+    assert.equal(client.getServerVersion().name, "ipgeolocation-io-mcp");
+    const { tools } = await client.listTools();
+    assert.equal(tools.length, 17);
+    assert.ok(tools.some((tool) => tool.name === "get_cached_result"));
+    const result = await client.callTool({ name: "lookup_ip", arguments: { ip: 42 } });
+    assert.equal(result.isError, true);
+    assert.equal(result.structuredContent.error.source, "mcp_server");
+    assert.equal(result.structuredContent.error.category, "validation");
+    assert.match(result.structuredContent.error.message, /Input validation error/);
+  } finally {
+    await client.close();
+  }
+});
+
+test("Docker runtime preserves real HTTPS lookups and authentication errors", { timeout: 60000 }, async () => {
+  const transport = new StdioClientTransport({
+    command: "docker",
+    env: dockerEnvironment,
+    args: ["run", "--rm", "--interactive", "--read-only",
+      "--env", "IPGEOLOCATION_API_KEY=container-invalid-key", image],
+    stderr: "pipe",
+  });
+  const client = new Client({ name: "container-https-test", version: "1.0.0" });
+  try {
+    await client.connect(transport, { timeout: 10000 });
+    const publicIp = await client.callTool({ name: "get_my_ip", arguments: {} }, undefined, { timeout: 20000 });
+    assert.notEqual(publicIp.isError, true, JSON.stringify(publicIp.structuredContent?.error));
+    assert.ok(isIP(publicIp.structuredContent.ip) > 0);
+
+    const unauthorized = await client.callTool({
+      name: "lookup_ip", arguments: { ip: "8.8.8.8" },
+    }, undefined, { timeout: 20000 });
+    assert.equal(unauthorized.isError, true);
+    assert.equal(unauthorized.structuredContent.error.source, "ipgeolocation_api");
+    assert.equal(unauthorized.structuredContent.error.status, 401);
+  } finally {
+    await client.close();
+  }
+});

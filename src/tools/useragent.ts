@@ -6,6 +6,7 @@ import {
   errorToolResponse,
   formatBulkToolResult,
   formatToolResult,
+  shouldCacheBulkResult,
 } from "./response.js";
 import { getCachedOrFetchValue } from "./cache.js";
 
@@ -33,6 +34,7 @@ Returns { user_agent_string, name, type, version, version_major, device, engine,
         uaString: z
           .string()
           .min(1)
+          .regex(/\S/, "User-agent strings must not be blank.")
           .describe(
             "The user-agent string to parse (e.g. Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36)."
           ),
@@ -71,12 +73,12 @@ Returns { user_agent_string, name, type, version, version_major, device, engine,
         readOnlyHint: true,
         openWorldHint: true,
       },
-      description: `Read-only bulk user-agent parsing via POST /v3/user-agent-bulk. Paid only. Cost: 1 credit per successful string. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} explicit user-agent strings. Larger batches are rejected before any API call. Complete results are returned directly or as cached pages. Oversized results contain page.next_cursor for complete retrieval through get_cached_result without another API call or additional credits.
+      description: `Read-only bulk user-agent parsing via POST /v3/user-agent-bulk. Paid only. Cost: 1 credit per successful string. This MCP server accepts up to ${MAX_BULK_ITEMS.toLocaleString()} explicit user-agent strings. Larger batches are rejected before any API call. Complete results within upstream and cache byte limits are returned directly or as cached pages. Cached pages use get_cached_result without another API call or additional credits. An upstream body above its byte limit, or a required pagination snapshot too large to retain, returns a non-retryable resource_limit error with no cursor; the API may already have used credits.
 
 Returns one parsed object per string with user_agent_string, name, type, version, version_major, device, engine, and operating_system. uaStrings must be a non-empty array of exact user-agent strings; empty/null strings are rejected locally before any API call. parse_user_agent handles a single string. force_refresh bypasses cached data, makes a new upstream request, and can consume credits.`,
       inputSchema: {
         uaStrings: z
-          .array(z.string().min(1))
+          .array(z.string().min(1).regex(/\S/, "User-agent strings must not be blank."))
           .min(1)
           .max(MAX_BULK_ITEMS)
           .describe(
@@ -96,7 +98,8 @@ Returns one parsed object per string with user_agent_string, name, type, version
         const result = await getCachedOrFetchValue(
           cacheKey,
           () => parseUserAgentBulk({ uaStrings: params.uaStrings }),
-          params.force_refresh
+          params.force_refresh,
+          shouldCacheBulkResult
         );
         return {
           content: [

@@ -18,7 +18,7 @@ export function registerAbuseTools(server: McpServer) {
         readOnlyHint: true,
         openWorldHint: true,
       },
-      description: `Read-only abuse contact lookup via GET /v3/abuse. Paid only. Cost: 1 credit. This endpoint is dedicated to abuse contact data; lookup_ip with include=abuse provides abuse data together with location, security, ASN/company, timezone, network, or currency.
+      description: `Read-only abuse contact lookup via GET /v3/abuse. Paid only. Cost: 1 credit. This endpoint is dedicated to abuse contact data; lookup_ip with include=abuse provides abuse data together with location, security, company, ASN, timezone, network, or currency.
 
 Returns { ip, abuse } with route, country, name, organization, kind, address, emails, and phone_numbers for reporting abuse.
 

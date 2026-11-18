@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Connect your MCP client to the hosted IPGeolocation.io server using your existing API key.">
+  <title>IPGeolocation.io MCP — Connection Guide</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172a40; background: #fff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-size: 1rem; line-height: 1.65; }
+    ::selection { background: #ffe0e2; color: #172a40; }
+    a { color: #a3212b; text-underline-offset: .2em; }
+    a:hover { color: #72131b; }
+    :focus-visible { outline: 3px solid #165c91; outline-offset: 4px; }
+    header, main, footer { width: min(100% - 2.5rem, 48rem); margin-inline: auto; }
+    header { padding-block: 1.5rem; border-bottom: 1px solid #dce3eb; }
+    header a { color: #172a40; font-size: 1.125rem; font-weight: 700; text-decoration: none; }
+    main { padding-block: 2rem; }
+    h1 { margin: 0 0 .75rem; font-size: clamp(1.75rem, 5vw, 2.5rem); line-height: 1.2; letter-spacing: -.025em; }
+    h2 { margin: 2rem 0 .75rem; font-size: 1.25rem; line-height: 1.4; }
+    p { margin: .75rem 0; max-width: 70ch; }
+    .intro { color: #40546b; font-size: 1.0625rem; }
+    code { font-family: ui-monospace, monospace; font-size: .9em; overflow-wrap: anywhere; }
+    .label { margin-bottom: .375rem; font-weight: 600; }
+    .endpoint { display: flex; align-items: center; gap: 1rem; padding: .875rem 1rem; border: 1px solid #b8c5d4; border-radius: .5rem; background: #f5f7fa; }
+    .endpoint code { flex: 1; min-width: 0; font-size: .9375rem; }
+    button { flex: none; min-height: 44px; padding: .625rem 1rem; border: 0; border-radius: .375rem; background: #bd2833; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #991e28; }
+    button:active { background: #771720; }
+    #copy-status { min-height: 1.65em; margin: .5rem 0 0; color: #40546b; font-size: .9375rem; }
+    dl { margin: 1rem 0; }
+    dl div { display: grid; grid-template-columns: 10rem minmax(0, 1fr); gap: .5rem 1rem; padding-block: .625rem; border-bottom: 1px solid #dce3eb; }
+    dt { font-weight: 600; }
+    dd { margin: 0; }
+    ol { padding-left: 1.5rem; }
+    li { padding-left: .25rem; margin-block: .625rem; }
+    footer { padding-block: 1.25rem 2rem; border-top: 1px solid #dce3eb; }
+    footer nav { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; font-size: .9375rem; }
+    @media (max-width: 32rem) {
+      .endpoint { flex-direction: column; align-items: stretch; gap: .75rem; }
+      dl div { grid-template-columns: 1fr; gap: .25rem; }
+      main { padding-top: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <header><a href="https://ipgeolocation.io/">IPGeolocation.io</a></header>
+  <main>
+    <h1>Connect your MCP client</h1>
+    <p class="intro">Use IPGeolocation.io tools in your assistant without running an MCP server on your computer.</p>
+
+    <h2>Connection settings</h2>
+    <p>Your client must support Streamable HTTP and private custom headers.</p>
+    <p id="url-label" class="label">Server URL</p>
+    <div class="endpoint" role="group" aria-labelledby="url-label">
+      <code id="mcp-url">https://mcp.ipgeolocation.io/mcp</code>
+      <button id="copy-url" type="button" aria-describedby="mcp-url">Copy URL</button>
+    </div>
+    <p id="copy-status" role="status" aria-live="polite"></p>
+    <dl>
+      <div><dt>Connection type</dt><dd>Streamable HTTP</dd></div>
+      <div><dt>Header name</dt><dd><code>X-IPGeolocation-API-Key</code></dd></div>
+      <div><dt>Header value</dt><dd>Your IPGeolocation.io API key</dd></div>
+    </dl>
+    <p>Keep your key in your client's private connection settings. Keep it out of chat messages, URLs and shared files.</p>
+
+    <h2>Get started</h2>
+    <ol>
+      <li>Use your existing API key, or <a href="https://app.ipgeolocation.io/signup">create a free account</a> to get one.</li>
+      <li>Add a remote MCP server in your client using the connection settings above.</li>
+      <li>Save the connection and ask: <strong>Where is 8.8.8.8 located?</strong></li>
+    </ol>
+    <p>Your existing free or paid plan and API credit rules apply. Hosted MCP provides 16 tools for IP location, company and network information, ASN data, security, abuse contacts, time zones, astronomy, currency and user-agent parsing.</p>
+    <p>Include the IP address or other input you want to look up. The <code>get_my_ip</code> tool is available only in local MCP because a hosted server would return its own IP address.</p>
+
+    <noscript><p>You can select and copy the server URL manually. The connection settings work without JavaScript.</p></noscript>
+  </main>
+  <footer>
+    <nav aria-label="Resources">
+      <a href="https://ipgeolocation.io/documentation.html">API documentation</a>
+      <a href="https://github.com/IPGeolocation/ipgeolocation-io-mcp">Source and local setup</a>
+      <a href="https://ipgeolocation.io/pricing.html">Plans and pricing</a>
+      <a href="https://ipgeolocation.io/privacy.html">Privacy policy</a>
+    </nav>
+  </footer>
+  <script>
+    const button = document.querySelector('#copy-url');
+    const url = document.querySelector('#mcp-url');
+    const status = document.querySelector('#copy-status');
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(url.textContent.trim());
+        status.textContent = 'Connection URL copied.';
+      } catch {
+        status.textContent = 'Copy was blocked. Select the URL above and copy it.';
+      }
+    });
+  </script>
+</body>
+</html>

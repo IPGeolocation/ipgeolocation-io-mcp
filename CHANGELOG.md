@@ -2,6 +2,45 @@
 
 Changes in development appear under Unreleased. Published release details are available on [GitHub Releases](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases).
 
+## Unreleased
+
+- Add a separate API-key-authenticated Streamable HTTP entry point using the same tool handlers as local MCP. Local stdio retains 17 tools; hosted mode exposes 16, excluding `get_my_ip`, and requires explicit lookup targets.
+- Bind hosted sessions to customer keys, bound requests and resource use, preserve cancellation during overload, and provide Nginx/Compose deployment examples. Cover tool parity, isolation, lifecycle, verified HTTPS and concurrent large responses with tests.
+- Keep hosted MCP free of added customer rate or usage quotas. Use signed key-bound connection IDs without an idle session pool, isolate small messages from large uploads, preserve cancellation under load, and retain full RPC execution time after upload. Verify the published-loopback Compose proxy path.
+- Update MCP SDK to 1.32.2 and the Hono resolutions to compatible security patches. Billing and ChatGPT integration are separate from this hosted release.
+- Explain HTTP 402 (expired subscription) and 403 (IP allow-list) errors with their own categories and guidance instead of reporting them as undocumented, and describe 405 as a wrong HTTP method.
+
+## [2.0.3](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.3) - 2026-11-05
+
+### Tool use and reliability
+
+- Simplify setup and security documentation, keep detailed tool information in a separate reference, and clarify bulk calls, retries and cached-page retrieval.
+- Put safety rules first and shorten server instructions so clients can retain the full guidance.
+- Clarify missing API key errors and proxy setup, and include company and currency data in package descriptions.
+- Reject blank inputs, broken Unicode text, invalid dates or coordinate pairs, and unsupported API key characters before making an API request.
+- Return clear errors for configuration and size limits. If the API reports success but returns invalid or incomplete data, mark the error as non-retryable because another request may use credits again. See the [error reference](REFERENCE.md#error-codes) for the exact categories.
+- Preserve the API's HTTP status when its error response cannot finish, while still honoring cancellation.
+- Keep overlapping lookups, refreshes and cancellations from replacing newer cached data or interrupting other callers.
+- Use less memory for large responses and cached results. Reading a saved page no longer processes the whole result again.
+- Improve credential masking for encoded values and short keys while preserving ordinary company names, user-agent strings and input labels.
+- Limit request, response and cache sizes and JSON nesting. Accept valid JSON escapes and handle closed output connections without an unhandled error.
+- Treat negative astronomy `elevation` as 0, matching the API, and list Standard Arabic (`ar`) in the IP geolocation tool descriptions.
+- Fix startup when a client launches the server through a symbolic link.
+
+### Packaging and releases
+
+- Remove old build output before preparing npm packages or MCP bundles, and build the selected source before packaging it.
+- Check filenames and bundled metadata before release. Reject unsafe source or dependency paths while packaging and remove rejected scanner output.
+- Recover interrupted uploads from the original signed files and retry announcements without rebuilding or replacing published assets.
+- Include Kiro packaging files in npm, Docker and MCP bundles. Keep mpak scans compatible with 2.0.1, which has no Kiro files.
+- Remove unused Corepack and BusyBox tools from the Docker image. The server still starts with Node; the image no longer includes a shell.
+- Block unexpected network requests in offline Node.js tests.
+
+## [2.0.2](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.2) - 2026-10-27
+
+- Update Zod to 4.6.7 and the body-parser, fast-uri, ip-address and qs dependency resolutions for security fixes and compatible transitive requirements. Oversized bulk input now fails its collection limit before individual elements are inspected.
+- Pin the Docker build and runtime stages to Node.js 24.22.1 on Alpine 3.24 by digest, replacing the Debian base with unresolved OS advisories. Keep the non-root user, entrypoint and configuration unchanged. Run the full regression suite inside the container base on amd64 and arm64, verify read-only stdio and live HTTPS behavior, and reject high/critical image findings, including those without a fix.
+
 ## [2.0.1](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.1) - 2026-10-11
 
 - Retrieve complete oversized results with the new zero-credit `get_cached_result` tool. Page reads support replay and sliding idle expiry; unavailable cursors fail locally without another API call.

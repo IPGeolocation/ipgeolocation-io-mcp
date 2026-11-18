@@ -3,6 +3,18 @@ name: mpak Release
 on:
   workflow_dispatch:
     inputs:
+      operation:
+        description: Publish new assets, resume retained assets, or announce a published release
+        type: choice
+        required: true
+        default: publish
+        options:
+          - publish
+          - resume
+          - announce
+      recovery_run_id:
+        description: Original workflow run ID containing the retained signed assets (resume only)
+        required: false
       source_ref:
         description: Git tag to build (must match release_tag)
         required: true
@@ -12,10 +24,16 @@ on:
 
 permissions: read-all
 
+concurrency:
+  group: mpak-release-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
 jobs:
   publish:
+    if: inputs.operation != 'announce'
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
       id-token: write
       attestations: write
@@ -39,8 +57,21 @@ jobs:
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
           SOURCE_REF: ${{ inputs.source_ref }}
+          OPERATION: ${{ inputs.operation }}
+          RECOVERY_RUN_ID: ${{ inputs.recovery_run_id }}
         run: |
           set -euo pipefail
+
+          case "$OPERATION" in
+            publish) ;;
+            resume)
+              if [[ ! "$RECOVERY_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+                echo "::error::Resume requires the original workflow run ID."
+                exit 1
+              fi
+              ;;
+            *) echo "::error::Invalid publication operation."; exit 1 ;;
+          esac
 
           if [ "$SOURCE_REF" != "$RELEASE_TAG" ]; then
             echo "::error::source_ref ($SOURCE_REF) must match release_tag ($RELEASE_TAG)."
@@ -65,27 +96,12 @@ jobs:
           cache: "npm"
           cache-dependency-path: source/package-lock.json
 
-      - name: Install CycloneDX 1.6 SBOM generator
-        run: |
-          set -euo pipefail
-
-          curl -fsSL \
-            https://github.com/anchore/syft/releases/download/v1.29.1/syft_1.29.1_linux_amd64.tar.gz \
-            -o /tmp/syft.tar.gz
-          echo "ca704907e5a7b697c6e683832ca128e2ae60de63d7d87f3e2e39672df9038fa4  /tmp/syft.tar.gz" \
-            | sha256sum -c -
-          tar -xzf /tmp/syft.tar.gz -C /tmp syft
-          sudo install -m 0755 /tmp/syft /usr/local/bin/syft
-
       - name: Verify release exists
         working-directory: tooling
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: gh release view "${{ inputs.release_tag }}"
-
-      - name: Install root dependencies
-        working-directory: source
-        run: npm ci --ignore-scripts
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: gh release view "$RELEASE_TAG"
 
       - name: Verify release version metadata
         working-directory: source
@@ -107,25 +123,59 @@ jobs:
             '.version == $version and .packages[0].version == $version' \
             server.json >/dev/null
 
+      - name: Check new release filenames before building or signing
+        if: inputs.operation == 'publish'
+        working-directory: tooling
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: node scripts/upload-mpak-release-assets.mjs --preflight "$RELEASE_TAG"
+
+      - name: Install CycloneDX 1.6 SBOM generator
+        if: inputs.operation == 'publish'
+        run: |
+          set -euo pipefail
+
+          curl -fsSL \
+            https://github.com/anchore/syft/releases/download/v1.29.1/syft_1.29.1_linux_amd64.tar.gz \
+            -o /tmp/syft.tar.gz
+          echo "ca704907e5a7b697c6e683832ca128e2ae60de63d7d87f3e2e39672df9038fa4  /tmp/syft.tar.gz" \
+            | sha256sum -c -
+          tar -xzf /tmp/syft.tar.gz -C /tmp syft
+          sudo install -m 0755 /tmp/syft /usr/local/bin/syft
+
+
+      - name: Install root dependencies
+        if: inputs.operation == 'publish'
+        working-directory: source
+        run: npm ci --ignore-scripts
+
+
       - name: Audit root dependencies
+        if: inputs.operation == 'publish'
         working-directory: source
         run: npm audit --audit-level=moderate
 
       - name: Run root test suite
+        if: inputs.operation == 'publish'
         working-directory: source
         run: npm test
 
       - name: Prepare isolated mpak package
+        if: inputs.operation == 'publish'
         working-directory: tooling
         env:
           MPAK_SOURCE_DIR: ../source
         run: node scripts/prepare-mpak-package.mjs
 
       - name: Generate bundled SBOM
+        if: inputs.operation == 'publish'
         working-directory: tooling
         run: node scripts/generate-mpak-sbom.mjs
 
       - name: Build universal mpak bundle
+        if: inputs.operation == 'publish'
         id: build_bundle
         uses: NimbleBrainInc/mcpb-pack@e74c82722fa4b954ce7740f875d6c437ae471df6
         with:
@@ -136,22 +186,24 @@ jobs:
           platform-arch: any
 
       - name: Finalize mpak bundle metadata
+        if: inputs.operation == 'publish'
         working-directory: tooling
-        run: >-
-          node scripts/finalize-mpak-bundle.mjs
-          "artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}"
-          "artifacts/mpak-package"
+        env:
+          BUNDLE_FILENAME: ${{ steps.build_bundle.outputs.bundle-path }}
+        run: node scripts/finalize-mpak-bundle.mjs "artifacts/mpak-package/$BUNDLE_FILENAME" "artifacts/mpak-package"
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
 
       - name: Sign mpak bundle with Sigstore keyless
+        if: inputs.operation == 'publish'
         id: sign_bundle
         working-directory: tooling/artifacts/mpak-package
+        env:
+          BUNDLE_FILENAME: ${{ steps.build_bundle.outputs.bundle-path }}
         run: |
           set -euo pipefail
 
-          BUNDLE_FILENAME="${{ steps.build_bundle.outputs.bundle-path }}"
           SIGNATURE_BUNDLE="${BUNDLE_FILENAME}.sigstore.json"
 
           cosign sign-blob \
@@ -162,23 +214,29 @@ jobs:
           echo "signature_bundle=$SIGNATURE_BUNDLE" >> "$GITHUB_OUTPUT"
 
       - name: Generate build provenance attestation
+        if: inputs.operation == 'publish'
         id: attest_bundle
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: tooling/artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}
 
       - name: Stage provenance bundle asset
+        if: inputs.operation == 'publish'
         id: stage_attestation
         working-directory: tooling
+        env:
+          BUNDLE_FILENAME: ${{ steps.build_bundle.outputs.bundle-path }}
+          ATTESTATION_BUNDLE: ${{ steps.attest_bundle.outputs.bundle-path }}
         run: |
           set -euo pipefail
 
-          ATTESTATION_ASSET="artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}.provenance.sigstore.json"
-          cp "${{ steps.attest_bundle.outputs.bundle-path }}" "$ATTESTATION_ASSET"
+          ATTESTATION_ASSET="artifacts/mpak-package/$BUNDLE_FILENAME.provenance.sigstore.json"
+          cp "$ATTESTATION_BUNDLE" "$ATTESTATION_ASSET"
 
           echo "attestation_asset=$ATTESTATION_ASSET" >> "$GITHUB_OUTPUT"
 
       - name: Verify signature and provenance
+        if: inputs.operation == 'publish'
         working-directory: tooling
         env:
           GH_TOKEN: ${{ github.token }}
@@ -204,30 +262,88 @@ jobs:
             --source-ref "$GITHUB_REF" \
             --source-digest "$GITHUB_SHA"
 
-      - name: Upload mpak assets to the tagged release
+      - name: Retain the exact signed asset set before publication
+        if: inputs.operation == 'publish'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: mpak-release-assets
+          retention-days: 90
+          compression-level: 0
+          if-no-files-found: error
+          path: |
+            tooling/artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}
+            tooling/artifacts/mpak-package/${{ steps.sign_bundle.outputs.signature_bundle }}
+            tooling/${{ steps.stage_attestation.outputs.attestation_asset }}
+            tooling/artifacts/mpak-package/sbom.cdx.json
+            tooling/artifacts/mpak-package/server.json
+
+      - name: Restore verified assets from the original release run
+        if: inputs.operation == 'resume'
+        working-directory: tooling
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          RECOVERY_RUN_ID: ${{ inputs.recovery_run_id }}
+        run: node scripts/prepare-mpak-announcement.mjs --restore "$RELEASE_TAG" "$RECOVERY_RUN_ID" "$RUNNER_TEMP/mpak-recovery"
+
+      - name: Upload new mpak assets to the tagged release
         working-directory: tooling
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          OPERATION: ${{ inputs.operation }}
+          BUNDLE_PATH: artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}
+          SIGNATURE_PATH: artifacts/mpak-package/${{ steps.sign_bundle.outputs.signature_bundle }}
+          ATTESTATION_ASSET: ${{ steps.stage_attestation.outputs.attestation_asset }}
         run: |
-          gh release upload "${{ inputs.release_tag }}" \
-            "artifacts/mpak-package/${{ steps.build_bundle.outputs.bundle-path }}" \
-            artifacts/mpak-package/server.json \
-            artifacts/mpak-package/sbom.cdx.json \
-            "artifacts/mpak-package/${{ steps.sign_bundle.outputs.signature_bundle }}" \
-            "${{ steps.stage_attestation.outputs.attestation_asset }}" \
-            --clobber
+          set -euo pipefail
+          if [ "$OPERATION" = "resume" ]; then
+            node scripts/upload-mpak-release-assets.mjs --resume "$RELEASE_TAG" "$RUNNER_TEMP/mpak-recovery"
+          else
+            node scripts/upload-mpak-release-assets.mjs "$RELEASE_TAG" \
+              "$BUNDLE_PATH" \
+              artifacts/mpak-package/server.json \
+              artifacts/mpak-package/sbom.cdx.json \
+              "$SIGNATURE_PATH" \
+              "$ATTESTATION_ASSET"
+          fi
+
+  announce:
+    needs: publish
+    if: ${{ always() && !cancelled() && (inputs.operation == 'announce' || needs.publish.result == 'success') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+
+      - name: Prepare announcement from published assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: node scripts/prepare-mpak-announcement.mjs "$RELEASE_TAG" "$RUNNER_TEMP/mpak-announcement"
 
       - name: Announce universal mpak bundle
-        working-directory: tooling/artifacts/mpak-package
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          BUNDLE_FILENAME: ${{ steps.build_bundle.outputs.bundle-path }}
         run: |
           set -euo pipefail
 
-          if [ ! -f "$BUNDLE_FILENAME" ]; then
-            echo "::error::Bundle not found: $BUNDLE_FILENAME"
+          ANNOUNCEMENT_PAYLOAD="$RUNNER_TEMP/mpak-announcement/announcement.json"
+          if [ ! -f "$ANNOUNCEMENT_PAYLOAD" ]; then
+            echo "::error::Verified announcement payload not found."
             exit 1
           fi
 
@@ -241,49 +357,9 @@ jobs:
             exit 1
           fi
 
-          NAME=$(jq -r '.name' manifest.json)
-          VERSION=$(jq -r '.version' manifest.json)
-          PRERELEASE=$(gh release view "$RELEASE_TAG" --json isPrerelease --jq '.isPrerelease')
-
-          if stat -f%z "$BUNDLE_FILENAME" >/dev/null 2>&1; then
-            SIZE=$(stat -f%z "$BUNDLE_FILENAME")
-          else
-            SIZE=$(stat -c%s "$BUNDLE_FILENAME")
-          fi
-
-          if command -v shasum >/dev/null 2>&1; then
-            SHA256=$(shasum -a 256 "$BUNDLE_FILENAME" | awk '{print $1}')
-          else
-            SHA256=$(sha256sum "$BUNDLE_FILENAME" | awk '{print $1}')
-          fi
-
-          PAYLOAD=$(jq -n \
-            --arg name "$NAME" \
-            --arg version "$VERSION" \
-            --slurpfile manifest manifest.json \
-            --arg release_tag "$RELEASE_TAG" \
-            --argjson prerelease "$PRERELEASE" \
-            --arg filename "$BUNDLE_FILENAME" \
-            --arg os "any" \
-            --arg arch "any" \
-            --arg sha256 "$SHA256" \
-            --argjson size "$SIZE" \
-            '{
-              name: $name,
-              version: $version,
-              manifest: $manifest[0],
-              release_tag: $release_tag,
-              prerelease: $prerelease,
-              artifact: {
-                filename: $filename,
-                os: $os,
-                arch: $arch,
-                sha256: $sha256,
-                size: $size
-              }
-            }')
-
-          echo "Announcing $NAME v$VERSION for release $RELEASE_TAG"
+          NAME=$(jq -r '.name' "$ANNOUNCEMENT_PAYLOAD")
+          VERSION=$(jq -r '.version' "$ANNOUNCEMENT_PAYLOAD")
+          echo "Announcing $NAME v$VERSION"
 
           MAX_ATTEMPTS=4
           ATTEMPT=1
@@ -293,7 +369,7 @@ jobs:
               -X POST "https://registry.mpak.dev/v1/bundles/announce" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer $OIDC_TOKEN" \
-              -d "$PAYLOAD")
+              --data-binary "@$ANNOUNCEMENT_PAYLOAD")
 
             HTTP_CODE=$(printf '%s\n' "$RESPONSE" | tail -n 1)
             BODY=$(printf '%s\n' "$RESPONSE" | sed '$d')
