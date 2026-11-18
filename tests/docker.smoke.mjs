@@ -6,6 +6,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const image = process.env.MCP_DOCKER_IMAGE || "ipgeolocation-io-mcp:security-test";
+const dockerEnvironment = Object.fromEntries(["DOCKER_CONTEXT", "DOCKER_HOST", "DOCKER_CONFIG"]
+  .filter(name => process.env[name] !== undefined).map(name => [name, process.env[name]]));
 
 test("Docker runtime contains no unused package-manager modules or launchers", () => {
   const remaining = JSON.parse(execFileSync("docker", [
@@ -58,6 +60,7 @@ test("Docker runtime uses patched Node and preserves the stdio tool contract", a
 
   const transport = new StdioClientTransport({
     command: "docker",
+    env: dockerEnvironment,
     args: ["run", "--rm", "--interactive", "--network", "none", "--read-only",
       "--env", "IPGEOLOCATION_API_KEY=container-test-key", image],
     stderr: "pipe",
@@ -82,6 +85,7 @@ test("Docker runtime uses patched Node and preserves the stdio tool contract", a
 test("Docker runtime preserves real HTTPS lookups and authentication errors", { timeout: 60000 }, async () => {
   const transport = new StdioClientTransport({
     command: "docker",
+    env: dockerEnvironment,
     args: ["run", "--rm", "--interactive", "--read-only",
       "--env", "IPGEOLOCATION_API_KEY=container-invalid-key", image],
     stderr: "pipe",
