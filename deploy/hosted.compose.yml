@@ -1,0 +1,32 @@
+services:
+  mcp:
+    build:
+      context: ..
+    image: ipgeolocation-io-mcp:hosted-candidate
+    entrypoint: ["node", "/app/dist/http-cli.js"]
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 2
+    stop_grace_period: 15s
+    env_file: hosted.env
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    ports:
+      - "127.0.0.1:8787:8787"
+    networks: [mcp]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+networks:
+  mcp:
+    ipam:
+      config:
+        - subnet: 172.30.88.0/29
+          gateway: 172.30.88.1

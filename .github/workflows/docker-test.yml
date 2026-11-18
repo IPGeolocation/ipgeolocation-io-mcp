@@ -33,6 +33,8 @@ jobs:
         run: docker build --pull --tag ipgeolocation-io-mcp:security-test .
       - name: Test container runtime and stdio protocol
         run: node --test tests/docker.smoke.mjs
+      - name: Test hosted MCP through verified HTTPS and Nginx
+        run: node --test tests/hosted.docker.mjs
       - name: Scan runtime image
         id: scan
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2

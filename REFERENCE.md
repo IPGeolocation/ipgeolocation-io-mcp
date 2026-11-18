@@ -308,8 +308,10 @@ The following table applies to HTTP errors actually received from the API:
 |------|---------|
 | `400` | Upstream API rejected the request parameters or input format |
 | `401` | API key rejected, free plan calling a paid tool, or non-English `lang` on free plan |
+| `402` | Paid subscription has expired |
+| `403` | The API key has an IP allow-list and this server's IP is not on it |
 | `404` | Resource not found (e.g., ASN does not exist) |
-| `405` | Method or subscription restriction from the upstream API |
+| `405` | Wrong HTTP method for the endpoint |
 | `413` | POST body is larger than the upstream API allows |
 | `415` | POST request is missing the required `application/json` content type |
 | `423` | Private, reserved, or bogon IP, including documentation addresses such as `203.0.113.42` and `198.51.100.27` |
