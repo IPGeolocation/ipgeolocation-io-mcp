@@ -38,8 +38,8 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn* \
         /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
         /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx \
-    && apk add --no-network --no-scripts alpine-baselayout-data \
-    && apk del --no-network --no-scripts alpine-baselayout busybox busybox-binsh ssl_client \
+    && apk add --no-network --no-scripts ca-certificates-bundle alpine-baselayout-data \
+    && apk del --no-network --no-scripts alpine-baselayout busybox busybox-binsh ssl_client apk-tools \
     && node -e "const fs = require('node:fs'); \
         for (const dir of ['/bin', '/sbin', '/usr/bin', '/usr/sbin']) { \
             for (const entry of fs.readdirSync(dir, { withFileTypes: true })) { \
