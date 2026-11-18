@@ -20,6 +20,7 @@ export function getRequestSignal(): AbortSignal | undefined {
 
 export type RuntimeConfig = {
   apiKey?: string;
+  hosted?: boolean;
 };
 
 const runtimeConfigStorage = new AsyncLocalStorage<RuntimeConfig>();
@@ -45,9 +46,10 @@ function parseBoundedInt(
 }
 
 function normalizeRuntimeConfig(config: Partial<RuntimeConfig> = {}): RuntimeConfig {
-  if (config.apiKey === undefined) return {};
+  const normalized: RuntimeConfig = config.hosted === true ? { hosted: true } : {};
+  if (config.apiKey === undefined) return normalized;
   if (typeof config.apiKey !== "string") throw new Error("API key configuration must be a string; omit it to use the environment variable.");
-  return { apiKey: config.apiKey.trim() };
+  return { ...normalized, apiKey: config.apiKey.trim() };
 }
 
 export function withRuntimeConfig<T>(
@@ -59,6 +61,10 @@ export function withRuntimeConfig<T>(
 
 export function getConfiguredApiKey(): string | undefined {
   return (runtimeConfigStorage.getStore()?.apiKey ?? process.env.IPGEOLOCATION_API_KEY)?.trim() || undefined;
+}
+
+export function isHostedRuntime(): boolean {
+  return runtimeConfigStorage.getStore()?.hosted === true;
 }
 
 export function getRequestTimeoutMs(): number {

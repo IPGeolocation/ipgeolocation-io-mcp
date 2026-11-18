@@ -4,7 +4,13 @@ Changes in development appear under Unreleased. Published release details are av
 
 ## Unreleased
 
-Planned version: 2.0.3.
+- Add a separate API-key-authenticated Streamable HTTP entry point using the same tool handlers as local MCP. Local stdio retains 17 tools; hosted mode exposes 16, excluding `get_my_ip`, and requires explicit lookup targets.
+- Bind hosted sessions to customer keys, bound requests and resource use, preserve cancellation during overload, and provide Nginx/Compose deployment examples. Cover tool parity, isolation, lifecycle, verified HTTPS and concurrent large responses with tests.
+- Keep hosted MCP free of added customer rate or usage quotas. Use signed key-bound connection IDs without an idle session pool, isolate small messages from large uploads, preserve cancellation under load, and retain full RPC execution time after upload. Verify the published-loopback Compose proxy path.
+- Update MCP SDK to 1.32.2 and the Hono resolutions to compatible security patches. Billing and ChatGPT integration are separate from this hosted release.
+- Explain HTTP 402 (expired subscription) and 403 (IP allow-list) errors with their own categories and guidance instead of reporting them as undocumented, and describe 405 as a wrong HTTP method.
+
+## [2.0.3](https://github.com/IPGeolocation/ipgeolocation-io-mcp/releases/tag/v2.0.3) - 2026-11-05
 
 ### Tool use and reliability
 

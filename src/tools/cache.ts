@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   getCacheMaxBytes, getCacheMaxEntries, getCacheTtlMs, getConfiguredApiKey,
   getRequestSignal, withRequestSignal,
+  isHostedRuntime,
 } from "../config.js";
 import { RequestCancelledError } from "../errors.js";
 
@@ -31,8 +32,17 @@ function removeEntry(key: string): void {
 function evictExpired(now = Date.now()): void {
   for (const [key, entry] of cache) if (entry.expiresAt <= now) removeEntry(key);
 }
-function evictOverflow(): void {
+function evictOverflow(writerKey?: string): void {
   const entries = getCacheMaxEntries(), bytes = getCacheMaxBytes();
+  if (writerKey !== undefined) {
+    const prefix = writerKey.slice(0, writerKey.indexOf("|") + 1);
+    // Under global pressure, replace the writer's older data before another key's.
+    for (const key of cache.keys()) {
+      if (cache.size <= entries && cachedBytes <= bytes) break;
+      if (key === writerKey || !key.startsWith(prefix)) continue;
+      removeEntry(key);
+    }
+  }
   while (cache.size > entries || cachedBytes > bytes) removeEntry(cache.keys().next().value!);
 }
 function getCacheEntry(key: string): CacheEntry | undefined {
@@ -68,7 +78,7 @@ function setCacheEntry(key: string, value: unknown, family?: string, valueBytes?
   cache.set(key, { value, expiresAt: now + getCacheTtlMs(), bytes, version: version ?? ++cacheVersion, family });
   cachedBytes += bytes;
   evictExpired(now);
-  evictOverflow();
+  evictOverflow(isHostedRuntime() ? key : undefined);
   return cache.has(key);
 }
 export function setCachedValue(key: string, value: unknown, valueBytes?: number): boolean {
