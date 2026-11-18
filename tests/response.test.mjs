@@ -306,6 +306,22 @@ const DOCUMENTED_API_ERROR_SCENARIOS = [
       "Check IPGEOLOCATION_API_KEY, confirm the key is active, and confirm the requested endpoint is available on the current plan.",
   },
   {
+    status: 402,
+    category: "subscription_expired",
+    prefix: "IPGeolocation.io API subscription expired error",
+    retryable: false,
+    guidance:
+      "Renew the IPGeolocation.io subscription, then retry; retries fail until it is active again.",
+  },
+  {
+    status: 403,
+    category: "ip_not_allowed",
+    prefix: "IPGeolocation.io API IP allow-list error",
+    retryable: false,
+    guidance:
+      "Add this MCP server's public egress IP to the API key's IP allow-list, or remove the allow-list, then retry.",
+  },
+  {
     status: 404,
     category: "not_found",
     prefix: "IPGeolocation.io API not found error",

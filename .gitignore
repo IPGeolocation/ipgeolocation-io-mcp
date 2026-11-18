@@ -19,5 +19,6 @@ Thumbs.db
 .idea/
 *.tgz
 artifacts/
+deploy/hosted.env
 .mcpregistry_*
 TODO.md

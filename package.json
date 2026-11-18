@@ -6,7 +6,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "ipgeolocation-io-mcp": "./dist/cli.js"
+    "ipgeolocation-io-mcp": "./dist/cli.js",
+    "ipgeolocation-io-mcp-http": "./dist/http-cli.js"
   },
   "files": [
     "dist",
@@ -18,6 +19,7 @@
     "CONTRIBUTING.md",
     "RELEASING.md",
     "REFERENCE.md",
+    "HOSTED.md",
     "packaging/mpak/README.md",
     "packaging/kiro/README.md",
     "packaging/kiro/mcp.json",
@@ -27,10 +29,10 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc && node -e \"for (const file of ['dist/cli.js', 'dist/http-cli.js']) require('node:fs').chmodSync(file, 0o755)\"",
     "prepare:mpak": "node scripts/prepare-mpak-package.mjs",
     "sbom:mpak": "node scripts/generate-mpak-sbom.mjs",
-    "test": "npm run test:unit && npm run test:integration && npm run test:redteam && npm run test:fuzz",
+    "test": "npm run test:unit && npm run test:integration && npm run test:redteam && npm run test:fuzz && npm run test:hosted",
     "test:unit": "npm run build && node --require ./tests/fixtures/loopback-only.cjs --test --test-concurrency=1 tests/client.test.mjs tests/response.test.mjs tests/pagination.test.mjs tests/validation.test.mjs tests/cache.hardening.test.mjs tests/network-isolation.test.mjs",
     "test:integration": "npm run build && node --require ./tests/fixtures/loopback-only.cjs --test --test-concurrency=1 tests/tools.integration.test.mjs tests/mcp.protocol.test.mjs tests/reliability.regression.test.mjs tests/server.hardening.test.mjs tests/readiness-stdio-boundaries.test.mjs tests/readiness-races.test.mjs tests/cancellation-listeners.test.mjs tests/readiness-regression.test.mjs tests/readiness-security.test.mjs tests/release-assets.test.mjs tests/cache-pagination.hardening.test.mjs tests/redaction.hardening.test.mjs tests/transport.hardening.test.mjs tests/packaging.hardening.test.mjs tests/projection.hardening.test.mjs",
     "test:redteam": "npm run build && node --require ./tests/fixtures/loopback-only.cjs --test --test-concurrency=1 tests/redteam.security.test.mjs",
@@ -40,7 +42,12 @@
     "test:live:paid": "npm run build && node tests/live.smoke.mjs paid",
     "prepare": "npm run build",
     "watch": "tsc --watch",
-    "inspector": "npx @modelcontextprotocol/inspector"
+    "inspector": "npx @modelcontextprotocol/inspector",
+    "start:http": "node dist/http-cli.js",
+    "test:hosted": "npm run build && node --require ./tests/fixtures/loopback-only.cjs --test --test-concurrency=1 tests/hosted.*.test.mjs",
+    "test:hosted:live": "npm run build && node tests/hosted.live.mjs",
+    "test:hosted:docker": "node --test tests/hosted.docker.mjs",
+    "test:hosted:load": "npm run build && node --test tests/hosted.load.mjs"
   },
   "keywords": [
     "mcp",
@@ -89,15 +96,15 @@
   "author": "ipgeolocation.io",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.32.1",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "zod": "4.6.7"
   },
   "overrides": {
-    "@hono/node-server": "2.1.3",
+    "@hono/node-server": "2.1.6",
     "body-parser": "2.4.0",
     "express-rate-limit": "8.5.1",
     "fast-uri": "3.1.9",
-    "hono": "4.13.11",
+    "hono": "4.13.16",
     "ip-address": "10.7.4",
     "path-to-regexp": "8.4.2",
     "proxy-addr": "2.0.8",

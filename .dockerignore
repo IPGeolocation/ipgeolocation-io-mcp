@@ -16,3 +16,4 @@ node_modules
 **/.npmrc.*
 **/.mcpregistry_*
 TODO.md
+deploy/*.env
