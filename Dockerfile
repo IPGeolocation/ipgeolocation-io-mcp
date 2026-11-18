@@ -1,4 +1,4 @@
-FROM node:24.22.1-alpine3.24@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS base
+FROM node:24.22.3-alpine3.24@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS base
 
 RUN apk add --no-cache 'zlib>=1.4-r0'
 
@@ -38,8 +38,8 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn* \
         /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
         /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx \
-    && apk add --no-network --no-scripts alpine-baselayout-data \
-    && apk del --no-network --no-scripts alpine-baselayout busybox busybox-binsh ssl_client \
+    && apk add --no-network --no-scripts ca-certificates-bundle alpine-baselayout-data \
+    && apk del --no-network --no-scripts alpine-baselayout busybox busybox-binsh ssl_client apk-tools \
     && node -e "const fs = require('node:fs'); \
         for (const dir of ['/bin', '/sbin', '/usr/bin', '/usr/sbin']) { \
             for (const entry of fs.readdirSync(dir, { withFileTypes: true })) { \
