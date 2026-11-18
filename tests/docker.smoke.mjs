@@ -14,7 +14,7 @@ test("Docker runtime contains no unused package-manager modules or launchers", (
     "run", "--rm", "--network", "none", "--read-only", "--entrypoint", "node", image,
     "-p", `(() => {
       const fs = require('node:fs'), path = require('node:path');
-      const names = ['npm', 'npx', 'corepack', 'yarn', 'yarnpkg', 'pnpm', 'pnpx'];
+      const names = ['apk', 'npm', 'npx', 'corepack', 'yarn', 'yarnpkg', 'pnpm', 'pnpx'];
       const exists = file => { try { fs.lstatSync(file); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } };
       const commands = [...new Set(process.env.PATH.split(path.delimiter))].flatMap(directory => names.map(name => path.join(directory, name))).filter(exists);
       const modules = ['npm', 'corepack'].map(name => '/usr/local/lib/node_modules/' + name).filter(exists);
@@ -31,7 +31,7 @@ test("Docker runtime removes BusyBox and preserves accounts, certificates and te
     "-p", `(() => {
       const fs = require('node:fs'), path = require('node:path');
       const packages = fs.readFileSync('/lib/apk/db/installed', 'utf8').split('\\n\\n').map(record => record.match(/^P:(.+)$/m)?.[1]);
-      const unwantedPackages = packages.filter(name => ['busybox', 'busybox-binsh', 'ssl_client', 'alpine-baselayout'].includes(name));
+      const unwantedPackages = packages.filter(name => ['busybox', 'busybox-binsh', 'ssl_client', 'alpine-baselayout', 'apk-tools', 'libcrypto3', 'libssl3'].includes(name));
       const commands = ['/bin', '/sbin', '/usr/bin', '/usr/sbin'].flatMap(dir =>
         fs.readdirSync(dir, { withFileTypes: true }).filter(entry => entry.name === 'busybox' ||
           (entry.isSymbolicLink() && path.resolve(dir, fs.readlinkSync(path.join(dir, entry.name))) === '/bin/busybox'))
