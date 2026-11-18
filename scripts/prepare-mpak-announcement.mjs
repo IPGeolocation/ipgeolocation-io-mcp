@@ -88,8 +88,10 @@ export function parseBundleManifest(bytes, context) {
 
 export function bundleDocuments(sourceDir, sourcePackage) {
   const documents = ["README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "packaging/mpak/README.md"];
-  if (existsSync(path.join(sourceDir, "REFERENCE.md")) || (Array.isArray(sourcePackage.files) && sourcePackage.files.includes("REFERENCE.md"))) {
-    documents.push("REFERENCE.md");
+  for (const document of ["REFERENCE.md", "HOSTED.md"]) {
+    if (existsSync(path.join(sourceDir, document)) || (Array.isArray(sourcePackage.files) && sourcePackage.files.includes(document))) {
+      documents.push(document);
+    }
   }
   if (existsSync(path.join(sourceDir, "packaging/kiro")) || (Array.isArray(sourcePackage.files) && sourcePackage.files.some(name => /^packaging\/kiro(?:\/|$)/u.test(name)))) {
     documents.push("packaging/kiro/README.md", "packaging/kiro/mcp.json", "packaging/kiro/plugin.json");
@@ -100,6 +102,7 @@ export function bundleDocuments(sourceDir, sourcePackage) {
 export function listBundleEntries(bundlePath) {
   const listing = spawnSync("unzip", ["-Z1", bundlePath], {
     maxBuffer: 1024 * 1024,
+    killSignal: "SIGKILL",
     env: { ...process.env, LC_ALL: process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8" },
   });
   if (listing.error || listing.status !== 0) throw new Error(`Unable to list mpak bundle contents.\n${listing.error?.message || listing.stderr || listing.stdout}`);
@@ -148,7 +151,7 @@ export function verifyBundleManifest(bundlePath, context) {
   if (entries.filter(name => name === "manifest.json").length !== 1) {
     throw new Error("The bundle must contain exactly one manifest.json.");
   }
-  const embedded = spawnSync("unzip", ["-p", bundlePath, "manifest.json"], { maxBuffer: MAX_MANIFEST_BYTES });
+  const embedded = spawnSync("unzip", ["-p", bundlePath, "manifest.json"], { maxBuffer: MAX_MANIFEST_BYTES, killSignal: "SIGKILL" });
   if (embedded.error || embedded.status !== 0) throw new Error("Unable to read the bundle manifest within the 1 MiB limit.");
   return parseBundleManifest(embedded.stdout, context);
 }
@@ -161,7 +164,7 @@ export function verifyBundleMetadata(bundlePath, sidecars) {
       throw new Error(`The bundle must contain exactly one ${name}.`);
     }
     const expected = readFileSync(sidecars[name]);
-    const embedded = spawnSync("unzip", ["-p", bundlePath, name], { maxBuffer: Math.max(1024 * 1024, expected.length + 1) });
+    const embedded = spawnSync("unzip", ["-p", bundlePath, name], { maxBuffer: Math.max(1024 * 1024, expected.length + 1), killSignal: "SIGKILL" });
     if (embedded.error || embedded.status !== 0) throw new Error(`Unable to read bundled metadata: ${name}.`);
     if (!embedded.stdout.equals(expected)) throw new Error(`Release metadata does not match the bundle: ${name}.`);
   }
