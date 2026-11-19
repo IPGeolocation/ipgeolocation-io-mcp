@@ -175,9 +175,9 @@ Restart Cursor after saving.
 
 #### Cursor plugin
 
-This repository includes a Cursor plugin for `ipgeolocation-io-mcp`. The plugin runs locally over stdio and requires Node.js 22 or later.
+The [ipgeolocation-io-mcp repository](https://github.com/IPGeolocation/ipgeolocation-io-mcp) includes a Cursor plugin for `ipgeolocation-io-mcp`. The plugin runs locally over stdio and requires Node.js 22 or later.
 
-To install it locally, clone this repository into a new directory under `~/.cursor/plugins/local/`, reload Cursor, and open **Customize > Plugins**.
+To install it locally, clone that repository into a new directory under `~/.cursor/plugins/local/`, reload Cursor, and open **Customize > Plugins**.
 
 - **Local plugin:** set `IPGEOLOCATION_API_KEY` in the environment that launches Cursor. The plugin reads the key from that environment.
 - **Marketplace install:** set the key in the plugin's private configuration.
