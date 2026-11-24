@@ -1,6 +1,6 @@
-# mpak Packaging
+# MCP Bundle Packaging
 
-mpak publishes this server as `@ipgeolocation/ipgeolocation-io-mcp`. The prep script derives that bundle from the root metadata and stages it in `artifacts/mpak-package/`. The npm package name, root manifests, and existing client install commands stay unchanged.
+GitHub Releases hosts the signed `@ipgeolocation/ipgeolocation-io-mcp` MCP Bundle. The prep script reads the root metadata and stages the files in `artifacts/mpak-package/`.
 
 Version **2.0.3**. See the [release checklist](../../RELEASING.md) for publication channels, dated listing checks, and follow-ups.
 
@@ -10,10 +10,12 @@ Install Node.js 22 or later and npm, then run `npm ci --ignore-scripts` in the s
 
 1. Run `npm run prepare:mpak` to build the source in `MPAK_SOURCE_DIR` (the repository root by default) and prepare a local staging package, then `npm run sbom:mpak` to generate its CycloneDX SBOM. These commands write build artifacts; they do not publish a version.
 2. Complete source and consumer verification, then create the matching Git tag and GitHub release as part of an authorized release.
-3. For a new authorized release, dispatch **mpak Release** from its tag with `operation: publish`. Set both `source_ref` and `release_tag` to that tag. The workflow checks all five target filenames before building or signing and stops if any already exists.
-4. Confirm that the release contains the `.mcpb`, `.mcpb.sigstore.json`, `.mcpb.provenance.sigstore.json`, `sbom.cdx.json`, and `server.json` assets. The workflow retains the exact signed files before uploading the signature, provenance and metadata, then uploads the bundle last. The separate announcement job verifies all five published files before announcing the bundle.
-5. If an upload stops partway through, dispatch the same tagged workflow with `operation: resume` and the original `recovery_run_id`. It verifies that run's repository, tag and commit, checks its retained signature and provenance, and compares every existing release asset before uploading missing files. If only announcement needs retrying, dispatch with `operation: announce`. This works without rerunning the original job and does not rebuild, sign or upload files. Keep both tag inputs unchanged. These modes apply to releases created with this workflow. Do not dispatch **mpak Release** from tags before `v2.0.3`: older tagged workflows can rebuild and replace published assets. Signed files are retained for up to 90 days, subject to repository limits. If they have expired or are missing, stop for manual release review. Do not regenerate or replace existing signed assets.
-6. Verify the public package version and bundle using the commands below. Review scan results for the same version.
+3. For a new authorized release, run **MCP Bundle Release** from a tag that contains this workflow. Choose `publish` and set both `source_ref` and `release_tag` to that tag. The workflow checks all five target filenames before building or signing and stops if any already exists.
+4. Confirm that the GitHub release contains the `.mcpb`, `.mcpb.sigstore.json`, `.mcpb.provenance.sigstore.json`, `sbom.cdx.json`, and `server.json` assets. The workflow saves the signed files for recovery and uploads the bundle last. A read-only job verifies all five files after upload.
+5. If an upload stops partway through, run the workflow from the same tag with `operation: resume` and the original `recovery_run_id`. It verifies the saved files and compares any files already on GitHub before uploading only missing assets. If verification alone failed, run `operation: verify` from the same tag to check the files already on GitHub.
+6. Verify the bundle using the commands below and review the scan results for that version.
+
+For tags created before this workflow update, including `v2.0.3`, use the verification commands below and handle recovery manually. GitHub retains signed recovery files for up to 90 days, subject to repository limits. If the files are missing or expired, stop for manual release review.
 
 The existing workflows have separate roles:
 
@@ -21,7 +23,7 @@ The existing workflows have separate roles:
 |----------|---------------------|
 | `mpak-validate.yml` | Pull requests, pushes to `main`, and manual runs: build and validate a bundle. |
 | `mpak-scan.yml` | Pull requests, pushes to `main`, and manual runs: build and scan a bundle. |
-| `mpak-release.yml` | Manual only: publish assets and announce the bundle. Package, manifest, registry metadata, source tag, and release tag must agree. |
+| `mpak-release.yml` | Manual runs: publish, resume or verify signed GitHub release assets. Package, manifest, registry metadata, source tag and release tag must agree. |
 
 On Windows, prepare the bundle with `npm run prepare:mpak`; this provides the npm JavaScript CLI path without invoking a command shell. Custom staging directories must be children of `artifacts/` and cannot contain the selected source directory or escape through symlinks.
 
