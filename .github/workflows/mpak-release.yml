@@ -1,25 +1,25 @@
-name: mpak Release
+name: MCP Bundle Release
 
 on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Publish new assets, resume retained assets, or announce a published release
+        description: Publish new assets, resume an interrupted upload, or verify published assets
         type: choice
         required: true
         default: publish
         options:
           - publish
           - resume
-          - announce
+          - verify
       recovery_run_id:
         description: Original workflow run ID containing the retained signed assets (resume only)
         required: false
       source_ref:
-        description: Git tag to build (must match release_tag)
+        description: Git tag for the bundle (must match release_tag)
         required: true
       release_tag:
-        description: Existing GitHub release tag to upload assets to
+        description: Existing GitHub release tag
         required: true
 
 permissions: read-all
@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   publish:
-    if: inputs.operation != 'announce'
+    if: inputs.operation != 'verify'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -193,7 +193,7 @@ jobs:
         run: node scripts/finalize-mpak-bundle.mjs "artifacts/mpak-package/$BUNDLE_FILENAME" "artifacts/mpak-package"
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532
 
       - name: Sign mpak bundle with Sigstore keyless
         if: inputs.operation == 'publish'
@@ -285,7 +285,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.release_tag }}
           SOURCE_REF: ${{ inputs.source_ref }}
           RECOVERY_RUN_ID: ${{ inputs.recovery_run_id }}
-        run: node scripts/prepare-mpak-announcement.mjs --restore "$RELEASE_TAG" "$RECOVERY_RUN_ID" "$RUNNER_TEMP/mpak-recovery"
+        run: node scripts/verify-mcp-bundle-release.mjs --restore "$RELEASE_TAG" "$RECOVERY_RUN_ID" "$RUNNER_TEMP/mpak-recovery"
 
       - name: Upload new mpak assets to the tagged release
         working-directory: tooling
@@ -310,13 +310,13 @@ jobs:
               "$ATTESTATION_ASSET"
           fi
 
-  announce:
+  verify:
+    name: Verify the published bundle
     needs: publish
-    if: ${{ always() && !cancelled() && (inputs.operation == 'announce' || needs.publish.result == 'success') }}
+    if: ${{ always() && !cancelled() && (inputs.operation == 'verify' || needs.publish.result == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -328,75 +328,11 @@ jobs:
           node-version: "22"
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532
 
-      - name: Prepare announcement from published assets
+      - name: Check downloaded GitHub release assets
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           SOURCE_REF: ${{ inputs.source_ref }}
-        run: node scripts/prepare-mpak-announcement.mjs "$RELEASE_TAG" "$RUNNER_TEMP/mpak-announcement"
-
-      - name: Announce universal mpak bundle
-        run: |
-          set -euo pipefail
-
-          ANNOUNCEMENT_PAYLOAD="$RUNNER_TEMP/mpak-announcement/announcement.json"
-          if [ ! -f "$ANNOUNCEMENT_PAYLOAD" ]; then
-            echo "::error::Verified announcement payload not found."
-            exit 1
-          fi
-
-          OIDC_TOKEN=$(curl -fsS \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https://mpak.dev" \
-            | jq -r '.value')
-
-          if [ "$OIDC_TOKEN" = "null" ] || [ -z "$OIDC_TOKEN" ]; then
-            echo "::error::Failed to get OIDC token. Ensure permissions.id-token=write is set."
-            exit 1
-          fi
-
-          NAME=$(jq -r '.name' "$ANNOUNCEMENT_PAYLOAD")
-          VERSION=$(jq -r '.version' "$ANNOUNCEMENT_PAYLOAD")
-          echo "Announcing $NAME v$VERSION"
-
-          MAX_ATTEMPTS=4
-          ATTEMPT=1
-
-          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-            RESPONSE=$(curl -sS -w "\n%{http_code}" \
-              -X POST "https://registry.mpak.dev/v1/bundles/announce" \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer $OIDC_TOKEN" \
-              --data-binary "@$ANNOUNCEMENT_PAYLOAD")
-
-            HTTP_CODE=$(printf '%s\n' "$RESPONSE" | tail -n 1)
-            BODY=$(printf '%s\n' "$RESPONSE" | sed '$d')
-
-            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-              echo "Bundle announced successfully"
-              echo "$BODY" | jq .
-              exit 0
-            fi
-
-            if [ "$HTTP_CODE" -eq 409 ]; then
-              echo "Bundle already registered"
-              echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
-              exit 0
-            fi
-
-            if printf '%s' "$BODY" | grep -Eq 'not found in release'; then
-              if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
-                WAIT_SECONDS=$((ATTEMPT * 5))
-                echo "Release assets not visible yet, retrying in ${WAIT_SECONDS}s..."
-                sleep "$WAIT_SECONDS"
-                ATTEMPT=$((ATTEMPT + 1))
-                continue
-              fi
-            fi
-
-            echo "::error::Failed to announce bundle (HTTP $HTTP_CODE)"
-            echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
-            exit 1
-          done
+        run: node scripts/verify-mcp-bundle-release.mjs "$RELEASE_TAG" "$RUNNER_TEMP/published-bundle"

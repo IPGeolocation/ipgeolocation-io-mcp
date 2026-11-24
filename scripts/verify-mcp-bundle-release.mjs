@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -182,7 +182,7 @@ export async function verifyLocalBundle(context, directory) {
   return { manifest, metadata };
 }
 
-async function prepareAnnouncement(releaseTag, directory) {
+async function verifyPublishedBundle(releaseTag, directory) {
   if (!directory) throw new Error("A new download directory is required.");
   const context = releaseContext(releaseTag);
   const release = readRelease(context);
@@ -195,14 +195,8 @@ async function prepareAnnouncement(releaseTag, directory) {
     if (actual.size !== asset.size) throw new Error(`Published asset size does not match: ${asset.name}`);
     if (actual.digest !== asset.digest.toLowerCase()) throw new Error(`Published asset checksum does not match: ${asset.name}`);
   }
-  const { manifest, metadata } = await verifyLocalBundle(context, outputDir);
-  const bundle = metadata.get(context.filename);
-  const payload = {
-    name: manifest.name, version: context.version, manifest, release_tag: releaseTag, prerelease: release.prerelease,
-    artifact: { filename: context.filename, os: "any", arch: "any", sha256: bundle.digest.slice(7), size: bundle.size },
-  };
-  writeFileSync(path.join(outputDir, "announcement.json"), `${JSON.stringify(payload, null, 2)}\n`);
-  console.log(`Prepared verified announcement for ${manifest.name} ${context.version}.`);
+  const { manifest } = await verifyLocalBundle(context, outputDir);
+  console.log(`Verified published bundle for ${manifest.name} ${context.version}.`);
 }
 
 async function restoreAssets(releaseTag, runId, directory) {
@@ -213,7 +207,7 @@ async function restoreAssets(releaseTag, runId, directory) {
   readRelease(context);
   const original = JSON.parse(run("gh", ["api", `repos/${context.repository}/actions/runs/${runId}`]));
   if (String(original.id) !== runId || original.repository?.full_name !== context.repository || original.head_sha !== context.sourceDigest || original.head_branch !== releaseTag || original.path?.split("@")[0] !== ".github/workflows/mpak-release.yml" || original.event !== "workflow_dispatch" || original.status !== "completed") {
-    throw new Error("The recovery run must be a completed mpak release dispatch for this repository, tag and commit.");
+    throw new Error("The recovery run must be a completed MCP bundle release dispatch for this repository, tag and commit.");
   }
   const outputDir = path.resolve(directory);
   mkdirSync(outputDir);
@@ -225,6 +219,6 @@ async function restoreAssets(releaseTag, runId, directory) {
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const [first, ...args] = process.argv.slice(2);
   if (first === "--restore" && args.length === 3) await restoreAssets(...args);
-  else if (first !== "--restore" && args.length === 1) await prepareAnnouncement(first, ...args);
-  else throw new Error("Usage: node scripts/prepare-mpak-announcement.mjs <release-tag> <new-directory>, or --restore <release-tag> <run-id> <new-directory>");
+  else if (first !== "--restore" && args.length === 1) await verifyPublishedBundle(first, ...args);
+  else throw new Error("Usage: node scripts/verify-mcp-bundle-release.mjs <release-tag> <new-directory>, or --restore <release-tag> <run-id> <new-directory>");
 }

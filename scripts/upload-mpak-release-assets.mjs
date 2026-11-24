@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { localAssetMetadata, publishedAsset, readRelease, releaseContext, verifyBundleManifest, verifyBundleMetadata, verifyLocalBundle } from "./prepare-mpak-announcement.mjs";
+import { localAssetMetadata, publishedAsset, readRelease, releaseContext, verifyBundleManifest, verifyBundleMetadata, verifyLocalBundle } from "./verify-mcp-bundle-release.mjs";
 
 const args = process.argv.slice(2);
 const mode = args[0]?.startsWith("--") ? args.shift() : "upload";
@@ -13,7 +13,7 @@ if (mode === "--preflight") {
   if (assets.length) throw new Error("Preflight derives the five release filenames from the configured bundle name and tag.");
   const context = releaseContext(releaseTag), release = readRelease(context);
   const conflicts = release.assets.filter(asset => context.names.includes(asset.name));
-  if (conflicts.length) throw new Error("Release assets already exist. Use verified resume for missing assets or announce for a complete release; do not rebuild or replace signed bytes.");
+  if (conflicts.length) throw new Error("Release assets already exist. Use resume for missing assets or verify for a complete release.");
   console.log("All five release filenames are available before building or signing.");
 } else {
   if (!assets.length) throw new Error("Supply the complete local asset set, or its directory with --resume.");
