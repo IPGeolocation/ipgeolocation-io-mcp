@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAX_MANIFEST_BYTES, bundleDocuments, listBundleEntries, parseBundleManifest, verifyBundleManifest, verifyBundleMetadata } from "./prepare-mpak-announcement.mjs";
+import { MAX_MANIFEST_BYTES, bundleDocuments, listBundleEntries, parseBundleManifest, verifyBundleManifest, verifyBundleMetadata } from "./verify-mcp-bundle-release.mjs";
 
 const [, , bundlePathArg, stagingDirArg] = process.argv;
 

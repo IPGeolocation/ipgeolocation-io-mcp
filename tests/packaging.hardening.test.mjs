@@ -24,7 +24,7 @@ async function fixture(t) {
   const repository = path.join(root, "repository with spaces %20");
   await mkdir(path.join(repository, "scripts"), { recursive: true });
   await mkdir(path.join(repository, "packaging/mpak"), { recursive: true });
-  for (const file of ["prepare-mpak-package.mjs", "generate-mpak-sbom.mjs", "upload-mpak-release-assets.mjs", "prepare-mpak-announcement.mjs", "finalize-mpak-bundle.mjs"]) {
+  for (const file of ["prepare-mpak-package.mjs", "generate-mpak-sbom.mjs", "upload-mpak-release-assets.mjs", "verify-mcp-bundle-release.mjs", "finalize-mpak-bundle.mjs"]) {
     await cp(path.join(repo, "scripts", file), path.join(repository, "scripts", file));
   }
   const metadata = {
@@ -192,7 +192,7 @@ for (const mode of ["backslash", "forward", "file-url", "key", "dot-exit", "dot-
 }
 
 
-async function announcementFixture(t, manifest = { name: bundleName, version }) {
+async function releaseFixture(t, manifest = { name: bundleName, version }) {
   const f = await fixture(t);
   const bin = path.join(f.root, "bin"), published = path.join(f.root, "published"), local = path.join(f.root, "local assets %20");
   await Promise.all([bin, published, local].map(directory => mkdir(directory)));
@@ -229,34 +229,34 @@ else process.exitCode=91;
 const fs=require('node:fs'),args=process.argv.slice(2);fs.appendFileSync(process.env.FIXTURE_CALLS,JSON.stringify({command:'cosign',args})+'\\n');process.exitCode=args[0]!=='verify-blob'||process.env.FIXTURE_BAD_SIGNATURE?23:0;
 `, { mode: 0o755 });
   await writeFile(path.join(bin, "curl"), `#!${process.execPath}\n` + `
-const fs=require('node:fs'),args=process.argv.slice(2),post=args.includes('POST');
-if(!post){fs.appendFileSync(process.env.FIXTURE_CALLS,JSON.stringify({command:'curl',kind:'oidc'})+'\\n');process.stdout.write(JSON.stringify({value:'fixture-oidc-token'}));}
-else {const body=JSON.parse(fs.readFileSync(args[args.indexOf('--data-binary')+1].slice(1),'utf8'));fs.appendFileSync(process.env.FIXTURE_CALLS,JSON.stringify({command:'curl',kind:'announce',payload:body})+'\\n');process.stdout.write(JSON.stringify({message:'Fixture response'})+'\\n'+(process.env.FIXTURE_ANNOUNCE_FAIL?'503':'200'));}
-`, { mode: 0o755 });
-  await writeFile(path.join(bin, "jq"), `#!${process.execPath}\n` + `
-const fs=require('node:fs'),args=process.argv.slice(2),index=args[0]==='-r'?1:0,query=args[index],file=args[index+1],value=JSON.parse(fs.readFileSync(file||0,'utf8'));process.stdout.write((query==='.'?JSON.stringify(value):String(value[query.slice(1)]))+'\\n');
+const fs=require('node:fs');fs.appendFileSync(process.env.FIXTURE_CALLS,JSON.stringify({command:'curl'})+'\\n');process.exitCode=23;
 `, { mode: 0o755 });
   const env = {
     ...f.env, PATH: `${bin}${path.delimiter}${f.env.PATH}`,
     GITHUB_REPOSITORY: "IPGeolocation/ipgeolocation-io-mcp", GITHUB_REF: `refs/tags/${tag}`, GITHUB_SHA: sourceDigest, SOURCE_REF: tag,
     FIXTURE_CALLS: log, FIXTURE_RELEASE: metadata, FIXTURE_COMMIT: sourceDigest, FIXTURE_PUBLISHED: published,
     FIXTURE_RUN: runMetadata, FIXTURE_RETAINED: local,
-    ACTIONS_ID_TOKEN_REQUEST_TOKEN: "fixture-action-token", ACTIONS_ID_TOKEN_REQUEST_URL: "https://example.test/oidc?fixture=1",
   };
   return {
     ...f, env, assets, local, published, metadata, runMetadata,
     upload: (extra = {}) => f.run("upload-mpak-release-assets.mjs", [tag, ...assets.map(name => path.join(local, name))], { ...env, ...extra }),
     preflight: (extra = {}) => f.run("upload-mpak-release-assets.mjs", ["--preflight", tag], { ...env, ...extra }),
-    restore: (output, extra = {}, runId = "123") => f.run("prepare-mpak-announcement.mjs", ["--restore", tag, runId, output], { ...env, ...extra }),
+    restore: (output, extra = {}, runId = "123") => f.run("verify-mcp-bundle-release.mjs", ["--restore", tag, runId, output], { ...env, ...extra }),
     resume: (directory = local, extra = {}) => f.run("upload-mpak-release-assets.mjs", ["--resume", tag, directory], { ...env, ...extra }),
-    prepare: (output, extra = {}, inputTag = tag) => f.run("prepare-mpak-announcement.mjs", [inputTag, output], { ...env, ...extra }),
-    announce: async (runnerTemp, extra = {}) => {
-      const workflow = await readFile(path.join(repo, ".github/workflows/mpak-release.yml"), "utf8");
-      const block = workflow.split("      - name: Announce universal mpak bundle\n        run: |\n")[1];
-      assert.ok(block, "The actual announce step must remain independently executable");
-      const script = block.split("\n").map(line => line.startsWith("          ") ? line.slice(10) : line).join("\n");
-      const shell = spawnSync("sh", ["-c", "set -o pipefail"]).status === 0 ? "sh" : "bash";
-      return spawnSync(shell, ["-c", script], { env: { ...env, RUNNER_TEMP: runnerTemp, ...extra }, encoding: "utf8", timeout: 30000 });
+    verify: (output, extra = {}, inputTag = tag) => f.run("verify-mcp-bundle-release.mjs", [inputTag, output], { ...env, ...extra }),
+    verifyJob: async (runnerTemp, extra = {}) => {
+      const workflow = (await readFile(path.join(repo, ".github/workflows/mpak-release.yml"), "utf8")).replace(/\r\n/g, "\n");
+      const verify = workflow.split("\n  verify:\n")[1];
+      const step = verify?.match(/^[ ]{8}run: (.+)$/m)?.[1];
+      assert.ok(step, "The workflow must have a published bundle verification command");
+      const result = spawnSync("bash", ["-c", step], {
+        cwd: f.repository,
+        env: { ...env, PATH: [path.dirname(process.execPath), env.PATH].join(path.delimiter), RELEASE_TAG: tag, RUNNER_TEMP: runnerTemp, ...extra },
+        encoding: "utf8",
+        timeout: 30000,
+      });
+      assert.ifError(result.error);
+      return result;
     },
     calls: async () => { try { return (await readFile(log, "utf8")).trim().split("\n").filter(Boolean).map(JSON.parse); } catch (error) { if (error.code === "ENOENT") return []; throw error; } },
   };
@@ -272,54 +272,55 @@ async function seedPublishedAssets(f) {
   await writeFile(f.metadata, JSON.stringify(release));
 }
 
-test("announcement is a separate read-only job with no build, signing or immutable uploads", async () => {
+test("published bundle verification uses a read-only GitHub job", async () => {
   const workflow = (await readFile(path.join(repo, ".github/workflows/mpak-release.yml"), "utf8")).replace(/\r\n/g, "\n");
-  const [publish, announce] = workflow.split("\n  announce:\n");
-  assert.ok(announce);
-  assert.match(announce, /needs: publish/);
-  assert.match(announce, /contents: read\n      id-token: write/);
-  assert.match(announce, /prepare-mpak-announcement\.mjs/);
-  assert.doesNotMatch(announce, /sign-blob|upload-mpak-release-assets|mcpb-pack@|npm ci|npm test|contents: write/);
-  assert.doesNotMatch(publish, /bundles\/announce|Announce universal/);
+  const verify = workflow.split("\n  verify:\n")[1];
+  assert.ok(verify);
+  assert.match(verify, /needs: publish/);
+  assert.match(verify, /permissions:\n      contents: read\n/);
+  assert.match(verify, /verify-mcp-bundle-release\.mjs/);
+  assert.doesNotMatch(verify, /sign-blob|upload-mpak-release-assets|mcpb-pack@|npm ci|npm test|contents: write|id-token:/);
+  assert.doesNotMatch(workflow, /registry\.mpak\.dev|ACTIONS_ID_TOKEN_REQUEST|^[ ]+- announce$/m);
 });
 
-onReleasePlatform("failed announcement reruns from the same published assets without uploading or signing again", async t => {
-  const f = await announcementFixture(t);
+onReleasePlatform("retrying verification leaves the complete release untouched", async t => {
+  const f = await releaseFixture(t);
   assert.equal(f.upload().status, 0);
-  const publishedBefore = await Promise.all(f.assets.map(async name => createHash("sha256").update(await readFile(path.join(f.published, name))).digest("hex")));
+  const publishedBefore = await Promise.all(f.assets.map(name => readFile(path.join(f.published, name))));
   const first = path.join(f.root, "first-job"), retry = path.join(f.root, "retried-job");
-  await mkdir(first); await mkdir(retry);
-  const initial = f.prepare(path.join(first, "mpak-announcement"));
-  assert.equal(initial.status, 0, initial.stderr);
-  assert.notEqual((await f.announce(first, { FIXTURE_ANNOUNCE_FAIL: "1" })).status, 0);
-  const second = f.prepare(path.join(retry, "mpak-announcement"));
-  assert.equal(second.status, 0, second.stderr);
-  assert.equal((await f.announce(retry)).status, 0);
+  await Promise.all([mkdir(first), mkdir(retry)]);
+  const failed = await f.verifyJob(first, { FIXTURE_BAD_SIGNATURE: "1" });
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /cosign failed/);
+  const passed = await f.verifyJob(retry);
+  assert.equal(passed.status, 0, passed.stderr);
+  assert.match(passed.stdout, /Verified published bundle/);
+  assert.deepEqual((await readdir(path.join(retry, "published-bundle"))).sort(), [...f.assets].sort());
   const calls = await f.calls();
-  assert.equal(calls.filter(call => call.command === "gh" && call.args[0] === "release" && call.args[1] === "upload").length, 5);
-  assert.equal(calls.filter(call => call.command === "curl" && call.kind === "announce").length, 2);
-  assert.ok(calls.filter(call => call.command === "cosign").every(call => call.args[0] === "verify-blob"));
-  assert.deepEqual(await readFile(path.join(first, "mpak-announcement/announcement.json")), await readFile(path.join(retry, "mpak-announcement/announcement.json")));
-  assert.deepEqual(await Promise.all(f.assets.map(async name => createHash("sha256").update(await readFile(path.join(f.published, name))).digest("hex"))), publishedBefore);
+  assert.equal(uploadCalls(calls).length, 5);
+  assert.equal(calls.filter(call => call.command === "curl").length, 0);
+  const checks = calls.filter(call => call.command === "cosign");
+  assert.equal(checks.length, 2);
+  assert.ok(checks.every(call => call.args[0] === "verify-blob"));
+  assert.deepEqual(await Promise.all(f.assets.map(name => readFile(path.join(f.published, name)))), publishedBefore);
   const verification = calls.find(call => call.command === "gh" && call.args[0] === "attestation");
-  assert.equal(verification.args[verification.args.indexOf("--source-ref") + 1], `refs/tags/${tag}`);
+  assert.equal(verification.args[verification.args.indexOf("--source-ref") + 1], "refs/tags/" + tag);
   assert.equal(verification.args[verification.args.indexOf("--source-digest") + 1], sourceDigest);
 });
 
 for (const manifest of [{ name: "@other/server", version }, { name: bundleName, version: "9.9.9" }]) {
   onReleasePlatform(`manifest mismatch is rejected before publication and after download: ${JSON.stringify(manifest)}`, async t => {
-    const f = await announcementFixture(t, manifest);
+    const f = await releaseFixture(t, manifest);
     const upload = f.upload();
     assert.notEqual(upload.status, 0);
     assert.match(upload.stderr, /bundle manifest does not match/);
     assert.deepEqual(await f.calls(), []);
     await seedPublishedAssets(f);
     const output = path.join(f.root, "download");
-    const result = f.prepare(output);
+    const result = f.verify(output);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /bundle manifest does not match/);
     assert.equal(uploadCalls(await f.calls()).length, 0);
-    await assert.rejects(readFile(path.join(output, "announcement.json")), { code: "ENOENT" });
   });
 }
 
@@ -329,21 +330,20 @@ for (const [name, env, message] of [
   ["signature", { FIXTURE_BAD_SIGNATURE: "1" }, /cosign failed/],
   ["provenance", { FIXTURE_BAD_PROVENANCE: "1" }, /gh failed/],
 ]) {
-  onReleasePlatform(`announcement preparation rejects mismatched ${name}`, async t => {
-    const f = await announcementFixture(t);
+  onReleasePlatform(`published bundle verification rejects mismatched ${name}`, async t => {
+    const f = await releaseFixture(t);
     assert.equal(f.upload().status, 0);
-    const output = path.join(f.root, "download"), result = f.prepare(output, env);
+    const output = path.join(f.root, "download"), result = f.verify(output, env);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, message);
-    await assert.rejects(readFile(path.join(output, "announcement.json")), { code: "ENOENT" });
     assert.equal((await f.calls()).filter(call => call.command === "curl").length, 0);
   });
 }
 
 for (const inputTag of ["--help", "v2.0.2/../../escape", "v2.0.2;echo", "v2.0.2$(echo)", "v2.0.2\n", "v2.0.2#label"]) {
   test(`unsafe release tag is rejected before commands or filesystem output: ${JSON.stringify(inputTag)}`, async t => {
-    const f = await announcementFixture(t);
-    const output = path.join(f.root, "download"), result = f.prepare(output, { GITHUB_REF: `refs/tags/${inputTag}`, SOURCE_REF: inputTag }, inputTag);
+    const f = await releaseFixture(t);
+    const output = path.join(f.root, "download"), result = f.verify(output, { GITHUB_REF: `refs/tags/${inputTag}`, SOURCE_REF: inputTag }, inputTag);
     assert.notEqual(result.status, 0);
     assert.deepEqual(await f.calls(), []);
     await assert.rejects(lstat(output), { code: "ENOENT" });
@@ -351,12 +351,12 @@ for (const inputTag of ["--help", "v2.0.2/../../escape", "v2.0.2;echo", "v2.0.2$
 }
 
 onReleasePlatform("unexpected release filenames cannot select paths outside the new download directory", async t => {
-  const f = await announcementFixture(t);
+  const f = await releaseFixture(t);
   assert.equal(f.upload().status, 0);
   const metadata = JSON.parse(await readFile(f.metadata, "utf8"));
   metadata.assets.find(asset => asset.name === filename).name = "../../escape.mcpb";
   await writeFile(f.metadata, JSON.stringify(metadata));
-  const output = path.join(f.root, "download"), result = f.prepare(output);
+  const output = path.join(f.root, "download"), result = f.verify(output);
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Published asset metadata is missing or invalid/);
   await assert.rejects(lstat(output), { code: "ENOENT" });
@@ -367,21 +367,21 @@ for (const env of [
   { GITHUB_REF: "refs/heads/main" }, { SOURCE_REF: "v9.9.9" },
   { GITHUB_REPOSITORY: "IPGeolocation/repo;echo" }, { GITHUB_SHA: "not-a-commit" },
 ]) {
-  test(`invalid announcement source context is rejected before any command: ${JSON.stringify(env)}`, async t => {
-    const f = await announcementFixture(t);
-    const result = f.prepare(path.join(f.root, "download"), env);
+  test(`invalid verification source context is rejected before any command: ${JSON.stringify(env)}`, async t => {
+    const f = await releaseFixture(t);
+    const result = f.verify(path.join(f.root, "download"), env);
     assert.notEqual(result.status, 0);
     assert.deepEqual(await f.calls(), []);
   });
 }
 
-onReleasePlatform("unverifiable release checksums cannot produce an announcement payload", async t => {
-  const f = await announcementFixture(t);
+onReleasePlatform("verification rejects unverifiable release checksums before downloading", async t => {
+  const f = await releaseFixture(t);
   assert.equal(f.upload().status, 0);
   const metadata = JSON.parse(await readFile(f.metadata, "utf8"));
   delete metadata.assets[0].digest;
   await writeFile(f.metadata, JSON.stringify(metadata));
-  const result = f.prepare(path.join(f.root, "download"));
+  const result = f.verify(path.join(f.root, "download"));
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Published asset metadata is missing or invalid/);
   assert.equal((await f.calls()).filter(call => call.args?.includes("download")).length, 0);
@@ -401,11 +401,11 @@ const uploadCalls = calls => calls.filter(call => call.command === "gh" && call.
 const publicationOrder = [`${filename}.sigstore.json`, `${filename}.provenance.sigstore.json`, "sbom.cdx.json", "server.json", filename];
 
 onReleasePlatform("every release path verifies the exact tag when a branch shares its name", async t => {
-  for (const operation of ["preflight", "upload", "restore", "resume", "prepare"]) {
+  for (const operation of ["preflight", "upload", "restore", "resume", "verify"]) {
     await t.test(operation, async t => {
-      const f = await announcementFixture(t);
+      const f = await releaseFixture(t);
       const extra = { FIXTURE_COMMIT: "b".repeat(40), FIXTURE_BRANCH_COMMIT: sourceDigest };
-      const result = operation === "restore" || operation === "prepare"
+      const result = operation === "restore" || operation === "verify"
         ? f[operation](path.join(f.root, "new-output"), extra)
         : operation === "resume" ? f.resume(f.local, extra) : f[operation](extra);
       assert.notEqual(result.status, 0);
@@ -416,7 +416,7 @@ onReleasePlatform("every release path verifies the exact tag when a branch share
 });
 
 onReleasePlatform("early publication preflight stops on a partial release before signing or uploading", async t => {
-  const f = await announcementFixture(t);
+  const f = await releaseFixture(t);
   assert.equal(f.preflight().status, 0);
   assert.deepEqual((await f.calls()).map(call => call.args[0]), ["api", "api"]);
   assert.equal(f.upload({ FIXTURE_UPLOAD_FAIL: publicationOrder[1] }).status, 23);
@@ -429,7 +429,7 @@ onReleasePlatform("early publication preflight stops on a partial release before
 for (const failedAsset of publicationOrder) {
   for (const accepted of [false, true]) {
     onReleasePlatform(`interrupted upload ${accepted ? "after" : "before"} accepting ${failedAsset} resumes identical bytes`, async t => {
-      const f = await announcementFixture(t);
+      const f = await releaseFixture(t);
       assert.equal(f.upload({ FIXTURE_UPLOAD_FAIL: failedAsset, FIXTURE_FAIL_AFTER_UPLOAD: accepted ? "1" : "" }).status, 23);
       const first = JSON.parse(await readFile(f.metadata, "utf8"));
       const count = publicationOrder.indexOf(failedAsset) + Number(accepted);
@@ -447,7 +447,7 @@ for (const failedAsset of publicationOrder) {
       const snapshot = await readFile(f.metadata);
       assert.equal(f.resume(recovered).status, 0);
       assert.deepEqual(await readFile(f.metadata), snapshot);
-      assert.equal(f.prepare(path.join(f.root, "announcement")).status, 0);
+      assert.equal(f.verify(path.join(f.root, "published-copy")).status, 0);
     });
   }
 }
@@ -455,7 +455,7 @@ for (const failedAsset of publicationOrder) {
 onReleasePlatform("resume accepts every matching subset without replacing or duplicating assets", async t => {
   for (let mask = 0; mask < 32; mask++) {
     await t.test(`existing asset mask ${mask}`, async t => {
-      const f = await announcementFixture(t);
+      const f = await releaseFixture(t);
       const published = JSON.parse(await readFile(f.metadata, "utf8"));
       for (const [index, name] of publicationOrder.entries()) {
         if (!(mask & (1 << index))) continue;
@@ -475,7 +475,7 @@ onReleasePlatform("resume accepts every matching subset without replacing or dup
 
 for (const mismatch of ["digest", "size", "state", "duplicate"]) {
   onReleasePlatform(`resume rejects existing ${mismatch} mismatch before any missing asset upload`, async t => {
-    const f = await announcementFixture(t);
+    const f = await releaseFixture(t);
     assert.equal(f.upload({ FIXTURE_UPLOAD_FAIL: publicationOrder[1] }).status, 23);
     const published = JSON.parse(await readFile(f.metadata, "utf8"));
     if (mismatch === "digest") published.assets[0].digest = "sha256:" + "b".repeat(64);
@@ -491,8 +491,8 @@ for (const mismatch of ["digest", "size", "state", "duplicate"]) {
 }
 
 for (const name of ["server.json", "sbom.cdx.json"]) {
-  onReleasePlatform(`unsigned ${name} must match its bundle entry before publish, resume or announcement`, async t => {
-    const f = await announcementFixture(t);
+  onReleasePlatform(`unsigned ${name} must match its bundle entry before publishing, resuming or verifying the release`, async t => {
+    const f = await releaseFixture(t);
     const original = await readFile(path.join(f.local, name));
     await writeFile(path.join(f.local, name), "different metadata");
     for (const result of [f.upload(), f.resume()]) {
@@ -507,14 +507,14 @@ for (const name of ["server.json", "sbom.cdx.json"]) {
     const release = JSON.parse(await readFile(f.metadata, "utf8"));
     Object.assign(release.assets.find(asset => asset.name === name), { size: changed.length, digest: "sha256:" + createHash("sha256").update(changed).digest("hex") });
     await writeFile(f.metadata, JSON.stringify(release));
-    const result = f.prepare(path.join(f.root, "announcement"));
+    const result = f.verify(path.join(f.root, "published-copy"));
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /Release metadata does not match the bundle/);
   });
 }
 
 onReleasePlatform("large signed SBOMs are compared without the command's default buffer truncation", async t => {
-  const f = await announcementFixture(t);
+  const f = await releaseFixture(t);
   const sbom = JSON.stringify({ components: [], fixture: "x".repeat(2 * 1024 * 1024) });
   await writeFile(path.join(f.local, "sbom.cdx.json"), sbom);
   await writeFile(path.join(f.local, filename), fixtureArchive({
@@ -525,12 +525,12 @@ onReleasePlatform("large signed SBOMs are compared without the command's default
   const result = f.upload();
   assert.equal(result.status, 0, result.stderr);
   assert.equal(f.resume().status, 0);
-  assert.equal(f.prepare(path.join(f.root, "announcement")).status, 0);
+  assert.equal(f.verify(path.join(f.root, "published-copy")).status, 0);
 });
 
 for (const extra of [{ FIXTURE_BAD_SIGNATURE: "1" }, { FIXTURE_BAD_PROVENANCE: "1" }, { FIXTURE_EXPIRED: "1" }, { FIXTURE_MISSING: filename }]) {
   onReleasePlatform(`retained asset verification fails closed: ${JSON.stringify(extra)}`, async t => {
-    const f = await announcementFixture(t), output = path.join(f.root, "recovered");
+    const f = await releaseFixture(t), output = path.join(f.root, "recovered");
     assert.notEqual(f.restore(output, extra).status, 0);
     assert.equal(uploadCalls(await f.calls()).length, 0);
     assert.equal((await readdir(f.published)).length, 0);
@@ -542,12 +542,12 @@ for (const patch of [
   { head_branch: "main" }, { path: ".github/workflows/other.yml" }, { event: "push" }, { status: "in_progress" },
 ]) {
   onReleasePlatform(`a recovery run must match its original release context: ${JSON.stringify(patch)}`, async t => {
-    const f = await announcementFixture(t);
+    const f = await releaseFixture(t);
     const original = JSON.parse(await readFile(f.runMetadata, "utf8"));
     await writeFile(f.runMetadata, JSON.stringify({ ...original, ...patch }));
     const result = f.restore(path.join(f.root, "recovered"));
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /completed mpak release dispatch/);
+    assert.match(result.stderr, /completed MCP bundle release dispatch/);
     assert.equal((await f.calls()).filter(call => call.args?.includes("download")).length, 0);
     assert.equal(uploadCalls(await f.calls()).length, 0);
   });
@@ -555,17 +555,17 @@ for (const patch of [
 
 for (const runId of ["", "0", "-1", "00123", "1.5", "9007199254740992", "123\n", "123;echo", "123/../456"]) {
   test(`invalid recovery run ID fails before commands: ${JSON.stringify(runId)}`, async t => {
-    const f = await announcementFixture(t), result = f.restore(path.join(f.root, "recovered"), {}, runId);
+    const f = await releaseFixture(t), result = f.restore(path.join(f.root, "recovered"), {}, runId);
     assert.notEqual(result.status, 0);
     assert.deepEqual(await f.calls(), []);
   });
 }
 
-test("release dispatch retains default publish and supports fresh announcement without a publish job", async () => {
+test("release dispatch retains default publish and supports independent read-only verification", async () => {
   const workflow = (await readFile(path.join(repo, ".github/workflows/mpak-release.yml"), "utf8")).replace(/\r\n/g, "\n");
-  assert.match(workflow, /default: publish\n        options:\n          - publish\n          - resume\n          - announce/);
-  assert.match(workflow, /publish:\n    if: inputs\.operation != 'announce'/);
-  assert.match(workflow, /always\(\) && !cancelled\(\) && \(inputs\.operation == 'announce' \|\| needs\.publish\.result == 'success'\)/);
+  assert.match(workflow, /default: publish\n        options:\n          - publish\n          - resume\n          - verify/);
+  assert.match(workflow, /publish:\n    if: inputs\.operation != 'verify'/);
+  assert.match(workflow, /always\(\) && !cancelled\(\) && \(inputs\.operation == 'verify' \|\| needs\.publish\.result == 'success'\)/);
   assert.ok(workflow.indexOf('--preflight "$RELEASE_TAG"') < workflow.indexOf("      - name: Install root dependencies"));
   assert.ok(workflow.indexOf("      - name: Retain the exact signed asset set") < workflow.indexOf("      - name: Upload new mpak assets"));
   assert.ok(workflow.indexOf("      - name: Finalize mpak bundle metadata") < workflow.indexOf("      - name: Sign mpak bundle with Sigstore keyless"));
@@ -575,7 +575,7 @@ test("release dispatch retains default publish and supports fresh announcement w
 });
 
 onReleasePlatform("the actual publication context step accepts only the selected tag, commit and operation", async t => {
-  const f = await announcementFixture(t);
+  const f = await releaseFixture(t);
   await writeFile(path.join(f.root, "bin/git"), `#!${process.execPath}\nprocess.stdout.write('${sourceDigest}\\n');\n`, { mode: 0o755 });
   const workflow = (await readFile(path.join(repo, ".github/workflows/mpak-release.yml"), "utf8")).replace(/\r\n/g, "\n");
   const step = workflow.split("      - name: Bind source ref to workflow provenance\n")[1]?.split("\n      - ")[0];
@@ -587,7 +587,7 @@ onReleasePlatform("the actual publication context step accepts only the selected
     const result = execute(extra);
     assert.equal(result.status, 0, result.stderr);
   }
-  for (const extra of [{ OPERATION: "announce" }, { OPERATION: "unknown" }, { OPERATION: "resume" }, { OPERATION: "resume", RECOVERY_RUN_ID: "123;echo" }, { SOURCE_REF: "main" }, { GITHUB_REF: "refs/heads/main" }, { GITHUB_SHA: "b".repeat(40) }]) {
+  for (const extra of [{ OPERATION: "verify" }, { OPERATION: "announce" }, { OPERATION: "unknown" }, { OPERATION: "resume" }, { OPERATION: "resume", RECOVERY_RUN_ID: "123;echo" }, { SOURCE_REF: "main" }, { GITHUB_REF: "refs/heads/main" }, { GITHUB_SHA: "b".repeat(40) }]) {
     assert.notEqual(execute(extra).status, 0, JSON.stringify(extra));
   }
   assert.deepEqual(await f.calls(), []);
@@ -654,8 +654,8 @@ for (const [mode, contents] of invalidManifests) {
       assert.match(result.stderr, /manifest/i);
       assert.deepEqual(await readFile(path.join(f.staging, "manifest.json")), before);
     });
-    await t.test("upload, resume, restore and announcement", async t => {
-      const f = await announcementFixture(t);
+    await t.test("upload, resume, restore and verify", async t => {
+      const f = await releaseFixture(t);
       const entries = {};
       for (const name of ["server.json", "sbom.cdx.json"]) entries[name] = await readFile(path.join(f.local, name));
       await writeFile(path.join(f.local, filename), fixtureArchive(manifestEntries(entries, mode, contents)));
@@ -668,11 +668,10 @@ for (const [mode, contents] of invalidManifests) {
         assert.match(result.stderr, /manifest/i);
       }
       await seedPublishedAssets(f);
-      const output = path.join(f.root, "download"), announcement = f.prepare(output);
-      assert.notEqual(announcement.status, 0, announcement.stdout);
-      assert.match(announcement.stderr, /manifest/i);
+      const output = path.join(f.root, "download"), verified = f.verify(output);
+      assert.notEqual(verified.status, 0, verified.stdout);
+      assert.match(verified.stderr, /manifest/i);
       assert.equal(uploadCalls(await f.calls()).length, 0);
-      await assert.rejects(readFile(path.join(output, "announcement.json")), { code: "ENOENT" });
     });
   });
 }
@@ -760,17 +759,17 @@ onReleasePlatform("a valid manifest at the size limit passes finalization and ev
   await writeFile(f.bundle, fixtureArchive(f.entries));
   const finalization = f.finalize();
   assert.equal(finalization.status, 0, finalization.stderr);
-  const release = await announcementFixture(t), entries = { "manifest.json": manifest };
+  const release = await releaseFixture(t), entries = { "manifest.json": manifest };
   for (const name of ["server.json", "sbom.cdx.json"]) entries[name] = await readFile(path.join(release.local, name));
   await writeFile(path.join(release.local, filename), fixtureArchive(entries));
-  for (const result of [release.upload(), release.resume(), release.restore(path.join(release.root, "restored")), release.prepare(path.join(release.root, "download"))]) {
+  for (const result of [release.upload(), release.resume(), release.restore(path.join(release.root, "restored")), release.verify(path.join(release.root, "download"))]) {
     assert.equal(result.status, 0, result.stderr);
   }
   assert.equal(uploadCalls(await release.calls()).length, 5, "Resume must not replace published assets");
 });
 
 onReleasePlatform("an oversized manifest stops the extractor even if it handles SIGTERM", async t => {
-  const f = await announcementFixture(t);
+  const f = await releaseFixture(t);
   const marker = path.join(f.root, "extractor-continued");
   await writeFile(path.join(f.root, "bin", "unzip"), `#!${process.execPath}
 if (process.argv[2] === "-Z1") {
@@ -856,7 +855,7 @@ onReleasePlatform("finalization refuses truncated archives", async t => {
 });
 
 onReleasePlatform("normal upload verifies metadata supplied from different directories", async t => {
-  const f = await announcementFixture(t), files = [];
+  const f = await releaseFixture(t), files = [];
   for (const [index, name] of f.assets.entries()) {
     const directory = path.join(f.root, `asset ${index}`);
     await mkdir(directory);
@@ -870,7 +869,7 @@ onReleasePlatform("normal upload verifies metadata supplied from different direc
 });
 
 onReleasePlatform("normal upload rejects duplicate metadata entries before any upload", async t => {
-  const f = await announcementFixture(t);
+  const f = await releaseFixture(t);
   const entries = [["manifest.json", JSON.stringify({ name: bundleName, version })]];
   for (const name of ["server.json", "sbom.cdx.json"]) entries.push([name, await readFile(path.join(f.local, name))]);
   entries.push(["server.json", ""]);
@@ -882,7 +881,7 @@ onReleasePlatform("normal upload rejects duplicate metadata entries before any u
 });
 
 onReleasePlatform("normal upload rejects successful extraction with truncated metadata", async t => {
-  const f = await announcementFixture(t), bin = path.join(f.root, "truncated-tool");
+  const f = await releaseFixture(t), bin = path.join(f.root, "truncated-tool");
   await mkdir(bin);
   await writeFile(path.join(bin, "unzip"), `#!${process.execPath}\nconst manifest=process.argv.at(-1)==='manifest.json';process.stdout.write(process.argv[2] === '-Z1' ? 'manifest.json\\nserver.json\\nsbom.cdx.json\\n' : (manifest?${JSON.stringify(JSON.stringify({ name: bundleName, version }))}:'{'));\n`, { mode: 0o755 });
   const result = f.upload({ PATH: `${bin}${path.delimiter}${f.env.PATH}` });
@@ -977,7 +976,7 @@ for (const [label, aliases] of ambiguousBundlePaths) {
     const result = finalized.finalize();
     assert.notEqual(result.status, 0, result.stdout);
     assert.match(result.stderr, /bundle.*path|bundle.*exactly one/i);
-    const release = await announcementFixture(t);
+    const release = await releaseFixture(t);
     const entries = [["manifest.json", JSON.stringify({ name: bundleName, version })]];
     for (const name of ["server.json", "sbom.cdx.json"]) entries.push([name, await readFile(path.join(release.local, name))]);
     await writeFile(path.join(release.local, filename), fixtureArchive([...entries, ...extras]));
@@ -990,12 +989,11 @@ for (const [label, aliases] of ambiguousBundlePaths) {
       assert.match(outcome.stderr, /bundle.*path|bundle.*exactly one/i);
     }
     await seedPublishedAssets(release);
-    const output = path.join(release.root, "announcement");
-    const announcement = release.prepare(output);
-    assert.notEqual(announcement.status, 0, announcement.stdout);
-    assert.match(announcement.stderr, /bundle.*path|bundle.*exactly one/i);
+    const output = path.join(release.root, "published-copy");
+    const verified = release.verify(output);
+    assert.notEqual(verified.status, 0, verified.stdout);
+    assert.match(verified.stderr, /bundle.*path|bundle.*exactly one/i);
     assert.equal(uploadCalls(await release.calls()).length, 0);
-    await assert.rejects(readFile(path.join(output, "announcement.json")), { code: "ENOENT" });
   });
 }
 
@@ -1004,10 +1002,10 @@ onReleasePlatform("valid nested bundle files and explicit directories pass every
   const extra = { "node_modules/": "", "node_modules/@scope/": "", "node_modules/@scope/pkg/": "", "node_modules/@scope/pkg/file..name.js": "valid content", "node_modules/@scope/pkg/.config": "valid dotfile", "node_modules/@scope/other-package.js": "valid sibling", "node_modules/@scope/pkg/café.js": "valid UTF-8 filename" };
   await writeFile(f.bundle, fixtureArchive({ ...f.entries, ...extra }));
   assert.equal(f.finalize().status, 0);
-  const release = await announcementFixture(t), entries = { "manifest.json": JSON.stringify({ name: bundleName, version }), ...extra };
+  const release = await releaseFixture(t), entries = { "manifest.json": JSON.stringify({ name: bundleName, version }), ...extra };
   for (const name of ["server.json", "sbom.cdx.json"]) entries[name] = await readFile(path.join(release.local, name));
   await writeFile(path.join(release.local, filename), fixtureArchive(entries));
-  for (const result of [release.upload(), release.resume(), release.restore(path.join(release.root, "restored")), release.prepare(path.join(release.root, "download"))]) {
+  for (const result of [release.upload(), release.resume(), release.restore(path.join(release.root, "restored")), release.verify(path.join(release.root, "download"))]) {
     assert.equal(result.status, 0, result.stderr);
   }
 });

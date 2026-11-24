@@ -12,7 +12,7 @@ import {
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { bundleDocuments } from "./prepare-mpak-announcement.mjs";
+import { bundleDocuments } from "./verify-mcp-bundle-release.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
