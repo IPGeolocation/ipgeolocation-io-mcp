@@ -129,7 +129,7 @@ jobs:
 
       - name: Build universal mpak bundle
         id: build_bundle
-        uses: NimbleBrainInc/mcpb-pack@e74c82722fa4b954ce7740f875d6c437ae471df6
+        uses: NimbleBrainInc/mcpb-pack@b3b77d62b853332071f6e8ddc3c6e9b735dc6774
         with:
           directory: tooling/artifacts/mpak-package
           upload: false
